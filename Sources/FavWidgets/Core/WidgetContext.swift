@@ -73,6 +73,18 @@ public final class WidgetContext: ObservableObject {
 
     public var accent: Color { Color(hex: descriptor.accentHex) }
 
+    /// Per-widget in-memory objects that outlive a single view (a fetched
+    /// candidate pool, a running timer) but are not persisted. Shared by
+    /// the card and the full view.
+    private var transientObjects: [String: AnyObject] = [:]
+
+    public func transient<T: AnyObject>(_ key: String, make: () -> T) -> T {
+        if let existing = transientObjects[key] as? T { return existing }
+        let object = make()
+        transientObjects[key] = object
+        return object
+    }
+
     public func track(_ name: String, _ parameters: [String: String] = [:]) {
         var params = parameters
         params["widget_id"] = descriptor.id

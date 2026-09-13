@@ -107,4 +107,14 @@ public protocol FavWidgetHost: AnyObject {
     func sendPostcard(_ postcard: WidgetPostcardSend) async throws -> WidgetPostcardReceipt
     /// A place the user is at or near right now, if the app knows one.
     func nearbyOrCurrentPlace() async -> WidgetPlaceRef?
+
+    // MARK: Places (added in 0.2.0)
+
+    /// The device's current location, or nil when unavailable/denied.
+    func currentLocation() async -> WidgetCoordinate?
+    /// Saved places matching `query` from the user's own lists and the
+    /// people they're connected to / follow.
+    func fetchPlaces(_ query: WidgetPlaceQuery) async throws -> [WidgetPlaceCandidate]
+    /// Opens the place's page in the app.
+    func openPlace(_ place: WidgetPlaceRef)
 }

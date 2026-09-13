@@ -41,4 +41,22 @@ public final class MockWidgetHost: FavWidgetHost, @unchecked Sendable {
     }
 
     public func nearbyOrCurrentPlace() async -> WidgetPlaceRef? { nearbyPlace }
+
+    public var location: WidgetCoordinate?
+    public var places: [WidgetPlaceCandidate] = []
+    public var placesError: Error?
+    public private(set) var openedPlaces: [WidgetPlaceRef] = []
+    public private(set) var placeQueries: [WidgetPlaceQuery] = []
+
+    public func currentLocation() async -> WidgetCoordinate? { location }
+
+    public func fetchPlaces(_ query: WidgetPlaceQuery) async throws -> [WidgetPlaceCandidate] {
+        placeQueries.append(query)
+        if let placesError { throw placesError }
+        return places.filter { candidate in
+            (query.categories.isEmpty || query.categories.contains(candidate.category)) && query.sources.contains(candidate.source)
+        }
+    }
+
+    public func openPlace(_ place: WidgetPlaceRef) { openedPlaces.append(place) }
 }
