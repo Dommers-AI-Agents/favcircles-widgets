@@ -5,7 +5,9 @@ struct NextBarFullView: View {
     let context: WidgetContext
     @ObservedObject var state: WidgetStateController<NextBarSettings>
     @ObservedObject var pool: NextBarPool
+    @ObservedObject var rounds: NextBarRoundsStore
     @State private var showAllVisits = false
+    @State private var showStartRound = false
 
     private let distanceChoices: [(label: String, meters: Double)] = [
         ("1 km", 1_000), ("3 km", 3_000), ("10 km", 10_000), ("Any", 100_000)
@@ -16,6 +18,7 @@ struct NextBarFullView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 WidgetSyncBadge(state: state.syncState, theme: theme)
+                roundsSection
                 pickSection
                 poolSection
                 settingsSection
@@ -24,11 +27,70 @@ struct NextBarFullView: View {
             .padding(16)
         }
         .background(theme.background)
-        .refreshable { await pool.reload() }
+        .refreshable {
+            await pool.reload()
+            await rounds.refresh()
+        }
         .task {
             await state.loadIfNeeded()
+            await rounds.loadIfNeeded()
             await pool.loadIfNeeded()
+            rounds.startPolling()
         }
+        .onDisappear { rounds.stopPolling() }
+        .sheet(isPresented: $showStartRound) {
+            NextBarStartRoundView(context: context, pool: pool, state: state, store: rounds) { showStartRound = false }
+        }
+    }
+
+    // MARK: - Vote with friends
+
+    private var roundsSection: some View {
+        let theme = context.theme
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                WidgetUI.header("Vote with friends", theme: theme)
+                Spacer()
+                Button { startRound() } label: {
+                    Label("Start a vote", systemImage: "person.2.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Capsule().fill(context.accent))
+                }
+                .buttonStyle(.plain)
+                .disabled(pool.status != .loaded || pool.scored(for: state.model).count < 2)
+            }
+            if let error = rounds.errorMessage, rounds.rounds.isEmpty {
+                Text(error).font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+            }
+            ForEach(rounds.openRounds) { round in
+                NextBarRoundView(context: context, round: round, store: rounds) { letsGo(option: $0) }
+            }
+            ForEach(rounds.recentResults) { round in
+                NextBarRoundView(context: context, round: round, store: rounds) { letsGo(option: $0) }
+            }
+            if rounds.hasLoaded && rounds.openRounds.isEmpty && rounds.recentResults.isEmpty {
+                Text("Let the app pick a few options, tag who you're with, and everyone votes.")
+                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+            }
+        }
+    }
+
+    private func startRound() {
+        context.track("nextbar_start_round_tapped")
+        showStartRound = true
+    }
+
+    private func letsGo(option: NextBarRound.Option) {
+        context.track("nextbar_lets_go", ["source": "round"])
+        context.host.haptic(.success)
+        state.update {
+            $0.visits.append(NextBarVisit(placeId: option.placeId, name: option.name, source: option.sourceValue,
+                                          savedByName: option.savers?.first, savers: option.savers,
+                                          distanceMeters: option.distanceMeters ?? 0))
+        }
+        context.host.openPlace(option.placeRef)
     }
 
     // MARK: - Tonight
@@ -47,7 +109,7 @@ struct NextBarFullView: View {
                     Text(pick.name)
                         .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(theme.label)
-                    Text("\(NextBarFormat.distance(pick.distanceMeters)) away · \(NextBarFormat.attribution(pick.source, savedBy: pick.savedByName))")
+                    Text("\(NextBarFormat.distance(pick.distanceMeters)) away · \(NextBarFormat.attribution(pick.source, savedBy: pick.savedByName, savers: pick.savers))")
                         .font(.system(size: 15))
                         .foregroundStyle(theme.secondaryLabel)
                     if let address = pool.candidate(id: pick.placeId)?.address, !address.isEmpty {
@@ -130,7 +192,7 @@ struct NextBarFullView: View {
                             .frame(width: 22)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.candidate.name).font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).lineLimit(1)
-                            Text(NextBarFormat.attribution(item.candidate.source, savedBy: item.candidate.savedByName))
+                            Text(NextBarFormat.attribution(item.candidate.source, savedBy: item.candidate.savedByName, savers: item.candidate.savers))
                                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                         }
                         Spacer()
@@ -197,7 +259,7 @@ struct NextBarFullView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(visit.name).font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label)
-                        Text(NextBarFormat.attribution(visit.source, savedBy: visit.savedByName)).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                        Text(NextBarFormat.attribution(visit.source, savedBy: visit.savedByName, savers: visit.savers)).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     }
                     Spacer()
                     Text(visit.date, style: .date).font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
@@ -223,7 +285,8 @@ struct NextBarFullView: View {
         context.track("nextbar_choose")
         context.host.haptic(.selection)
         let pick = NextBarPick(day: context.today, placeId: item.candidate.id, name: item.candidate.name,
-                               source: item.candidate.source, savedByName: item.candidate.savedByName, distanceMeters: item.distanceMeters)
+                               source: item.candidate.source, savedByName: item.candidate.savedByName,
+                               savers: item.candidate.savers, distanceMeters: item.distanceMeters)
         state.update { $0.notePick(pick) }
     }
 
@@ -232,7 +295,7 @@ struct NextBarFullView: View {
         context.host.haptic(.success)
         state.update {
             $0.visits.append(NextBarVisit(placeId: pick.placeId, name: pick.name, source: pick.source,
-                                          savedByName: pick.savedByName, distanceMeters: pick.distanceMeters))
+                                          savedByName: pick.savedByName, savers: pick.savers, distanceMeters: pick.distanceMeters))
         }
         openPick(pick)
     }

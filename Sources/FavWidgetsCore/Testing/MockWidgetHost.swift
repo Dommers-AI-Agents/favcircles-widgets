@@ -59,4 +59,14 @@ public final class MockWidgetHost: FavWidgetHost, @unchecked Sendable {
     }
 
     public func openPlace(_ place: WidgetPlaceRef) { openedPlaces.append(place) }
+
+    /// Scripted API responses keyed by "METHOD path"; unscripted calls throw 404.
+    public var apiResponses: [String: Data] = [:]
+    public private(set) var apiRequests: [WidgetAPIRequest] = []
+
+    public func request(_ request: WidgetAPIRequest) async throws -> Data {
+        apiRequests.append(request)
+        if let data = apiResponses["\(request.method.rawValue) \(request.path)"] { return data }
+        throw WidgetAPIError(status: 404, message: "No scripted response for \(request.method.rawValue) \(request.path)")
+    }
 }

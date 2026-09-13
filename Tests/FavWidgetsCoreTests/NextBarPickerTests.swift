@@ -50,3 +50,14 @@ struct NextBarPickerTests {
         #expect(NextBarSettings.merge(local: s, remote: other).visits.count == 1)
     }
 }
+
+struct NextBarAttributionTests {
+    @Test func phrasesSavers() {
+        #expect(NextBarAttribution.text(savers: ["You"], fallbackSource: .mine) == "on your list")
+        #expect(NextBarAttribution.text(savers: ["You", "Ana"], fallbackSource: .mine) == "you + Ana")
+        #expect(NextBarAttribution.text(savers: ["Ana", "Joe"], fallbackSource: .connection) == "saved by Ana, Joe")
+        #expect(NextBarAttribution.text(savers: ["A", "B", "C", "D", "E"], fallbackSource: .connection) == "saved by A, B, C +2")
+        #expect(NextBarAttribution.text(savers: [], fallbackSource: .following, fallbackName: "Kim") == "via Kim")
+        #expect(NextBarAttribution.text(savers: [], fallbackSource: .connection) == "saved by a connection")
+    }
+}

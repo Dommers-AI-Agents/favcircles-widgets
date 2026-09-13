@@ -7,15 +7,17 @@ public struct NextBarVisit: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var source: WidgetPlaceSource
     public var savedByName: String?
+    public var savers: [String]?
     public var distanceMeters: Double
     public var date: Date
 
-    public init(id: UUID = UUID(), placeId: String, name: String, source: WidgetPlaceSource, savedByName: String?, distanceMeters: Double, date: Date = Date()) {
+    public init(id: UUID = UUID(), placeId: String, name: String, source: WidgetPlaceSource, savedByName: String?, savers: [String]? = nil, distanceMeters: Double, date: Date = Date()) {
         self.id = id
         self.placeId = placeId
         self.name = name
         self.source = source
         self.savedByName = savedByName
+        self.savers = savers
         self.distanceMeters = distanceMeters
         self.date = date
     }
@@ -29,14 +31,16 @@ public struct NextBarPick: Codable, Equatable, Sendable {
     public var name: String
     public var source: WidgetPlaceSource
     public var savedByName: String?
+    public var savers: [String]?
     public var distanceMeters: Double
 
-    public init(day: DayKey, placeId: String, name: String, source: WidgetPlaceSource, savedByName: String?, distanceMeters: Double) {
+    public init(day: DayKey, placeId: String, name: String, source: WidgetPlaceSource, savedByName: String?, savers: [String]? = nil, distanceMeters: Double) {
         self.day = day
         self.placeId = placeId
         self.name = name
         self.source = source
         self.savedByName = savedByName
+        self.savers = savers
         self.distanceMeters = distanceMeters
     }
 }

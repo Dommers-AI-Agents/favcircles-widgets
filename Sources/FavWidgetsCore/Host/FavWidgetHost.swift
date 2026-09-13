@@ -117,4 +117,40 @@ public protocol FavWidgetHost: AnyObject {
     func fetchPlaces(_ query: WidgetPlaceQuery) async throws -> [WidgetPlaceCandidate]
     /// Opens the place's page in the app.
     func openPlace(_ place: WidgetPlaceRef)
+
+    // MARK: API channel (added in 0.3.0)
+
+    /// An authenticated call to the FavCircles API on the widget's behalf.
+    /// Paths are relative ("widgets/nextbar/rounds") and the app only
+    /// allows the `widgets/` prefix, so a widget can own its own endpoints
+    /// without an app change.
+    func request(_ request: WidgetAPIRequest) async throws -> Data
+}
+
+public struct WidgetAPIRequest: Sendable {
+    public enum Method: String, Sendable { case get = "GET", post = "POST", put = "PUT", delete = "DELETE" }
+    public let method: Method
+    public let path: String
+    /// JSON body, already encoded.
+    public let body: Data?
+
+    public init(_ method: Method, _ path: String, body: Data? = nil) {
+        self.method = method
+        self.path = path
+        self.body = body
+    }
+}
+
+public struct WidgetAPIError: Error, LocalizedError, Sendable {
+    public let status: Int
+    public let code: String?
+    public let message: String
+
+    public init(status: Int, code: String? = nil, message: String) {
+        self.status = status
+        self.code = code
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
 }

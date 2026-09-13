@@ -18,11 +18,13 @@ public struct NextBarWidget: FavWidget {
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
-        AnyView(NextBarCardView(context: context, state: context.state(NextBarSettings.self), pool: NextBarPool.shared(in: context)))
+        AnyView(NextBarCardView(context: context, state: context.state(NextBarSettings.self),
+                                pool: NextBarPool.shared(in: context), rounds: NextBarRoundsStore.shared(in: context)))
     }
 
     public func makeFullView(context: WidgetContext) -> AnyView {
-        AnyView(NextBarFullView(context: context, state: context.state(NextBarSettings.self), pool: NextBarPool.shared(in: context)))
+        AnyView(NextBarFullView(context: context, state: context.state(NextBarSettings.self),
+                                pool: NextBarPool.shared(in: context), rounds: NextBarRoundsStore.shared(in: context)))
     }
 }
 
@@ -36,12 +38,8 @@ enum NextBarFormat {
         return formatter.string(from: measurement)
     }
 
-    static func attribution(_ source: WidgetPlaceSource, savedBy: String?) -> String {
-        switch source {
-        case .mine: return "on your list"
-        case .connection: return savedBy.map { "saved by \($0)" } ?? "saved by a connection"
-        case .following: return savedBy.map { "via \($0)" } ?? "from someone you follow"
-        }
+    static func attribution(_ source: WidgetPlaceSource, savedBy: String?, savers: [String]? = nil) -> String {
+        NextBarAttribution.text(savers: savers ?? [], fallbackSource: source, fallbackName: savedBy)
     }
 }
 
@@ -104,7 +102,7 @@ final class NextBarPool: ObservableObject {
         guard let chosen = NextBarPicker.pick(from: pool, excluding: state.model.recentPickIds) else { return nil }
         let pick = NextBarPick(day: today, placeId: chosen.candidate.id, name: chosen.candidate.name,
                                source: chosen.candidate.source, savedByName: chosen.candidate.savedByName,
-                               distanceMeters: chosen.distanceMeters)
+                               savers: chosen.candidate.savers, distanceMeters: chosen.distanceMeters)
         state.update { $0.notePick(pick) }
         return chosen
     }

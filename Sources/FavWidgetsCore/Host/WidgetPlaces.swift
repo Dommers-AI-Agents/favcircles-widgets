@@ -45,12 +45,14 @@ public struct WidgetPlaceCandidate: Identifiable, Hashable, Codable, Sendable {
     public let source: WidgetPlaceSource
     /// Who saved it (a connection's or followed person's name); nil for mine.
     public let savedByName: String?
+    /// Everyone who saved this venue, "You" first when the user did.
+    public let savers: [String]
     public let photoURL: URL?
     /// True when `id` is a canonical globalPlaces id.
     public let isGlobal: Bool
 
     public init(id: String, name: String, address: String? = nil, coordinate: WidgetCoordinate, category: String,
-                source: WidgetPlaceSource, savedByName: String? = nil, photoURL: URL? = nil, isGlobal: Bool = true) {
+                source: WidgetPlaceSource, savedByName: String? = nil, savers: [String] = [], photoURL: URL? = nil, isGlobal: Bool = true) {
         self.id = id
         self.name = name
         self.address = address
@@ -58,6 +60,7 @@ public struct WidgetPlaceCandidate: Identifiable, Hashable, Codable, Sendable {
         self.category = category
         self.source = source
         self.savedByName = savedByName
+        self.savers = savers.isEmpty ? (savedByName.map { [$0] } ?? []) : savers
         self.photoURL = photoURL
         self.isGlobal = isGlobal
     }
