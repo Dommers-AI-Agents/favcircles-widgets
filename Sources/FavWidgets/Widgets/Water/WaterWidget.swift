@@ -1,7 +1,8 @@
 import SwiftUI
 import FavWidgetsCore
 
-// STUB — replaced by the real implementation.
+/// Daily water intake: one tap per cup, a goal, and a streak. Single
+/// document for all time (`WaterLog`).
 public struct WaterWidget: FavWidget {
     public init() {}
 
@@ -16,12 +17,15 @@ public struct WaterWidget: FavWidget {
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
-        AnyView(WidgetCard(context: context) {
-            WidgetUI.summary("Coming soon", theme: context.theme)
-        })
+        AnyView(WaterCardView(context: context, state: context.state(WaterLog.self)))
     }
 
     public func makeFullView(context: WidgetContext) -> AnyView {
-        AnyView(Text("Water").padding())
+        AnyView(WaterFullView(context: context, state: context.state(WaterLog.self)))
     }
+}
+
+/// Cup sizes offered in settings (ml).
+enum WaterCupSizes {
+    static let all = [200, 250, 300, 350, 500]
 }

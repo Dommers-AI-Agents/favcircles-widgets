@@ -1,7 +1,8 @@
 import SwiftUI
 import FavWidgetsCore
 
-// STUB — replaced by the real implementation.
+/// Split the check: a live calculator whose defaults (tip %, people,
+/// toggles, last place) persist; amounts are per bill and never stored.
 public struct BillSplitWidget: FavWidget {
     public init() {}
 
@@ -16,12 +17,10 @@ public struct BillSplitWidget: FavWidget {
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
-        AnyView(WidgetCard(context: context) {
-            WidgetUI.summary("Coming soon", theme: context.theme)
-        })
+        AnyView(BillSplitCardView(context: context, settings: context.state(BillSplitSettings.self)))
     }
 
     public func makeFullView(context: WidgetContext) -> AnyView {
-        AnyView(Text("Bill Split").padding())
+        AnyView(BillSplitFullView(context: context, settings: context.state(BillSplitSettings.self)))
     }
 }

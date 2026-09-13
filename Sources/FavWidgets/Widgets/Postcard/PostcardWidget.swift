@@ -1,7 +1,9 @@
 import SwiftUI
 import FavWidgetsCore
 
-// STUB — replaced by the real implementation.
+/// Send a digital postcard (photo + template + caption) to a connection.
+/// Drafts live in the settings document; every sent card is a permanent
+/// record in that month's shard.
 public struct PostcardWidget: FavWidget {
     public init() {}
 
@@ -16,12 +18,21 @@ public struct PostcardWidget: FavWidget {
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
-        AnyView(WidgetCard(context: context) {
-            WidgetUI.summary("Coming soon", theme: context.theme)
-        })
+        let month = context.currentMonth
+        return AnyView(PostcardCardView(
+            context: context,
+            currentMonth: context.month(PostcardMonth.self, month),
+            previousMonth: context.month(PostcardMonth.self, month.previous)
+        ))
     }
 
     public func makeFullView(context: WidgetContext) -> AnyView {
-        AnyView(Text("Postcard").padding())
+        let month = context.currentMonth
+        return AnyView(PostcardFullView(
+            context: context,
+            settings: context.state(PostcardSettings.self),
+            currentMonth: context.month(PostcardMonth.self, month),
+            previousMonth: context.month(PostcardMonth.self, month.previous)
+        ))
     }
 }
