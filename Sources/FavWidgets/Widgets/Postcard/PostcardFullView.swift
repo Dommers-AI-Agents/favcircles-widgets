@@ -22,6 +22,8 @@ struct PostcardFullView: View {
     @State private var message = ""
     @State private var recipient: WidgetContact?
     @State private var showRecipientPicker = false
+    @State private var emailText = ""
+    @State private var alsoShare = false
     @State private var draftId = UUID()
     @State private var hasSeeded = false
 
@@ -102,7 +104,12 @@ struct PostcardFullView: View {
     // MARK: - Derived
 
     private var caption: String { PostcardCopy.caption(placeName: placeName) }
-    private var canSend: Bool { photo != nil && recipient != nil && !isSending }
+    private var emailAddresses: (valid: [String], invalid: [String]) { PostcardEmail.parse(emailText) }
+    private var canSend: Bool {
+        photo != nil && !isSending && emailAddresses.invalid.isEmpty
+            && (recipient != nil || !emailAddresses.valid.isEmpty)
+            && emailAddresses.valid.count <= PostcardEmail.maxAddresses
+    }
 
     /// The place stamped on the draft and the record: the known place with
     /// the (possibly edited) name, or a custom-id ref for a typed-in name.
@@ -241,7 +248,9 @@ struct PostcardFullView: View {
 
     private func recipientSection(_ theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            WidgetUI.header("To", theme: theme)
+            WidgetUI.header("Deliver to", theme: theme)
+            Text("Pick any or all — one Send does them together.")
+                .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             Button { showRecipientPicker = true } label: {
                 HStack(spacing: 12) {
                     if let recipient {
@@ -265,6 +274,44 @@ struct PostcardFullView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            if recipient != nil {
+                Button("Remove connection") { recipient = nil }
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(theme.secondaryLabel)
+            }
+
+            // Email: anyone, FavCircles user or not. The app sends the mail.
+            HStack(spacing: 12) {
+                Image(systemName: "envelope.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(context.accent)
+                TextField("Email addresses, comma separated", text: $emailText)
+                    .font(.system(size: 16))
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.emailAddress)
+                    #endif
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
+            if !emailAddresses.invalid.isEmpty {
+                Text("Check: \(emailAddresses.invalid.joined(separator: ", "))")
+                    .font(.system(size: 12)).foregroundStyle(theme.danger)
+            } else if emailAddresses.valid.count > PostcardEmail.maxAddresses {
+                Text("Up to \(PostcardEmail.maxAddresses) addresses per postcard.")
+                    .font(.system(size: 12)).foregroundStyle(theme.danger)
+            } else if !emailAddresses.valid.isEmpty {
+                Text("Will email \(emailAddresses.valid.count == 1 ? emailAddresses.valid[0] : "\(emailAddresses.valid.count) people") with a link to view it online.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+            }
+
+            Toggle(isOn: $alsoShare) {
+                Text("Also share by text or other apps after sending")
+                    .font(.system(size: 14)).foregroundStyle(theme.label)
+            }
+            .tint(context.accent)
         }
     }
 
@@ -275,15 +322,15 @@ struct PostcardFullView: View {
             }
             .disabled(!canSend)
             .opacity(canSend ? 1 : 0.5)
-            if photo == nil || recipient == nil {
-                Text(photo == nil ? "Add a photo to send." : "Choose who to send it to, or share it by text or email.")
+            if photo == nil || (recipient == nil && emailAddresses.valid.isEmpty) {
+                Text(photo == nil ? "Add a photo to send." : "Choose a connection and/or enter an email, or just share the card.")
                     .font(.system(size: 12))
                     .foregroundStyle(theme.secondaryLabel)
             }
-            // Anyone, not just FavCircles users: the rendered postcard goes
-            // out through the system share sheet (Messages, Mail, …).
+            // Share only: the rendered card plus a link, through the system
+            // share sheet (Messages, WhatsApp, Mail, …).
             Button { share() } label: {
-                Label("Share by text or email", systemImage: "square.and.arrow.up")
+                Label("Share the card", systemImage: "square.and.arrow.up")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(context.accent)
                     .frame(maxWidth: .infinity)
@@ -313,21 +360,25 @@ struct PostcardFullView: View {
                 let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
                 let note = message.trimmingCharacters(in: .whitespacesAndNewlines)
                 let link = await PostcardShareLink.create(context: context, jpeg: jpeg, message: note, templateId: templateId, place: placeForHost)
-                var lines: [String] = []
-                if !note.isEmpty { lines.append(note) }
-                lines.append(caption.isEmpty ? "📮 A postcard for you" : "📮 \(caption)")
-                if let link {
-                    lines.append("See it here: \(link.absoluteString)")
-                } else {
-                    lines.append("Sent with FavCircles — https://favcircles.com/")
-                }
-                context.track("postcard_shared", ["template_id": templateId, "has_link": link == nil ? "false" : "true"])
-                context.host.haptic(.light)
-                context.host.share([.imageJPEG(jpeg), .text(lines.joined(separator: "\n"))])
+                shareCard(jpeg: jpeg, note: note, link: link)
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't share", message: error.localizedDescription))
             }
         }
+    }
+
+    private func shareCard(jpeg: Data, note: String, link: URL?) {
+        var lines: [String] = []
+        if !note.isEmpty { lines.append(note) }
+        lines.append(caption.isEmpty ? "📮 A postcard for you" : "📮 \(caption)")
+        if let link {
+            lines.append("See it here: \(link.absoluteString)")
+        } else {
+            lines.append("Sent with FavCircles — https://favcircles.com/")
+        }
+        context.track("postcard_shared", ["template_id": templateId, "has_link": link == nil ? "false" : "true"])
+        context.host.haptic(.light)
+        context.host.share([.imageJPEG(jpeg), .text(lines.joined(separator: "\n"))])
     }
 
     private func sentPanel(_ record: PostcardRecord, theme: WidgetTheme) -> some View {
@@ -471,37 +522,98 @@ struct PostcardFullView: View {
 
     // MARK: - Send
 
+    /// One Send, every selected route: in-app to a connection, email to
+    /// typed addresses, then optionally the share sheet. Each route records
+    /// its own history entry; a failure in one doesn't undo the others.
     private func send() async {
-        guard let photo, let recipient, !isSending else { return }
+        guard let photo, canSend else { return }
         isSending = true
         defer { isSending = false }
         let templateId = templateId
         let message = message.trimmingCharacters(in: .whitespacesAndNewlines)
         let recordPlace = placeForRecord
+        let emails = emailAddresses.valid
+        let jpeg: Data
         do {
-            let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
-            let receipt = try await context.host.sendPostcard(WidgetPostcardSend(
-                recipientId: recipient.id, imageJPEG: jpeg, message: message, templateId: templateId, place: placeForHost
-            ))
-            let record = PostcardRecord(
-                messageId: receipt.messageId, conversationId: receipt.conversationId,
-                recipientId: recipient.id, recipientName: recipient.displayName,
-                templateId: templateId, message: message, imageURL: receipt.imageURL,
-                place: recordPlace, sentAt: Date()
-            )
-            context.month(PostcardMonth.self, context.currentMonth).update { $0.sent.append(record) }
-            settings.update {
-                $0.draft = nil
-                $0.lastTemplateId = templateId
-            }
-            context.host.haptic(.success)
-            context.track("postcard_sent", ["template_id": templateId, "has_place": placeForHost == nil ? "false" : "true"])
-            sentRecord = record
-            resetCompose()
+            jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
         } catch {
-            context.host.haptic(.warning)
             context.host.presentAlert(WidgetAlert(title: "Couldn't send", message: error.localizedDescription))
+            return
         }
+
+        var records: [PostcardRecord] = []
+        var failures: [String] = []
+        var pageLink: URL?
+
+        if let recipient {
+            do {
+                let receipt = try await context.host.sendPostcard(WidgetPostcardSend(
+                    recipientId: recipient.id, imageJPEG: jpeg, message: message, templateId: templateId, place: placeForHost
+                ))
+                records.append(PostcardRecord(
+                    messageId: receipt.messageId, conversationId: receipt.conversationId,
+                    recipientId: recipient.id, recipientName: recipient.displayName,
+                    templateId: templateId, message: message, imageURL: receipt.imageURL,
+                    place: recordPlace, sentAt: Date()
+                ))
+            } catch {
+                failures.append("to \(recipient.displayName): \(error.localizedDescription)")
+            }
+        }
+
+        if !emails.isEmpty {
+            do {
+                let result = try await PostcardEmail.send(context: context, jpeg: jpeg, emails: emails, message: message, templateId: templateId, place: placeForHost)
+                pageLink = result.url.flatMap(URL.init(string:))
+                if !result.sent.isEmpty {
+                    records.append(PostcardRecord(
+                        messageId: "email:\(UUID().uuidString)", conversationId: "",
+                        recipientId: "email", recipientName: result.sent.joined(separator: ", "),
+                        templateId: templateId, message: message, imageURL: pageLink,
+                        place: recordPlace, sentAt: Date()
+                    ))
+                }
+                if let failed = result.failed, !failed.isEmpty {
+                    failures.append("email to \(failed.joined(separator: ", ")) didn't go through")
+                }
+            } catch {
+                failures.append("email: \(error.localizedDescription)")
+            }
+        }
+
+        guard !records.isEmpty else {
+            context.host.haptic(.warning)
+            context.host.presentAlert(WidgetAlert(title: "Couldn't send", message: failures.joined(separator: "\n")))
+            return
+        }
+
+        context.month(PostcardMonth.self, context.currentMonth).update { $0.sent.append(contentsOf: records) }
+        settings.update {
+            $0.draft = nil
+            $0.lastTemplateId = templateId
+        }
+        context.host.haptic(.success)
+        context.track("postcard_sent", ["template_id": templateId, "has_place": placeForHost == nil ? "false" : "true",
+                                        "in_app": recipient == nil ? "0" : "1", "emails": "\(emails.count)"])
+        if !failures.isEmpty {
+            context.host.presentAlert(WidgetAlert(title: "Sent, with one problem", message: failures.joined(separator: "\n")))
+        }
+
+        // Summary line for the sent panel: "Ana and 2 email addresses".
+        var parts: [String] = []
+        if let recipient, records.contains(where: { $0.recipientId == recipient.id }) { parts.append(recipient.displayName) }
+        if let mailed = records.first(where: { $0.recipientId == "email" }) {
+            let count = mailed.recipientName.split(separator: ",").count
+            parts.append(count == 1 ? mailed.recipientName : "\(count) email addresses")
+        }
+        var summary = records[0]
+        summary.recipientName = parts.joined(separator: " and ")
+        sentRecord = summary
+
+        if alsoShare {
+            shareCard(jpeg: jpeg, note: message, link: pageLink)
+        }
+        resetCompose()
     }
 
     /// Clears everything except the place (the user is still on the same
@@ -511,6 +623,8 @@ struct PostcardFullView: View {
         photoItem = nil
         self.message = ""
         recipient = nil
+        emailText = ""
+        alsoShare = false
         draftId = UUID()
     }
 }
