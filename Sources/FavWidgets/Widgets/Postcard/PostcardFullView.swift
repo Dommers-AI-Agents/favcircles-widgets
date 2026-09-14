@@ -275,10 +275,41 @@ struct PostcardFullView: View {
             .disabled(!canSend)
             .opacity(canSend ? 1 : 0.5)
             if photo == nil || recipient == nil {
-                Text(photo == nil ? "Add a photo to send." : "Choose who to send it to.")
+                Text(photo == nil ? "Add a photo to send." : "Choose who to send it to, or share it by text or email.")
                     .font(.system(size: 12))
                     .foregroundStyle(theme.secondaryLabel)
             }
+            // Anyone, not just FavCircles users: the rendered postcard goes
+            // out through the system share sheet (Messages, Mail, …).
+            Button { share() } label: {
+                Label("Share by text or email", systemImage: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(context.accent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.15)))
+            }
+            .buttonStyle(.plain)
+            .disabled(photo == nil || isSending)
+            .opacity(photo == nil ? 0.5 : 1)
+        }
+    }
+
+    /// Renders the postcard and hands it (plus the note) to the share sheet.
+    private func share() {
+        guard let photo else { return }
+        do {
+            let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
+            var lines: [String] = []
+            let note = message.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !note.isEmpty { lines.append(note) }
+            lines.append(caption.isEmpty ? "📮 A postcard for you" : "📮 \(caption)")
+            lines.append("Sent with FavCircles — https://favcircles.com/")
+            context.track("postcard_shared", ["template_id": templateId])
+            context.host.haptic(.light)
+            context.host.share([.imageJPEG(jpeg), .text(lines.joined(separator: "\n"))])
+        } catch {
+            context.host.presentAlert(WidgetAlert(title: "Couldn't share", message: error.localizedDescription))
         }
     }
 
