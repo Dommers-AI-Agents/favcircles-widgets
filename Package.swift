@@ -15,11 +15,12 @@ let package = Package(
     ],
     targets: [
         .target(name: "FavWidgetsCore"),
-        .target(
-            name: "FavWidgets",
-            dependencies: ["FavWidgetsCore"],
-            resources: [.process("Resources")]
-        ),
+        // No `resources:` here on purpose. The directory only ever held a
+        // .gitkeep, and declaring it made SwiftPM emit an empty
+        // FavWidgets_FavWidgets.bundle that Xcode 17 refuses to codesign
+        // ("bundle format unrecognized"), failing the whole app build.
+        // Add it back only alongside a real asset.
+        .target(name: "FavWidgets", dependencies: ["FavWidgetsCore"]),
         .testTarget(name: "FavWidgetsCoreTests", dependencies: ["FavWidgetsCore"]),
         .testTarget(name: "FavWidgetsTests", dependencies: ["FavWidgets"])
     ],
