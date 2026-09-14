@@ -10,6 +10,11 @@ struct PostcardCanvasView: View {
     let caption: String
     let size: CGSize
     var accent: Color = Color(red: 0.90, green: 0.24, blue: 0.24)
+    /// Extra inset, in render points, held between the artwork edge and every
+    /// piece of content. Zero on screen. For print it's the bleed the trimmer
+    /// cuts away, so backgrounds and photos still run off the edge while
+    /// captions and the stamp stay safely inside the finished card.
+    var bleed: CGFloat = 0
 
     private var template: PostcardTemplate { PostcardTemplate.resolve(templateId) }
     /// 1.0 at the 600pt design width.
@@ -31,7 +36,7 @@ struct PostcardCanvasView: View {
     // MARK: - Templates
 
     private var classic: some View {
-        let border = 18 * scale
+        let border = 18 * scale + bleed
         return ZStack(alignment: .topTrailing) {
             Color.white
             photo
@@ -51,7 +56,7 @@ struct PostcardCanvasView: View {
     }
 
     private var vintage: some View {
-        let border = 22 * scale
+        let border = 22 * scale + bleed
         let cream = Color(red: 0.96, green: 0.93, blue: 0.84)
         return ZStack {
             cream
@@ -80,7 +85,7 @@ struct PostcardCanvasView: View {
     }
 
     private var modern: some View {
-        let bandHeight = 74 * scale
+        let bandHeight = 74 * scale + bleed
         return ZStack(alignment: .bottom) {
             photo
             Rectangle()
@@ -95,14 +100,15 @@ struct PostcardCanvasView: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.5)
                     }
-                    .padding(.horizontal, 22 * scale)
+                    .padding(.horizontal, 22 * scale + bleed)
+                    .padding(.bottom, bleed)
                 }
         }
     }
 
     private var polaroid: some View {
-        let side = 20 * scale
-        let bottom = 84 * scale
+        let side = 20 * scale + bleed
+        let bottom = 84 * scale + bleed
         return ZStack(alignment: .bottom) {
             Color.white
             VStack(spacing: 0) {
@@ -118,6 +124,7 @@ struct PostcardCanvasView: View {
                     .italic()
                     .foregroundStyle(Color(red: 0.16, green: 0.16, blue: 0.20))
                     .frame(height: bottom)
+                    .padding(.bottom, bleed)
             }
         }
         .shadow(color: .black.opacity(0.15), radius: 4 * scale, x: 0, y: 2 * scale)

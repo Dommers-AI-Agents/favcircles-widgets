@@ -129,7 +129,16 @@ public protocol FavWidgetHost: AnyObject {
     // MARK: Media (added in 0.4.0)
 
     /// Uploads a JPEG through the app's image pipeline; returns its public URL.
+    /// That pipeline compresses and may downsize, which is right for anything
+    /// shown on a screen and wrong for anything going to a printer.
     func uploadImage(_ jpeg: Data) async throws -> URL
+
+    // MARK: Paid print (added in 0.5.0)
+
+    /// Uploads print-resolution artwork with no resizing and a larger size
+    /// cap. Separate from `uploadImage` because the ordinary path would
+    /// silently reduce a 1875x1275 card to 1280px and ruin the print.
+    func uploadPrintImage(_ jpeg: Data) async throws -> URL
 }
 
 public struct WidgetAPIRequest: Sendable {
