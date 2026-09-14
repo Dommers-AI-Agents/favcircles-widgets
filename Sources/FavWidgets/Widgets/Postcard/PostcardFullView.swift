@@ -27,6 +27,7 @@ struct PostcardFullView: View {
 
     // Send state.
     @State private var isSending = false
+    @State private var isSharing = false
     @State private var sentRecord: PostcardRecord?
 
     // History.
@@ -290,26 +291,42 @@ struct PostcardFullView: View {
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.15)))
             }
             .buttonStyle(.plain)
-            .disabled(photo == nil || isSending)
+            .disabled(photo == nil || isSending || isSharing)
             .opacity(photo == nil ? 0.5 : 1)
+            if isSharing {
+                HStack(spacing: 8) { ProgressView(); Text("Preparing your postcard…") }
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+            }
         }
     }
 
-    /// Renders the postcard and hands it (plus the note) to the share sheet.
+    /// Renders the postcard, publishes a public page for it, and hands the
+    /// image plus a link to the share sheet. Non-users open the link in a
+    /// browser and see the card with the FavCircles pitch underneath. If
+    /// the page can't be made, the image still goes out.
     private func share() {
-        guard let photo else { return }
-        do {
-            let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
-            var lines: [String] = []
-            let note = message.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !note.isEmpty { lines.append(note) }
-            lines.append(caption.isEmpty ? "📮 A postcard for you" : "📮 \(caption)")
-            lines.append("Sent with FavCircles — https://favcircles.com/")
-            context.track("postcard_shared", ["template_id": templateId])
-            context.host.haptic(.light)
-            context.host.share([.imageJPEG(jpeg), .text(lines.joined(separator: "\n"))])
-        } catch {
-            context.host.presentAlert(WidgetAlert(title: "Couldn't share", message: error.localizedDescription))
+        guard let photo, !isSharing else { return }
+        isSharing = true
+        Task {
+            defer { isSharing = false }
+            do {
+                let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
+                let note = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                let link = await PostcardShareLink.create(context: context, jpeg: jpeg, message: note, templateId: templateId, place: placeForHost)
+                var lines: [String] = []
+                if !note.isEmpty { lines.append(note) }
+                lines.append(caption.isEmpty ? "📮 A postcard for you" : "📮 \(caption)")
+                if let link {
+                    lines.append("See it here: \(link.absoluteString)")
+                } else {
+                    lines.append("Sent with FavCircles — https://favcircles.com/")
+                }
+                context.track("postcard_shared", ["template_id": templateId, "has_link": link == nil ? "false" : "true"])
+                context.host.haptic(.light)
+                context.host.share([.imageJPEG(jpeg), .text(lines.joined(separator: "\n"))])
+            } catch {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't share", message: error.localizedDescription))
+            }
         }
     }
 

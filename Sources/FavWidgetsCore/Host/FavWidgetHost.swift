@@ -125,6 +125,11 @@ public protocol FavWidgetHost: AnyObject {
     /// allows the `widgets/` prefix, so a widget can own its own endpoints
     /// without an app change.
     func request(_ request: WidgetAPIRequest) async throws -> Data
+
+    // MARK: Media (added in 0.4.0)
+
+    /// Uploads a JPEG through the app's image pipeline; returns its public URL.
+    func uploadImage(_ jpeg: Data) async throws -> URL
 }
 
 public struct WidgetAPIRequest: Sendable {

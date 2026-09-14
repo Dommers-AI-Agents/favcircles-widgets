@@ -60,6 +60,15 @@ public final class MockWidgetHost: FavWidgetHost, @unchecked Sendable {
 
     public func openPlace(_ place: WidgetPlaceRef) { openedPlaces.append(place) }
 
+    public private(set) var uploadedImages: [Data] = []
+    public var uploadError: Error?
+
+    public func uploadImage(_ jpeg: Data) async throws -> URL {
+        if let uploadError { throw uploadError }
+        uploadedImages.append(jpeg)
+        return URL(string: "https://example.test/uploads/\(uploadedImages.count).jpg")!
+    }
+
     /// Scripted API responses keyed by "METHOD path"; unscripted calls throw 404.
     public var apiResponses: [String: Data] = [:]
     public private(set) var apiRequests: [WidgetAPIRequest] = []
