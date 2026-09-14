@@ -149,8 +149,23 @@ struct PostcardFullView: View {
         (mailConfig?.isUsable ?? false) && context.host.supportsPayment
     }
 
+    /// Everything the server will insist on, checked here first.
+    ///
+    /// The order is created *inside* the Apple Pay sheet, so anything this
+    /// misses surfaces after the person has already authorized with Face ID.
+    /// Letting them pay for a card we already know is undeliverable, or for a
+    /// message we already know is too long, is the worst version of this
+    /// feature.
     private var canMail: Bool {
         mailOn && mailAvailable && mailAddress.isComplete
+            && mailQuote?.deliverable == true
+            && !mailMessageTooLong
+    }
+
+    /// The printed back holds less than the digital card's 500 characters.
+    private var mailMessageTooLong: Bool {
+        guard let limit = mailConfig?.messageMaxChars else { return false }
+        return message.trimmingCharacters(in: .whitespacesAndNewlines).count > limit
     }
 
     /// The place stamped on the draft and the record: the known place with
@@ -350,6 +365,10 @@ struct PostcardFullView: View {
             }
 
             if mailAvailable, let mailConfig {
+                if mailOn && mailMessageTooLong {
+                    Text("A printed postcard fits \(mailConfig.messageMaxChars) characters on the back — yours is \(message.trimmingCharacters(in: .whitespacesAndNewlines).count). Shorten it or turn off mailing.")
+                        .font(.system(size: 12)).foregroundStyle(theme.danger)
+                }
                 PostcardMailForm(
                     theme: theme,
                     accent: context.accent,
@@ -371,6 +390,20 @@ struct PostcardFullView: View {
         }
     }
 
+    /// Says which thing is missing, rather than leaving a disabled button
+    /// with no explanation.
+    private var sendHint: String {
+        if photo == nil { return "Add a photo to send." }
+        if mailOn && mailAvailable {
+            if mailMessageTooLong { return "Shorten your message to mail a printed card." }
+            if !mailAddress.isComplete { return "Fill in the mailing address." }
+            if isQuoting { return "Checking the mailing address…" }
+            if mailQuote?.deliverable == false { return "That mailing address couldn't be found." }
+            if mailQuote == nil { return "Checking the mailing address…" }
+        }
+        return "Choose a connection and/or enter an email, or just share the card."
+    }
+
     private func sendSection(_ theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             WidgetUI.primaryButton("Send postcard", color: context.accent) {
@@ -378,8 +411,8 @@ struct PostcardFullView: View {
             }
             .disabled(!canSend)
             .opacity(canSend ? 1 : 0.5)
-            if photo == nil || (recipient == nil && emailAddresses.valid.isEmpty) {
-                Text(photo == nil ? "Add a photo to send." : "Choose a connection and/or enter an email, or just share the card.")
+            if photo == nil || (recipient == nil && emailAddresses.valid.isEmpty && !canMail) {
+                Text(sendHint)
                     .font(.system(size: 12))
                     .foregroundStyle(theme.secondaryLabel)
             }
