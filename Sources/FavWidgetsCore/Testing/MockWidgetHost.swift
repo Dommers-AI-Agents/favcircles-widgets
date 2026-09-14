@@ -78,6 +78,22 @@ public final class MockWidgetHost: FavWidgetHost, @unchecked Sendable {
         return URL(string: "https://example.test/print/\(uploadedPrintImages.count).jpg")!
     }
 
+    public var supportsPayment = true
+    public var paymentResult: WidgetPaymentResult = .completed
+    public var paymentError: Error?
+    public private(set) var paymentRequests: [WidgetPaymentRequest] = []
+    /// The secrets the widget produced, so a test can prove the order was
+    /// created inside the sheet rather than before it.
+    public private(set) var collectedClientSecrets: [String] = []
+
+    public func collectPayment(_ request: WidgetPaymentRequest) async throws -> WidgetPaymentResult {
+        paymentRequests.append(request)
+        if let paymentError { throw paymentError }
+        if case .canceled = paymentResult { return .canceled }
+        collectedClientSecrets.append(try await request.clientSecret())
+        return .completed
+    }
+
     /// Scripted API responses keyed by "METHOD path"; unscripted calls throw 404.
     public var apiResponses: [String: Data] = [:]
     public private(set) var apiRequests: [WidgetAPIRequest] = []

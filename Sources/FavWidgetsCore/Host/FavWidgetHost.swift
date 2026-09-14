@@ -88,6 +88,50 @@ public struct WidgetPostcardReceipt: Sendable {
     }
 }
 
+
+// MARK: - Payment (0.5.0)
+
+/// What the app needs to put a payment sheet on screen. Deliberately carries
+/// no Stripe type: the widget package never imports a payment SDK, so the app
+/// can change processor without the widgets knowing.
+public struct WidgetPaymentRequest: Sendable {
+    public let publishableKey: String
+    public let merchantDisplayName: String
+    public let applePayMerchantId: String
+    public let amountCents: Int
+    public let currency: String
+    /// The single line item shown in the Wallet sheet.
+    public let summaryLabel: String
+
+    /// Produces the payment's client secret, called *after* the wallet
+    /// authorizes.
+    ///
+    /// This is a closure rather than a value because Apple requires the
+    /// payment sheet to be presented directly from the user's tap, "before
+    /// any asynchronous or long-running code". Creating the order up front
+    /// and passing a secret in would put a network round trip in front of the
+    /// sheet and Apple Pay would refuse to appear.
+    public let clientSecret: @Sendable () async throws -> String
+
+    public init(publishableKey: String, merchantDisplayName: String, applePayMerchantId: String,
+                amountCents: Int, currency: String, summaryLabel: String,
+                clientSecret: @escaping @Sendable () async throws -> String) {
+        self.publishableKey = publishableKey
+        self.merchantDisplayName = merchantDisplayName
+        self.applePayMerchantId = applePayMerchantId
+        self.amountCents = amountCents
+        self.currency = currency
+        self.summaryLabel = summaryLabel
+        self.clientSecret = clientSecret
+    }
+}
+
+public enum WidgetPaymentResult: Sendable {
+    case completed
+    /// The person dismissed the wallet. Not an error, and nothing was held.
+    case canceled
+}
+
 /// What a widget may ask of the app. No UIKit types cross this boundary
 /// (`Data`, not `UIImage`) so the core stays testable on a Mac and the app
 /// owns every presentation decision.
@@ -139,6 +183,14 @@ public protocol FavWidgetHost: AnyObject {
     /// cap. Separate from `uploadImage` because the ordinary path would
     /// silently reduce a 1875x1275 card to 1280px and ruin the print.
     func uploadPrintImage(_ jpeg: Data) async throws -> URL
+
+    /// False when this device can't pay at all (no wallet, no card). Paid
+    /// options are hidden rather than shown as dead buttons.
+    var supportsPayment: Bool { get }
+
+    /// Presents the payment sheet and waits for the person to finish with it.
+    /// Must be called straight from a user gesture.
+    func collectPayment(_ request: WidgetPaymentRequest) async throws -> WidgetPaymentResult
 }
 
 public struct WidgetAPIRequest: Sendable {

@@ -24,12 +24,28 @@ struct PostcardFullView: View {
     @State private var showRecipientPicker = false
     @State private var emailText = ""
     @State private var alsoShare = false
+
+    // Mail a printed card. The config arrives from the server so the price
+    // and the cancel window are never hardcoded here, and the whole option
+    // stays hidden until the vendor accounts are live.
+    @State private var mailConfig: PostcardMail.Config?
+    @State private var mailOn = false
+    @State private var mailAddress = PostcardMailAddress()
+    @State private var mailQuote: PostcardMail.Quote?
+    @State private var mailQuoteError: String?
+    @State private var isQuoting = false
+    @State private var quoteTask: Task<Void, Never>?
+    /// Uploaded while the person fills in the address, so the Send tap can
+    /// open Apple Pay with no network call in front of it.
+    @State private var printImageURL: URL?
+    @State private var printUploadTask: Task<Void, Never>?
     @State private var draftId = UUID()
     @State private var hasSeeded = false
 
     // Send state.
     @State private var isSending = false
     @State private var isSharing = false
+    @State private var isCancelingMail = false
     @State private var sentRecord: PostcardRecord?
 
     // History.
@@ -65,6 +81,21 @@ struct PostcardFullView: View {
         }
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await seed() }
+        .task { await loadMailConfig() }
+        .onChange(of: mailOn) { on in
+            // Start the print upload as soon as they opt in: it has to be
+            // finished before the Send tap, because Apple Pay can't be
+            // presented after an await.
+            if on { schedulePrintUpload() }
+        }
+        .onChange(of: photo) { _ in
+            printImageURL = nil
+            if mailOn { schedulePrintUpload() }
+        }
+        .onChange(of: templateId) { _ in
+            printImageURL = nil
+            if mailOn { schedulePrintUpload() }
+        }
         .onChange(of: photoItem) { item in
             guard let item else { return }
             Task { await loadPhoto(from: item) }
@@ -107,8 +138,19 @@ struct PostcardFullView: View {
     private var emailAddresses: (valid: [String], invalid: [String]) { PostcardEmail.parse(emailText) }
     private var canSend: Bool {
         photo != nil && !isSending && emailAddresses.invalid.isEmpty
-            && (recipient != nil || !emailAddresses.valid.isEmpty)
+            && (recipient != nil || !emailAddresses.valid.isEmpty || canMail)
             && emailAddresses.valid.count <= PostcardEmail.maxAddresses
+    }
+
+    /// The paid option is offered only when the server has it switched on
+    /// and this device can actually pay. A dead button is worse than no
+    /// button.
+    private var mailAvailable: Bool {
+        (mailConfig?.isUsable ?? false) && context.host.supportsPayment
+    }
+
+    private var canMail: Bool {
+        mailOn && mailAvailable && mailAddress.isComplete
     }
 
     /// The place stamped on the draft and the record: the known place with
@@ -307,6 +349,20 @@ struct PostcardFullView: View {
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             }
 
+            if mailAvailable, let mailConfig {
+                PostcardMailForm(
+                    theme: theme,
+                    accent: context.accent,
+                    config: mailConfig,
+                    isOn: $mailOn,
+                    address: $mailAddress,
+                    quote: mailQuote,
+                    quoteError: mailQuoteError,
+                    isQuoting: isQuoting,
+                    onAddressSettled: scheduleQuote
+                )
+            }
+
             Toggle(isOn: $alsoShare) {
                 Text("Also share by text or other apps after sending")
                     .font(.system(size: 14)).foregroundStyle(theme.label)
@@ -393,6 +449,29 @@ struct PostcardFullView: View {
                 .font(.system(size: 15))
                 .foregroundStyle(theme.secondaryLabel)
                 .multilineTextAlignment(.center)
+
+            if let order = record.mailOrder {
+                VStack(spacing: 8) {
+                    Label(order.displayStatus, systemImage: "envelope.badge.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(theme.label)
+                        .multilineTextAlignment(.center)
+                    if order.status.isCancelable {
+                        Button {
+                            Task { await cancelMail(order) }
+                        } label: {
+                            Text(isCancelingMail ? "Canceling…" : "Cancel the printed card")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(theme.danger)
+                        }
+                        .disabled(isCancelingMail)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.background))
+            }
+
             WidgetUI.primaryButton("Send another", color: context.accent) {
                 sentRecord = nil
             }
@@ -544,6 +623,37 @@ struct PostcardFullView: View {
         var records: [PostcardRecord] = []
         var failures: [String] = []
         var pageLink: URL?
+        var mailOrder: PostcardMailOrder?
+
+        // Paid first, and everything else only after it succeeds. The free
+        // routes go out an hour before anything is printed, so letting them
+        // run after a dismissed wallet would tell the recipient a card is in
+        // the mail when none is.
+        if canMail {
+            switch await mailPrintedCard(message: message, place: placeForHost) {
+            case .success(let order):
+                guard let order else {
+                    // Wallet dismissed. Their choice, nothing held, nothing
+                    // sent; leave the draft exactly as it was.
+                    context.host.haptic(.warning)
+                    return
+                }
+                mailOrder = order
+                records.append(PostcardRecord(
+                    messageId: "mail:\(order.orderId)", conversationId: "",
+                    recipientId: "mail", recipientName: order.recipientName,
+                    templateId: templateId, message: message, imageURL: nil,
+                    place: recordPlace, sentAt: Date(), mailOrder: order
+                ))
+            case .failure(let error):
+                context.host.haptic(.warning)
+                context.host.presentAlert(WidgetAlert(
+                    title: "Couldn't mail that card",
+                    message: "\(error.localizedDescription)\n\nYou haven't been charged. Nothing else was sent either — try again when you're ready."
+                ))
+                return
+            }
+        }
 
         if let recipient {
             do {
@@ -594,7 +704,8 @@ struct PostcardFullView: View {
         }
         context.host.haptic(.success)
         context.track("postcard_sent", ["template_id": templateId, "has_place": placeForHost == nil ? "false" : "true",
-                                        "in_app": recipient == nil ? "0" : "1", "emails": "\(emails.count)"])
+                                        "in_app": recipient == nil ? "0" : "1", "emails": "\(emails.count)",
+                                        "mailed": mailOrder == nil ? "0" : "1"])
         if !failures.isEmpty {
             context.host.presentAlert(WidgetAlert(title: "Sent, with one problem", message: failures.joined(separator: "\n")))
         }
@@ -606,14 +717,130 @@ struct PostcardFullView: View {
             let count = mailed.recipientName.split(separator: ",").count
             parts.append(count == 1 ? mailed.recipientName : "\(count) email addresses")
         }
+        if let mailOrder { parts.append("\(mailOrder.recipientName) by mail") }
         var summary = records[0]
         summary.recipientName = parts.joined(separator: " and ")
+        summary.mailOrder = mailOrder
         sentRecord = summary
 
         if alsoShare {
             shareCard(jpeg: jpeg, note: message, link: pageLink)
         }
         resetCompose()
+    }
+
+    // MARK: - Mail a printed card
+
+    private func loadMailConfig() async {
+        guard mailConfig == nil else { return }
+        // A failure here just means no paid option this session. It is never
+        // worth an alert: every free route still works.
+        mailConfig = try? await PostcardMail.config(context: context)
+    }
+
+    /// Re-checks the address a beat after typing stops. The check is metered
+    /// on the vendor's side, so it runs once per settled address rather than
+    /// once per keystroke.
+    private func scheduleQuote() {
+        quoteTask?.cancel()
+        mailQuote = nil
+        mailQuoteError = nil
+        guard mailOn, mailAddress.isComplete else { return }
+        let address = mailAddress
+        quoteTask = Task {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            isQuoting = true
+            defer { isQuoting = false }
+            do {
+                let quote = try await PostcardMail.quote(context: context, address: address)
+                guard !Task.isCancelled else { return }
+                mailQuote = quote
+            } catch {
+                guard !Task.isCancelled else { return }
+                mailQuoteError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Renders and uploads the 300 DPI card. Deliberately eager and
+    /// discardable — it costs one upload and buys a Send tap that opens the
+    /// wallet instantly.
+    private func schedulePrintUpload() {
+        printUploadTask?.cancel()
+        guard let photo, printImageURL == nil else { return }
+        let templateId = templateId
+        let caption = caption
+        printUploadTask = Task {
+            guard let jpeg = try? PostcardRendering.printJPEG(
+                image: photo, templateId: templateId, caption: caption, accent: context.accent) else { return }
+            guard !Task.isCancelled else { return }
+            printImageURL = try? await PostcardMail.prepareArtwork(context: context, jpeg: jpeg)
+        }
+    }
+
+    /// Runs the paid leg. Returns the order, or nil when the person dismissed
+    /// the wallet or something went wrong — the caller treats nil as "don't
+    /// send the free routes either", because a card that says it's in the
+    /// mail must not go out before the mail is paid for.
+    private func mailPrintedCard(message: String, place: WidgetPlaceRef?) async -> Result<PostcardMailOrder?, Error> {
+        guard let mailConfig else { return .success(nil) }
+        // The upload usually finished while they typed the address; wait for
+        // it only if it didn't.
+        if printImageURL == nil {
+            await printUploadTask?.value
+        }
+        guard let printImageURL else {
+            return .failure(WidgetAPIError(status: 500, message: "The printed card couldn't be prepared."))
+        }
+        let prepared = PostcardMail.Prepared(
+            printImageURL: printImageURL,
+            address: mailQuote?.deliverable == true ? applyingName(mailQuote!.address) : mailAddress,
+            config: mailConfig
+        )
+        do {
+            return .success(try await PostcardMail.purchase(
+                context: context, prepared: prepared, message: message, templateId: templateId, place: place))
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// Pulls a printed card back before it goes to the printer. The server
+    /// decides whether that's still allowed — it checks the order's status,
+    /// not the clock, so a card already claimed for printing can't be voided
+    /// out from under itself.
+    private func cancelMail(_ order: PostcardMailOrder) async {
+        guard !isCancelingMail else { return }
+        isCancelingMail = true
+        defer { isCancelingMail = false }
+        do {
+            let updated = try await PostcardMail.cancel(context: context, orderId: order.orderId).asRecordOrder
+            sentRecord?.mailOrder = updated
+            updateStoredMailOrder(updated)
+            context.host.haptic(.success)
+        } catch {
+            context.host.presentAlert(WidgetAlert(
+                title: "Couldn't cancel",
+                message: error.localizedDescription))
+        }
+    }
+
+    /// Keeps the history row in step with the live order.
+    private func updateStoredMailOrder(_ order: PostcardMailOrder) {
+        context.month(PostcardMonth.self, context.currentMonth).update { month in
+            for index in month.sent.indices where month.sent[index].mailOrder?.orderId == order.orderId {
+                month.sent[index].mailOrder = order
+            }
+        }
+    }
+
+    /// The postal service standardizes the street but doesn't know the
+    /// person's name, so keep the typed one.
+    private func applyingName(_ standardized: PostcardMailAddress) -> PostcardMailAddress {
+        var address = standardized
+        address.name = mailAddress.normalized.name
+        return address
     }
 
     /// Clears everything except the place (the user is still on the same
@@ -625,6 +852,11 @@ struct PostcardFullView: View {
         recipient = nil
         emailText = ""
         alsoShare = false
+        mailOn = false
+        mailAddress = PostcardMailAddress()
+        mailQuote = nil
+        mailQuoteError = nil
+        printImageURL = nil
         draftId = UUID()
     }
 }

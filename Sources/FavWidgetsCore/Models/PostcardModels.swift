@@ -34,9 +34,13 @@ public struct PostcardRecord: Codable, Equatable, Identifiable, Sendable {
     public var imageURL: URL?
     public var place: WidgetPlaceRef?
     public var sentAt: Date
+    /// Set only when this card was also printed and mailed. Optional so
+    /// records written by earlier builds still decode.
+    public var mailOrder: PostcardMailOrder?
 
     public init(id: UUID = UUID(), messageId: String, conversationId: String, recipientId: String, recipientName: String,
-                templateId: String, message: String, imageURL: URL?, place: WidgetPlaceRef?, sentAt: Date = Date()) {
+                templateId: String, message: String, imageURL: URL?, place: WidgetPlaceRef?, sentAt: Date = Date(),
+                mailOrder: PostcardMailOrder? = nil) {
         self.id = id
         self.messageId = messageId
         self.conversationId = conversationId
@@ -47,6 +51,7 @@ public struct PostcardRecord: Codable, Equatable, Identifiable, Sendable {
         self.imageURL = imageURL
         self.place = place
         self.sentAt = sentAt
+        self.mailOrder = mailOrder
     }
 }
 
