@@ -26,7 +26,9 @@ public struct StocksWidget: FavWidget {
         AnyView(StocksFullView(context: context, state: context.state(Watchlist.self), quotes: StockQuoteStore.shared(in: context)))
     }
 
-    /// Pull-to-refresh on the tab: fresh quotes, not just the list document.
+    /// The host's per-widget refresh hook: fresh quotes, not just the list
+    /// document. (The tab's own pull-to-refresh reloads documents only; quotes
+    /// come from the card's first appearance, the poll, and the full view.)
     public func refresh(context: WidgetContext) async {
         let state = context.state(Watchlist.self)
         await state.reload()

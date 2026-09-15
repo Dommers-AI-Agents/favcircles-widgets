@@ -69,7 +69,7 @@ struct StocksFullView: View {
         HStack(spacing: 8) {
             WidgetSyncBadge(state: state.syncState, theme: theme)
             if let status = StockStatusLine.text(state: quotes.marketState(), asOf: quotes.asOf,
-                                                 timezone: quotes.quotes.values.first?.exchangeTimezone) {
+                                                 timezone: quotes.headerTimezone) {
                 HStack(spacing: 5) {
                     if quotes.marketState() == .live {
                         Circle().fill(StockPalette.up).frame(width: 7, height: 7)
@@ -115,6 +115,19 @@ struct StocksFullView: View {
                     state.update { $0.move(fromOffsets: source, toOffset: destination) }
                     context.track("stocks_reordered")
                 }
+
+                // Yahoo ends its list with this row; it also means adding never
+                // depends on the navigation bar bridging the toolbar button.
+                Button(action: openSearch) {
+                    Label("Add Symbol", systemImage: "plus.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(context.theme.accent)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(theme.background)
+                .moveDisabled(true)
+                .deleteDisabled(true)
             } footer: {
                 Text("Quotes by Yahoo Finance. Prices may be delayed.")
                     .font(.system(size: 11))

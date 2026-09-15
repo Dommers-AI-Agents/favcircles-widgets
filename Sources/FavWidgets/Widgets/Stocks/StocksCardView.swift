@@ -51,7 +51,7 @@ struct StocksCardView: View {
     private func footer(theme: WidgetTheme) -> some View {
         let hidden = state.model.entries.count - Self.rowsShown
         HStack(spacing: 6) {
-            if let status = StockStatusLine.text(state: quotes.marketState(), asOf: quotes.asOf, timezone: quotes.quotes.values.first?.exchangeTimezone) {
+            if let status = StockStatusLine.text(state: quotes.marketState(), asOf: quotes.asOf, timezone: quotes.headerTimezone) {
                 Text(status)
             }
             if hidden > 0 {

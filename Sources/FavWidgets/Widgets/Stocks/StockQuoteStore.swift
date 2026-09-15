@@ -41,17 +41,36 @@ final class StockQuoteStore: ObservableObject {
 
     func quote(_ symbol: String) -> StockQuote? { quotes[Watchlist.normalize(symbol)] }
 
-    /// The freshest "as of" across the list, for the header line.
-    var asOf: Date? { quotes.values.map(\.marketTime).max() }
+    /// The quotes the header's status line describes: the exchange-traded
+    /// ones when there are any (crypto is always "live" and would make a
+    /// closed stock market read as open), else whatever is listed.
+    private var headerQuotes: [StockQuote] {
+        let listed = quotes.values.filter { !$0.isCrypto }
+        return listed.isEmpty ? Array(quotes.values) : listed
+    }
 
-    /// One market state for the header: live if anything is trading.
+    /// The freshest "as of" across the list, for the header line.
+    var asOf: Date? { headerQuotes.map(\.marketTime).max() }
+
+    /// The zone the header's time is printed in (the exchange's, like Yahoo).
+    var headerTimezone: String? {
+        headerQuotes.max { $0.marketTime < $1.marketTime }?.exchangeTimezone
+    }
+
+    /// One market state for the header: live if any exchange is trading.
     func marketState(now: Date = Date()) -> StockMarketState? {
-        let states = quotes.values.map { $0.marketState(now: now) }
+        let states = headerQuotes.map { $0.marketState(now: now) }
         if states.isEmpty { return nil }
         if states.contains(.live) { return .live }
         if states.contains(.preMarket) { return .preMarket }
         if states.contains(.afterHours) { return .afterHours }
         return .closed
+    }
+
+    /// Polling only matters while something can move: an open exchange, or
+    /// crypto on the list.
+    var somethingIsTrading: Bool {
+        quotes.values.contains { $0.isCrypto } || marketState() == .live
     }
 
     // MARK: - Refresh
@@ -126,9 +145,8 @@ final class StockQuoteStore: ObservableObject {
                 try? await Task.sleep(for: .seconds(Self.pollInterval))
                 guard !Task.isCancelled, let self else { return }
                 let list = symbols()
-                let state = self.marketState()
                 // Outside market hours nothing moves; one poll per open is enough
-                if state == .live || state == nil || list.contains(where: { self.quote($0)?.isCrypto == true }) {
+                if self.somethingIsTrading || self.quotes.isEmpty {
                     await self.refresh(symbols: list, force: true)
                 }
             }
