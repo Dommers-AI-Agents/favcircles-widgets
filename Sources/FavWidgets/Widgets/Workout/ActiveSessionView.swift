@@ -21,19 +21,24 @@ struct ActiveSessionView: View {
 
     @State private var restEndsAt: Date?
     @State private var showPicker = false
+    @State private var showReorder = false
     @State private var confirmDiscard = false
+    /// The list has scrolled past the header: the pinned time bar shrinks.
+    @State private var isCompact = false
 
     private var theme: WidgetTheme { context.theme }
     private var session: WorkoutSession { settings.model.activeSession ?? WorkoutSession(name: "Workout") }
     private var completedCount: Int { WorkoutSessionLogic.completedSetCount(session) }
+    private var exerciseIds: [String] { WorkoutSessionLogic.orderedExerciseIds(in: session) }
     /// Nothing ticked and nothing typed: there is nothing to save yet.
     private var isEmptyWorkout: Bool { !session.sets.contains(where: WorkoutSessionLogic.holdsUserData) }
+    private var autoRest: Bool { settings.model.autoRestTimer }
 
     var body: some View {
         List {
             Group {
                 header
-                ForEach(WorkoutSessionLogic.orderedExerciseIds(in: session), id: \.self) { exerciseId in
+                ForEach(exerciseIds, id: \.self) { exerciseId in
                     exerciseBlock(exerciseId)
                 }
                 addExerciseRow
@@ -44,7 +49,14 @@ struct ActiveSessionView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
+        .coordinateSpace(name: "session")
+        .onPreferenceChange(SessionScrollOffsetKey.self) { y in
+            // Hysteresis so the bar doesn't flicker around the threshold
+            let compact = isCompact ? y < -8 : y < -40
+            if compact != isCompact { withAnimation(.easeInOut(duration: 0.22)) { isCompact = compact } }
+        }
         .background(theme.background)
+        .safeAreaInset(edge: .top, spacing: 0) { timeBar }
         .safeAreaInset(edge: .bottom) {
             RestTimerView(endsAt: $restEndsAt, theme: theme, accent: context.accent) {
                 context.host.haptic(.success)
@@ -56,6 +68,9 @@ struct ActiveSessionView: View {
                 settings.update { $0.activeSession?.sets.append(SetEntry(exerciseId: exercise.id, reps: 0, weight: 0)) }
             }
         }
+        .sheet(isPresented: $showReorder) {
+            ExerciseReorderView(context: context, settings: settings)
+        }
         .confirmationDialog("Discard this workout?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard workout", role: .destructive, action: discard)
             Button("Keep going", role: .cancel) {}
@@ -65,38 +80,92 @@ struct ActiveSessionView: View {
         .workoutKeyboardDoneBar()
     }
 
+    // MARK: Pinned time bar
+
+    /// Always visible above the list: elapsed time, the workout name, the
+    /// rest-timer switch and Finish. Full size at the top of the list,
+    /// one compact line once the user scrolls into the sets.
+    private var timeBar: some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: isCompact ? 0 : 2) {
+                TimelineView(.periodic(from: session.startedAt, by: 1)) { timeline in
+                    Text(WorkoutFormat.duration(timeline.date.timeIntervalSince(session.startedAt)))
+                        .font(.system(size: isCompact ? 18 : 30, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(context.accent)
+                }
+                Text(isCompact ? "\(session.name) · \(completedCount) \(completedCount == 1 ? "set" : "sets")" : session.name)
+                    .font(.system(size: isCompact ? 11 : 15, weight: .semibold))
+                    .foregroundStyle(isCompact ? theme.secondaryLabel : theme.label)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Button(action: toggleAutoRest) {
+                Image(systemName: autoRest ? "timer" : "timer.slash")
+                    .font(.system(size: isCompact ? 15 : 17, weight: .semibold))
+                    .foregroundStyle(autoRest ? context.accent : theme.secondaryLabel)
+                    .frame(width: isCompact ? 34 : 40, height: isCompact ? 34 : 40)
+                    .background(Circle().fill(theme.tertiaryBackground))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(autoRest ? "Rest timer on — tap to turn off" : "Rest timer off — tap to turn on")
+            Button(action: finish) {
+                Text("Finish")
+                    .font(.system(size: isCompact ? 14 : 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, isCompact ? 14 : 18)
+                    .frame(height: isCompact ? 34 : 40)
+                    .background(Capsule().fill(context.accent))
+            }
+            .buttonStyle(.plain)
+            .disabled(isEmptyWorkout)
+            .opacity(isEmptyWorkout ? 0.5 : 1)
+            .accessibilityLabel("Finish workout")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, isCompact ? 6 : 10)
+        .padding(.bottom, isCompact ? 6 : 10)
+        .frame(maxWidth: .infinity)
+        .background(theme.background.opacity(0.96))
+        .overlay(alignment: .bottom) { Rectangle().fill(theme.separator).frame(height: 0.5) }
+    }
+
     // MARK: Header / footer
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             WidgetSyncBadge(state: settings.syncState, theme: theme)
-            HStack(alignment: .firstTextBaseline) {
-                Text(session.name)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(theme.label)
-                Spacer()
-                TimelineView(.periodic(from: session.startedAt, by: 1)) { timeline in
-                    Text(WorkoutFormat.duration(timeline.date.timeIntervalSince(session.startedAt)))
-                        .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(context.accent)
-                }
-            }
             Text("\(completedCount) \(completedCount == 1 ? "set" : "sets") done · \(WorkoutFormat.volume(session.totalVolume, unit: settings.model.unit))")
                 .font(.system(size: 13))
                 .foregroundStyle(theme.secondaryLabel)
         }
         .padding(.vertical, 4)
+        .background(GeometryReader { proxy in
+            Color.clear.preference(key: SessionScrollOffsetKey.self, value: proxy.frame(in: .named("session")).minY)
+        })
         .listRowSeparator(.hidden)
     }
 
     private var addExerciseRow: some View {
-        Button { showPicker = true } label: {
-            Label("Add exercise", systemImage: "plus.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(context.accent)
-                .frame(minHeight: 48)
+        HStack {
+            Button { showPicker = true } label: {
+                Label("Add exercise", systemImage: "plus.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(context.accent)
+                    .frame(minHeight: 48)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            if exerciseIds.count > 1 {
+                Button { showReorder = true } label: {
+                    Label("Reorder", systemImage: "arrow.up.arrow.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(theme.secondaryLabel)
+                        .frame(minHeight: 48)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Reorder exercises")
+            }
         }
-        .buttonStyle(.plain)
         .listRowSeparator(.hidden)
     }
 
@@ -178,8 +247,17 @@ struct ActiveSessionView: View {
 
     private func startRest() {
         context.host.haptic(.light)
-        restEndsAt = Date().addingTimeInterval(TimeInterval(max(5, settings.model.restTimerSeconds)))
         context.track("set_completed")
+        guard autoRest else { return }
+        restEndsAt = Date().addingTimeInterval(TimeInterval(max(5, settings.model.restTimerSeconds)))
+    }
+
+    private func toggleAutoRest() {
+        let on = !autoRest
+        settings.update { $0.autoRestTimer = on }
+        if !on { restEndsAt = nil }     // turning it off also stops the one running
+        context.host.haptic(.light)
+        context.track("workout_auto_rest_changed", ["on": on ? "1" : "0"])
     }
 
     private func finish() {
@@ -222,6 +300,60 @@ struct ActiveSessionView: View {
         settings.update { $0.activeSession = nil }
         restEndsAt = nil
         context.track("workout_discarded")
+    }
+}
+
+/// Header row's y in the list's coordinate space; negative once scrolled.
+private struct SessionScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+// MARK: - Reorder sheet
+
+/// Drag the exercises of the active session into a new order. Whole blocks
+/// move; the sets inside each keep their order.
+private struct ExerciseReorderView: View {
+    let context: WidgetContext
+    @ObservedObject var settings: WidgetStateController<WorkoutSettings>
+    @Environment(\.dismiss) private var dismiss
+
+    private var theme: WidgetTheme { context.theme }
+    private var session: WorkoutSession { settings.model.activeSession ?? WorkoutSession(name: "Workout") }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Reorder exercises").font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.label)
+                Spacer()
+                Button("Done") { dismiss() }.font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.primary)
+            }
+            .padding(20)
+            List {
+                ForEach(WorkoutSessionLogic.orderedExerciseIds(in: session), id: \.self) { id in
+                    let count = session.sets.filter { $0.exerciseId == id }.count
+                    HStack {
+                        Text(settings.model.exercise(id: id)?.name ?? "Exercise")
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+                        Spacer()
+                        Text("\(count) \(count == 1 ? "set" : "sets")")
+                            .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    }
+                    .listRowBackground(Color.clear)
+                }
+                .onMove { source, destination in
+                    let moved = WorkoutSessionLogic.movingExercises(in: session, fromOffsets: source, toOffset: destination)
+                    settings.update { $0.activeSession?.sets = moved }
+                    context.host.haptic(.light)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            #if os(iOS)
+            .environment(\.editMode, .constant(.active))
+            #endif
+        }
+        .background(theme.background.ignoresSafeArea())
     }
 }
 

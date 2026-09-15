@@ -32,6 +32,14 @@ struct WorkoutSettingsView: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 WidgetUI.header("Rest timer", theme: theme)
+                Toggle(isOn: Binding(
+                    get: { settings.model.autoRestTimer },
+                    set: { on in settings.update { $0.autoRestTimer = on }; context.track("workout_auto_rest_changed", ["on": on ? "1" : "0"]) }
+                )) {
+                    Text("Start a rest timer after each set")
+                        .font(.system(size: 15)).foregroundStyle(theme.label)
+                }
+                .tint(context.accent)
                 Picker("Rest timer", selection: Binding(
                     get: { settings.model.restTimerSeconds },
                     set: { seconds in settings.update { $0.restTimerSeconds = seconds } }
@@ -39,6 +47,8 @@ struct WorkoutSettingsView: View {
                     ForEach([60, 90, 120, 180], id: \.self) { Text(WorkoutFormat.duration(TimeInterval($0))).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .disabled(!settings.model.autoRestTimer)
+                .opacity(settings.model.autoRestTimer ? 1 : 0.4)
             }
             Spacer()
         }

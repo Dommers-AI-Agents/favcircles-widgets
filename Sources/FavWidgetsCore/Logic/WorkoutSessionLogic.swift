@@ -15,6 +15,22 @@ public enum WorkoutSessionLogic {
         return order
     }
 
+    /// The session's sets with whole exercise blocks moved (List `onMove`
+    /// semantics on `orderedExerciseIds`). Rows keep their relative order
+    /// inside each block; nothing is dropped.
+    public static func movingExercises(in session: WorkoutSession, fromOffsets source: IndexSet, toOffset destination: Int) -> [SetEntry] {
+        let order = orderedExerciseIds(in: session)
+        // SwiftUI's move(fromOffsets:toOffset:) semantics, without SwiftUI:
+        // pull the picked ids out, then insert them at `destination` as it
+        // was numbered before the removal.
+        let picked = source.sorted().compactMap { $0 < order.count ? order[$0] : nil }
+        var remaining = order.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let removedBefore = source.filter { $0 < destination }.count
+        let insertAt = max(0, min(remaining.count, destination - removedBefore))
+        remaining.insert(contentsOf: picked, at: insertAt)
+        return remaining.flatMap { id in session.sets.filter { $0.exerciseId == id } }
+    }
+
     /// A session prefilled from a routine: every item becomes `targetSets`
     /// empty rows (0 × 0). The UI shows the routine's target reps as the
     /// placeholder and fills them in when a row is ticked untouched.

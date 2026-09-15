@@ -113,6 +113,9 @@ public struct PersonalRecord: Codable, Equatable, Sendable {
 public struct WorkoutSettings: WidgetModel {
     public var unit: WeightUnit
     public var restTimerSeconds: Int
+    /// Start the rest countdown automatically when a set is ticked. Off =
+    /// no timer at all; the length above is kept for when it's turned back on.
+    public var autoRestTimer: Bool
     public var customExercises: [Exercise]
     public var routines: [Routine]
     public var prsByExercise: [String: PersonalRecord]
@@ -120,14 +123,33 @@ public struct WorkoutSettings: WidgetModel {
     /// its month document when finished.
     public var activeSession: WorkoutSession?
 
-    public init(unit: WeightUnit = .lb, restTimerSeconds: Int = 90, customExercises: [Exercise] = [],
+    public init(unit: WeightUnit = .lb, restTimerSeconds: Int = 90, autoRestTimer: Bool = true, customExercises: [Exercise] = [],
                 routines: [Routine] = [], prsByExercise: [String: PersonalRecord] = [:], activeSession: WorkoutSession? = nil) {
         self.unit = unit
         self.restTimerSeconds = restTimerSeconds
+        self.autoRestTimer = autoRestTimer
         self.customExercises = customExercises
         self.routines = routines
         self.prsByExercise = prsByExercise
         self.activeSession = activeSession
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case unit, restTimerSeconds, autoRestTimer, customExercises, routines, prsByExercise, activeSession
+    }
+
+    /// Documents written before a field existed decode with that field's
+    /// default instead of failing (a synthesized decoder would throw on the
+    /// missing key and lose the user's settings).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        unit = try c.decodeIfPresent(WeightUnit.self, forKey: .unit) ?? .lb
+        restTimerSeconds = try c.decodeIfPresent(Int.self, forKey: .restTimerSeconds) ?? 90
+        autoRestTimer = try c.decodeIfPresent(Bool.self, forKey: .autoRestTimer) ?? true
+        customExercises = try c.decodeIfPresent([Exercise].self, forKey: .customExercises) ?? []
+        routines = try c.decodeIfPresent([Routine].self, forKey: .routines) ?? []
+        prsByExercise = try c.decodeIfPresent([String: PersonalRecord].self, forKey: .prsByExercise) ?? [:]
+        activeSession = try c.decodeIfPresent(WorkoutSession.self, forKey: .activeSession)
     }
 
     public static let empty = WorkoutSettings()
