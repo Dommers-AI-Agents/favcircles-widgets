@@ -38,6 +38,20 @@ public protocol WidgetSyncing: AnyObject {
 
 extension WidgetStateController: WidgetSyncing {}
 
+/// A photo the host hands a widget to start from, rather than making the
+/// person pick one they are already looking at (Moments → "send as postcard").
+public struct WidgetLaunchPhoto {
+    public let image: PostcardPlatformImage
+    /// Where the photo was taken, when the host knows. This is better evidence
+    /// of the place than anything the widget could work out for itself.
+    public let place: WidgetPlaceRef?
+
+    public init(image: PostcardPlatformImage, place: WidgetPlaceRef? = nil) {
+        self.image = image
+        self.place = place
+    }
+}
+
 /// What a widget's views receive: the host, the theme, its descriptor, and
 /// access to its documents.
 @MainActor
@@ -52,6 +66,11 @@ public final class WidgetContext: ObservableObject {
     public var openFullView: () -> Void = {}
     /// Set by the tab so a full view can close itself (after Send, etc.).
     public var closeFullView: () -> Void = {}
+
+    /// Set by the host immediately before `openFullView` so a widget opens
+    /// with a photo already in place. The widget clears it as it reads it, so
+    /// the photo is used once and a later visit starts empty.
+    public var launchPhoto: WidgetLaunchPhoto?
 
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host

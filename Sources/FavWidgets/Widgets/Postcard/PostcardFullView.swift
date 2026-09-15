@@ -574,22 +574,43 @@ struct PostcardFullView: View {
 
     private func seed() async {
         await settings.loadIfNeeded()
-        guard !hasSeeded else { return }
-        let model = settings.model
-        if let draft = model.draft {
-            draftId = draft.id
-            templateId = draft.templateId
-            message = String(draft.message.prefix(PostcardCopy.messageLimit))
-            placeRef = draft.place
-            placeName = draft.place?.name ?? ""
-            if let id = draft.recipientId {
-                recipient = WidgetContact(id: id, displayName: draft.recipientName ?? "Connection")
-            }
-        } else {
-            templateId = model.lastTemplateId
+
+        // Read before the once-only guard below. The host can hand us a photo
+        // on any visit — a second Moment sent as a postcard — and that has to
+        // land even when the rest of the draft is already seeded. Cleared as
+        // it is read so the photo is used exactly once.
+        let launch = context.launchPhoto
+        context.launchPhoto = nil
+        if let launch {
+            photo = launch.image
+            // A new photo means a new card, not the receipt from the last one.
+            sentRecord = nil
         }
-        hasSeeded = true
-        if placeRef == nil, let nearby = await context.host.nearbyOrCurrentPlace() {
+
+        let isFirstSeed = !hasSeeded
+        if isFirstSeed {
+            let model = settings.model
+            if let draft = model.draft {
+                draftId = draft.id
+                templateId = draft.templateId
+                message = String(draft.message.prefix(PostcardCopy.messageLimit))
+                placeRef = draft.place
+                placeName = draft.place?.name ?? ""
+                if let id = draft.recipientId {
+                    recipient = WidgetContact(id: id, displayName: draft.recipientName ?? "Connection")
+                }
+            } else {
+                templateId = model.lastTemplateId
+            }
+            hasSeeded = true
+        }
+
+        if let place = launch?.place {
+            // Where the photo was taken beats both a saved draft and a guess
+            // from wherever the phone happens to be now.
+            placeRef = place
+            placeName = place.name
+        } else if isFirstSeed, placeRef == nil, let nearby = await context.host.nearbyOrCurrentPlace() {
             placeRef = nearby
             if placeName.isEmpty { placeName = nearby.name }
         }
