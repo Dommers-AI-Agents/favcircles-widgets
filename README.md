@@ -58,3 +58,12 @@ That guard only works if the version moves, so **every change to a
 document's shape bumps `schemaVersion` on that widget's descriptor**, and the
 new decoder tolerates the old shape (`decodeIfPresent` with defaults, or an
 explicit migration). Stocks went 1 → 2 when `entries` became `lists`.
+
+When to bump: a bump makes every older build read-only for that widget
+(its saves are refused), so weigh what the older build would actually lose.
+Bump when it would drop something the user typed or chose (symbols, lists,
+settings). For a presentation-only addition — a collapsed flag, a last-viewed
+tab — it's reasonable to leave the schema alone and accept that older
+builds reset that field on save. Stocks 0.9.1 bumped for `isCollapsed`
+before this distinction was written down; treat it as the conservative
+end of the range, not the template.
