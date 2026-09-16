@@ -170,3 +170,16 @@ struct YahooFinanceClientTests {
         #expect(try await client.search("   ").isEmpty)
     }
 }
+
+/// The card's fixed index rows: real Yahoo tickers that survive
+/// normalization and encode cleanly in the chart URL.
+struct MarketIndexesTests {
+    @Test func indexesAreTheThreeHeadlineTickers() {
+        #expect(MarketIndexes.symbols == ["^IXIC", "^DJI", "^GSPC"])
+        #expect(MarketIndexes.entries.map(\.name) == ["Nasdaq", "Dow Jones", "S&P 500"])
+        for symbol in MarketIndexes.symbols {
+            #expect(Watchlist.normalize(symbol) == symbol)
+            #expect(YahooFinanceClient.chartURL(symbol: symbol, range: .day).absoluteString.contains("/chart/%5E"))
+        }
+    }
+}

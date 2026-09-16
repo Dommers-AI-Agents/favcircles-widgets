@@ -40,14 +40,14 @@ struct StocksFullView: View {
         }
         .task {
             await state.loadIfNeeded()
-            await quotes.refresh(symbols: state.model.symbols)
+            await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols)
             if quotes.pendingAddRequest {
                 quotes.pendingAddRequest = false
                 showSearch = true
             }
         }
-        .refreshable { await quotes.refresh(symbols: state.model.symbols, force: true) }
-        .onAppear { quotes.startPolling { state.model.symbols } }
+        .refreshable { await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols, force: true) }
+        .onAppear { quotes.startPolling { MarketIndexes.symbols + state.model.symbols } }
         .onDisappear { quotes.stopPolling() }
         .sheet(isPresented: $showSearch) {
             StockSearchView(context: context, existing: Set(state.model.symbols)) { hit in
@@ -98,6 +98,21 @@ struct StocksFullView: View {
     private func list(theme: WidgetTheme) -> some View {
         List {
             Section {
+                ForEach(MarketIndexes.entries) { entry in
+                    Button { open(entry) } label: {
+                        StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(theme.background)
+                    .listRowSeparatorTint(theme.separator)
+                    .moveDisabled(true)
+                    .deleteDisabled(true)
+                }
+            } header: {
+                Text("Indexes").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+            }
+            Section {
                 ForEach(state.model.entries) { entry in
                     Button { open(entry) } label: {
                         StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme)
@@ -128,6 +143,8 @@ struct StocksFullView: View {
                 .listRowBackground(theme.background)
                 .moveDisabled(true)
                 .deleteDisabled(true)
+            } header: {
+                Text("My Watchlist").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
             } footer: {
                 Text("Quotes by Yahoo Finance. Prices may be delayed.")
                     .font(.system(size: 11))

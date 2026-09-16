@@ -32,6 +32,6 @@ public struct StocksWidget: FavWidget {
     public func refresh(context: WidgetContext) async {
         let state = context.state(Watchlist.self)
         await state.reload()
-        await StockQuoteStore.shared(in: context).refresh(symbols: state.model.symbols, force: true)
+        await StockQuoteStore.shared(in: context).refresh(symbols: MarketIndexes.symbols + state.model.symbols, force: true)
     }
 }

@@ -1,61 +1,57 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// Card: the top of the watchlist as Yahoo rows (ticker, name, day
-/// sparkline, price, change pill) and an "Add" quick action. Renders from
-/// the on-device quote cache, so it paints with no network.
+/// Card: the three US indexes (Nasdaq, Dow, S&P 500) as Yahoo rows —
+/// fixed height whatever the person follows. Their own watchlist lives in
+/// the full view (tap the card or "Watchlist"). Renders from the on-device
+/// quote cache, so it paints with no network.
 struct StocksCardView: View {
     let context: WidgetContext
     @ObservedObject var state: WidgetStateController<Watchlist>
     @ObservedObject var quotes: StockQuoteStore
 
-    private static let rowsShown = 4
+    private var pollSymbols: [String] { MarketIndexes.symbols + state.model.symbols }
 
     var body: some View {
         let theme = context.theme
-        let entries = Array(state.model.entries.prefix(Self.rowsShown))
+        let entries = MarketIndexes.entries
 
         WidgetCard(context: context, action: quickAction) {
-            if entries.isEmpty {
-                WidgetUI.summary(state.hasLoaded ? "Add the stocks, ETFs and crypto you follow" : "Loading your list…", theme: theme)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(entries) { entry in
-                        StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme, compact: true)
-                            .padding(.vertical, 5)
-                        if entry.id != entries.last?.id {
-                            Divider().overlay(theme.separator.opacity(0.5))
-                        }
+            VStack(spacing: 0) {
+                ForEach(entries) { entry in
+                    StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme, compact: true)
+                        .padding(.vertical, 5)
+                    if entry.id != entries.last?.id {
+                        Divider().overlay(theme.separator.opacity(0.5))
                     }
-                    footer(theme: theme)
                 }
+                footer(theme: theme)
             }
         }
         .task {
             await state.loadIfNeeded()
-            await quotes.refresh(symbols: state.model.symbols)
+            await quotes.refresh(symbols: pollSymbols)
         }
-        .onAppear { quotes.startPolling { state.model.symbols } }
+        .onAppear { quotes.startPolling { MarketIndexes.symbols + state.model.symbols } }
         .onDisappear { quotes.stopPolling() }
     }
 
     private var quickAction: WidgetQuickAction {
-        WidgetQuickAction("Add", symbolName: "plus") {
-            quotes.pendingAddRequest = true
-            context.track("widget_card_action", ["action": "add_symbol"])
+        WidgetQuickAction("Watchlist", symbolName: "list.star") {
+            context.track("widget_card_action", ["action": "open_watchlist"])
             context.openFullView()
         }
     }
 
     @ViewBuilder
     private func footer(theme: WidgetTheme) -> some View {
-        let hidden = state.model.entries.count - Self.rowsShown
+        let count = state.model.entries.count
         HStack(spacing: 6) {
             if let status = StockStatusLine.text(state: quotes.marketState(), asOf: quotes.asOf, timezone: quotes.headerTimezone) {
                 Text(status)
             }
-            if hidden > 0 {
-                Text("· \(hidden) more")
+            if state.hasLoaded {
+                Text(count == 0 ? "· Watchlist empty" : "· \(count) in your watchlist")
             }
             if quotes.isRefreshing {
                 ProgressView().controlSize(.mini)

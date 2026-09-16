@@ -21,6 +21,18 @@ public struct WatchlistEntry: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// The three headline US indexes the card always shows. They are not part
+/// of the watchlist document — nobody has to add them and they can't be
+/// removed — but they ride the same quote store as everything else.
+public enum MarketIndexes {
+    public static let entries: [WatchlistEntry] = [
+        WatchlistEntry(symbol: "^IXIC", name: "Nasdaq", exchange: "NASDAQ", addedAt: Date(timeIntervalSince1970: 0)),
+        WatchlistEntry(symbol: "^DJI", name: "Dow Jones", exchange: "DJI", addedAt: Date(timeIntervalSince1970: 0)),
+        WatchlistEntry(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", addedAt: Date(timeIntervalSince1970: 0))
+    ]
+    public static var symbols: [String] { entries.map(\.symbol) }
+}
+
 /// Single document (`stocks`): the ordered watchlist. Quotes are never
 /// stored here — they change every minute and would churn the version
 /// counter (and conflict across devices) for data that is worthless once
