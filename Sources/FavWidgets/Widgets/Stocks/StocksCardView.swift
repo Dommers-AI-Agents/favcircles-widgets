@@ -55,12 +55,13 @@ struct StocksCardView: View {
     @ViewBuilder
     private func footer(theme: WidgetTheme) -> some View {
         let count = state.model.entries.count
+        let lists = state.model.lists.count
         HStack(spacing: 6) {
             if let status = StockStatusLine.text(state: quotes.marketState(), asOf: quotes.asOf, timezone: quotes.headerTimezone) {
                 Text(status)
             }
             if state.hasLoaded {
-                Text(count == 0 ? "· No stocks yet" : "· \(count) in My Stocks")
+                Text(count == 0 ? "· No stocks yet" : lists > 1 ? "· \(count) stocks in \(lists) lists" : "· \(count) in My Stocks")
             }
             if quotes.isRefreshing {
                 ProgressView().controlSize(.mini)

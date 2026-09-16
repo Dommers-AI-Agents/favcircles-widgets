@@ -9,8 +9,17 @@ struct StocksFullView: View {
     @ObservedObject var state: WidgetStateController<Watchlist>
     @ObservedObject var quotes: StockQuoteStore
 
-    @State private var showSearch = false
+    @State private var addTarget: AddTarget?
     @State private var selected: WatchlistEntry?
+    @State private var listPrompt: ListPrompt?
+    @State private var listName = ""
+
+    private struct AddTarget: Identifiable { let id: UUID }
+    private enum ListPrompt: Identifiable {
+        case create
+        case rename(UUID, String)
+        var id: String { if case .rename(let id, _) = self { return id.uuidString } else { return "create" } }
+    }
 
     var body: some View {
         let theme = context.theme
@@ -26,7 +35,7 @@ struct StocksFullView: View {
                     #if os(iOS)
                     if !state.model.entries.isEmpty { EditButton() }
                     #endif
-                    Button { openSearch() } label: {
+                    Button { openSearch(for: state.model.lists.first?.id) } label: {
                         Image(systemName: "plus").font(.system(size: 16, weight: .semibold))
                     }
                     .accessibilityLabel("Add a symbol")
@@ -39,7 +48,7 @@ struct StocksFullView: View {
             await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols)
             if quotes.pendingAddRequest {
                 quotes.pendingAddRequest = false
-                showSearch = true
+                openSearch(for: state.model.lists.first?.id)
             }
             if let symbol = quotes.pendingDetailSymbol {
                 quotes.pendingDetailSymbol = nil
@@ -49,10 +58,17 @@ struct StocksFullView: View {
         .refreshable { await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols, force: true) }
         .onAppear { quotes.startPolling { MarketIndexes.symbols + state.model.symbols } }
         .onDisappear { quotes.stopPolling() }
-        .sheet(isPresented: $showSearch) {
-            StockSearchView(context: context, existing: Set(state.model.symbols)) { hit in
-                add(hit)
+        .sheet(item: $addTarget) { target in
+            StockSearchView(context: context, existing: Set(state.model.list(id: target.id)?.symbols ?? [])) { hit in
+                add(hit, to: target.id)
             }
+        }
+        .alert(promptTitle, isPresented: Binding(get: { listPrompt != nil }, set: { if !$0 { listPrompt = nil } })) {
+            TextField("List name", text: $listName)
+            Button(promptButton, action: commitListPrompt)
+            Button("Cancel", role: .cancel) { listPrompt = nil }
+        } message: {
+            Text("Group the stocks you follow — Tech, Crypto, Retirement…")
         }
         .sheet(item: $selected) { entry in
             StockDetailView(context: context, entry: entry, quotes: quotes) {
@@ -112,38 +128,69 @@ struct StocksFullView: View {
             } header: {
                 Text("Indexes").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
             }
-            Section {
-                if state.hasLoaded && state.model.entries.isEmpty {
-                    Text("No stocks yet — add the stocks, ETFs and crypto you follow.")
-                        .font(.system(size: 14))
-                        .foregroundStyle(theme.secondaryLabel)
-                        .padding(.vertical, 6)
+
+            ForEach(state.model.lists) { list in
+                Section {
+                    if list.entries.isEmpty {
+                        Text("Nothing here yet — tap Add Symbol.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(theme.secondaryLabel)
+                            .padding(.vertical, 6)
+                            .listRowBackground(theme.background)
+                            .moveDisabled(true)
+                            .deleteDisabled(true)
+                    }
+                    ForEach(list.entries) { entry in
+                        Button { open(entry) } label: {
+                            StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme)
+                                .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
                         .listRowBackground(theme.background)
-                        .moveDisabled(true)
-                        .deleteDisabled(true)
-                }
-                ForEach(state.model.entries) { entry in
-                    Button { open(entry) } label: {
-                        StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme)
-                            .padding(.vertical, 4)
+                        .listRowSeparatorTint(theme.separator)
+                    }
+                    .onDelete { offsets in
+                        let symbols = offsets.compactMap { list.entries.indices.contains($0) ? list.entries[$0].symbol : nil }
+                        symbols.forEach { remove($0, from: list.id) }
+                    }
+                    .onMove { source, destination in
+                        state.update { $0.move(fromOffsets: source, toOffset: destination, in: list.id) }
+                        context.track("stocks_reordered")
+                    }
+
+                    // Yahoo ends its list with this row; it also means adding never
+                    // depends on the navigation bar bridging the toolbar button.
+                    Button { openSearch(for: list.id) } label: {
+                        Label("Add Symbol", systemImage: "plus.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(context.theme.accent)
+                            .padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(theme.background)
-                    .listRowSeparatorTint(theme.separator)
+                    .moveDisabled(true)
+                    .deleteDisabled(true)
+                } header: {
+                    HStack {
+                        Text(list.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                        Spacer()
+                        Menu {
+                            Button { listName = list.name; listPrompt = .rename(list.id, list.name) } label: { Label("Rename", systemImage: "pencil") }
+                            Button(role: .destructive) { deleteList(list.id) } label: { Label("Delete list", systemImage: "trash") }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .font(.system(size: 15))
+                                .foregroundStyle(theme.secondaryLabel)
+                                .frame(width: 32, height: 24)
+                        }
+                        .accessibilityLabel("\(list.name) options")
+                    }
                 }
-                .onDelete { offsets in
-                    let symbols = offsets.map { state.model.entries[$0].symbol }
-                    symbols.forEach(remove)
-                }
-                .onMove { source, destination in
-                    state.update { $0.move(fromOffsets: source, toOffset: destination) }
-                    context.track("stocks_reordered")
-                }
+            }
 
-                // Yahoo ends its list with this row; it also means adding never
-                // depends on the navigation bar bridging the toolbar button.
-                Button(action: openSearch) {
-                    Label("Add Symbol", systemImage: "plus.circle.fill")
+            Section {
+                Button { listName = ""; listPrompt = .create } label: {
+                    Label("New List", systemImage: "folder.badge.plus")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(context.theme.accent)
                         .padding(.vertical, 6)
@@ -152,8 +199,7 @@ struct StocksFullView: View {
                 .listRowBackground(theme.background)
                 .moveDisabled(true)
                 .deleteDisabled(true)
-            } header: {
-                Text("My Stocks").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                .disabled(state.model.lists.count >= Watchlist.maxLists)
             } footer: {
                 Text("Quotes by Yahoo Finance. Prices may be delayed.")
                     .font(.system(size: 11))
@@ -164,11 +210,50 @@ struct StocksFullView: View {
         .scrollContentBackground(.hidden)
     }
 
-    // MARK: - Actions
+    // MARK: - Lists
 
-    private func openSearch() {
+    private var promptTitle: String {
+        if case .rename = listPrompt { return "Rename list" } else { return "New list" }
+    }
+    private var promptButton: String {
+        if case .rename = listPrompt { return "Save" } else { return "Create" }
+    }
+
+    private func commitListPrompt() {
+        let name = listName
+        switch listPrompt {
+        case .create:
+            var created: UUID?
+            state.update { created = $0.addList(named: name) }
+            if created != nil { context.host.haptic(.success); context.track("stocks_list_created") }
+        case .rename(let id, _):
+            state.update { $0.renameList(id, to: name) }
+            context.track("stocks_list_renamed")
+        case nil:
+            break
+        }
+        listPrompt = nil
+        listName = ""
+    }
+
+    private func deleteList(_ id: UUID) {
+        let symbols = state.model.list(id: id)?.symbols ?? []
+        state.update { $0.deleteList(id) }
+        // Drop cached quotes nobody references any more
+        for symbol in symbols where !state.model.contains(symbol) { quotes.forget(symbol) }
+        context.host.haptic(.light)
+        context.track("stocks_list_deleted")
+    }
+
+    private func openSearch(for listId: UUID?) {
         context.track("stocks_search_opened")
-        showSearch = true
+        // No list yet: make the default one so the symbol has somewhere to go
+        var target = listId
+        if target == nil {
+            state.update { target = $0.addList(named: Watchlist.defaultListName) }
+        }
+        guard let target else { return }
+        addTarget = AddTarget(id: target)
     }
 
     private func open(_ entry: WatchlistEntry) {
@@ -176,14 +261,15 @@ struct StocksFullView: View {
         selected = entry
     }
 
-    private func add(_ hit: StockSearchHit) {
+    private func add(_ hit: StockSearchHit, to listId: UUID) {
         var added = false
-        state.update { added = $0.add(hit.entry) }
+        state.update { added = $0.add(hit.entry, to: listId) }
         guard added else {
+            let name = state.model.list(id: listId)?.name ?? Watchlist.defaultListName
             context.host.presentAlert(WidgetAlert(title: "Already on your list",
-                                                  message: state.model.contains(hit.symbol)
-                                                      ? "\(hit.symbol) is already in My Stocks."
-                                                      : "Your watchlist holds up to \(Watchlist.maxEntries) symbols."))
+                                                  message: state.model.list(id: listId)?.contains(hit.symbol) == true
+                                                      ? "\(hit.symbol) is already in \(name)."
+                                                      : "A list holds up to \(Watchlist.maxEntries) symbols."))
             return
         }
         context.host.haptic(.success)
@@ -191,9 +277,9 @@ struct StocksFullView: View {
         Task { await quotes.fetch(hit.symbol) }
     }
 
-    private func remove(_ symbol: String) {
-        state.update { $0.remove(symbol) }
-        quotes.forget(symbol)
+    private func remove(_ symbol: String, from listId: UUID? = nil) {
+        state.update { $0.remove(symbol, from: listId) }
+        if !state.model.contains(symbol) { quotes.forget(symbol) }
         context.host.haptic(.light)
         context.track("stocks_symbol_removed", ["symbol": symbol])
     }

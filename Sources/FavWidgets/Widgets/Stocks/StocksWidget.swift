@@ -15,7 +15,11 @@ public struct StocksWidget: FavWidget {
         symbolName: "chart.line.uptrend.xyaxis",
         accentHex: "#6001D2",   // Yahoo Finance purple
         category: .money,
-        storage: .single
+        storage: .single,
+        // 2 = named lists (`lists`), 1 = flat `entries`. Bump on every shape change:
+        // the server refuses a save from a lower schema so an older build can't
+        // overwrite lists it can't see.
+        schemaVersion: 2
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

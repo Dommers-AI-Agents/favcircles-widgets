@@ -46,3 +46,15 @@ swift test            # Core + registry tests on macOS
 
 Tags: `0.x.0` when the host contract changes, `0.x.y` for widget-only changes.
 The app pins `upToNextMinorVersion`.
+
+## Changing a widget's document shape
+
+A widget's synced document is plain `Codable`; unknown keys are dropped on
+decode and a save writes the whole struct back. So an older build that
+opens a newer document would silently strip the new fields and save that
+over the server copy. The backend guards against this by refusing a save
+whose `schemaVersion` is lower than the stored document's (`SCHEMA_TOO_OLD`).
+That guard only works if the version moves, so **every change to a
+document's shape bumps `schemaVersion` on that widget's descriptor**, and the
+new decoder tolerates the old shape (`decodeIfPresent` with defaults, or an
+explicit migration). Stocks went 1 → 2 when `entries` became `lists`.

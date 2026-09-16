@@ -33,29 +33,90 @@ public enum MarketIndexes {
     public static var symbols: [String] { entries.map(\.symbol) }
 }
 
-/// Single document (`stocks`): the ordered watchlist. Quotes are never
-/// stored here — they change every minute and would churn the version
-/// counter (and conflict across devices) for data that is worthless once
-/// stale. The widget caches quotes on the device instead.
-public struct Watchlist: WidgetModel {
+/// One named list inside My Stocks ("Tech", "Crypto", …).
+public struct StockList: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var name: String
     public var entries: [WatchlistEntry]
 
-    /// Yahoo caps a free list at a similar size; past this the row fan-out
-    /// per refresh (one request per symbol) stops being cheap.
-    public static let maxEntries = 50
-
-    public init(entries: [WatchlistEntry] = []) {
+    public init(id: UUID = UUID(), name: String, entries: [WatchlistEntry] = []) {
+        self.id = id
+        self.name = name
         self.entries = entries
     }
-
-    public static let empty = Watchlist()
 
     public var symbols: [String] { entries.map(\.symbol) }
 
     public func contains(_ symbol: String) -> Bool {
-        let key = Self.normalize(symbol)
+        let key = Watchlist.normalize(symbol)
         return entries.contains { $0.symbol == key }
     }
+}
+
+/// Single document (`stocks`): the person's named lists, each an ordered
+/// set of symbols. Quotes are never stored here — they change every minute
+/// and would churn the version counter (and conflict across devices) for
+/// data that is worthless once stale. The widget caches quotes on the
+/// device instead.
+///
+/// Documents written before lists existed carried a flat `entries` array;
+/// those decode into one list named "My Stocks".
+public struct Watchlist: WidgetModel {
+    public static let defaultListName = "My Stocks"
+    public var lists: [StockList]
+
+    /// Yahoo caps a free list at a similar size; past this the row fan-out
+    /// per refresh (one request per symbol) stops being cheap.
+    public static let maxEntries = 50
+    public static let maxLists = 10
+
+    public init(lists: [StockList]) {
+        self.lists = lists
+    }
+
+    /// One list holding `entries` (the pre-lists shape, still used by tests
+    /// and callers that don't care about lists).
+    public init(entries: [WatchlistEntry] = []) {
+        self.lists = entries.isEmpty ? [] : [StockList(name: Self.defaultListName, entries: entries)]
+    }
+
+    public static let empty = Watchlist()
+
+    private enum CodingKeys: String, CodingKey { case lists, entries }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        if let lists = try c.decodeIfPresent([StockList].self, forKey: .lists) {
+            self.lists = lists
+        } else {
+            let entries = try c.decodeIfPresent([WatchlistEntry].self, forKey: .entries) ?? []
+            self.lists = entries.isEmpty ? [] : [StockList(name: Self.defaultListName, entries: entries)]
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(lists, forKey: .lists)
+        // The flat union as well: a reader that only knows `entries` still
+        // sees every symbol (the server blocks it from saving over `lists`).
+        try c.encode(entries, forKey: .entries)
+    }
+
+    // MARK: Across every list
+
+    /// Every entry, first occurrence wins when a symbol is in two lists.
+    public var entries: [WatchlistEntry] {
+        var seen = Set<String>()
+        return lists.flatMap(\.entries).filter { seen.insert($0.symbol).inserted }
+    }
+
+    public var symbols: [String] { entries.map(\.symbol) }
+
+    public func contains(_ symbol: String) -> Bool {
+        lists.contains { $0.contains(symbol) }
+    }
+
+    public func list(id: UUID) -> StockList? { lists.first { $0.id == id } }
 
     /// Tickers are case-insensitive on Yahoo; store them the way Yahoo
     /// prints them.
@@ -63,44 +124,105 @@ public struct Watchlist: WidgetModel {
         symbol.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
     }
 
-    /// Appends unless already present or the list is full. Returns whether
-    /// the entry was added.
+    // MARK: Lists
+
+    /// Adds a list; returns its id, or nil when the name is blank or the
+    /// cap is reached.
     @discardableResult
-    public mutating func add(_ entry: WatchlistEntry) -> Bool {
-        guard !contains(entry.symbol), entries.count < Self.maxEntries else { return false }
-        entries.append(entry)
+    public mutating func addList(named name: String) -> UUID? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, lists.count < Self.maxLists else { return nil }
+        let list = StockList(name: trimmed)
+        lists.append(list)
+        return list.id
+    }
+
+    public mutating func renameList(_ id: UUID, to name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = lists.firstIndex(where: { $0.id == id }) else { return }
+        lists[index].name = trimmed
+    }
+
+    public mutating func deleteList(_ id: UUID) {
+        lists.removeAll { $0.id == id }
+    }
+
+    public mutating func moveLists(fromOffsets source: IndexSet, toOffset destination: Int) {
+        lists = Self.moved(lists, fromOffsets: source, toOffset: destination) { $0.id == $1.id }
+    }
+
+    // MARK: Entries
+
+    /// The list new symbols go to when no list is named: the first one,
+    /// created as "My Stocks" if there is none.
+    private mutating func defaultListIndex() -> Int {
+        if lists.isEmpty { lists.append(StockList(name: Self.defaultListName)) }
+        return 0
+    }
+
+    /// Appends unless already in that list or the list is full. Returns
+    /// whether the entry was added.
+    @discardableResult
+    public mutating func add(_ entry: WatchlistEntry, to listId: UUID? = nil) -> Bool {
+        let index: Int
+        if let listId {
+            guard let i = lists.firstIndex(where: { $0.id == listId }) else { return false }
+            index = i
+        } else {
+            index = defaultListIndex()
+        }
+        guard !lists[index].contains(entry.symbol), lists[index].entries.count < Self.maxEntries else { return false }
+        lists[index].entries.append(entry)
         return true
     }
 
-    public mutating func remove(_ symbol: String) {
+    /// Removes the symbol from one list, or from every list when `listId`
+    /// is nil.
+    public mutating func remove(_ symbol: String, from listId: UUID? = nil) {
         let key = Self.normalize(symbol)
-        entries.removeAll { $0.symbol == key }
+        for i in lists.indices where listId == nil || lists[i].id == listId {
+            lists[i].entries.removeAll { $0.symbol == key }
+        }
     }
 
     /// Same semantics as SwiftUI's `move(fromOffsets:toOffset:)` (which
     /// isn't available in this Foundation-only module): `destination` is an
-    /// index into the list *before* removal.
-    public mutating func move(fromOffsets source: IndexSet, toOffset destination: Int) {
-        let moving = source.sorted().compactMap { entries.indices.contains($0) ? entries[$0] : nil }
-        guard !moving.isEmpty else { return }
-        let removedBefore = source.filter { $0 < destination }.count
-        entries.removeAll { entry in moving.contains { $0.symbol == entry.symbol } }
-        let target = max(0, min(entries.count, destination - removedBefore))
-        entries.insert(contentsOf: moving, at: target)
+    /// index into the list *before* removal. Reorders within one list (the
+    /// first when `listId` is nil).
+    public mutating func move(fromOffsets source: IndexSet, toOffset destination: Int, in listId: UUID? = nil) {
+        guard let index = listId.map({ id in lists.firstIndex { $0.id == id } }) ?? (lists.isEmpty ? nil : 0) else { return }
+        lists[index].entries = Self.moved(lists[index].entries, fromOffsets: source, toOffset: destination) { $0.symbol == $1.symbol }
     }
 
-    /// Two devices edited the list: keep the local order and append anything
-    /// the other device has that this one doesn't. That's a union — a symbol
-    /// removed on one device while the other added elsewhere comes back,
-    /// which is the safe side of a rare conflict (a stray row beats a lost
-    /// one, and it's one swipe to remove again).
+    private static func moved<T>(_ items: [T], fromOffsets source: IndexSet, toOffset destination: Int, same: (T, T) -> Bool) -> [T] {
+        let moving = source.sorted().compactMap { items.indices.contains($0) ? items[$0] : nil }
+        guard !moving.isEmpty else { return items }
+        let removedBefore = source.filter { $0 < destination }.count
+        var rest = items.filter { item in !moving.contains { same($0, item) } }
+        let target = max(0, min(rest.count, destination - removedBefore))
+        rest.insert(contentsOf: moving, at: target)
+        return rest
+    }
+
+    /// Two devices edited the lists: keep the local order and append
+    /// anything the other device has that this one doesn't, list by list
+    /// (matched by id; lists only the remote has are appended). That's a
+    /// union — a symbol removed on one device while the other added
+    /// elsewhere comes back, which is the safe side of a rare conflict (a
+    /// stray row beats a lost one, and it's one swipe to remove again).
     public static func merge(local: Watchlist, remote: Watchlist) -> Watchlist {
         var merged = local
-        for entry in remote.entries where !merged.contains(entry.symbol) {
-            merged.entries.append(entry)
-        }
-        if merged.entries.count > maxEntries {
-            merged.entries.removeLast(merged.entries.count - maxEntries)
+        for remoteList in remote.lists {
+            if let i = merged.lists.firstIndex(where: { $0.id == remoteList.id }) {
+                for entry in remoteList.entries where !merged.lists[i].contains(entry.symbol) {
+                    merged.lists[i].entries.append(entry)
+                }
+                if merged.lists[i].entries.count > maxEntries {
+                    merged.lists[i].entries.removeLast(merged.lists[i].entries.count - maxEntries)
+                }
+            } else if merged.lists.count < maxLists {
+                merged.lists.append(remoteList)
+            }
         }
         return merged
     }
