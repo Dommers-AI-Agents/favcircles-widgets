@@ -64,4 +64,19 @@ public enum WidgetOrdering {
     public static func visible(prefs: WidgetPreferences, descriptors: [FavWidgetDescriptor]) -> [FavWidgetDescriptor] {
         all(prefs: prefs, descriptors: descriptors).filter { prefs.isEnabled($0) }
     }
+
+    /// A new full order after the user drags a card on the tab, where only
+    /// the visible (enabled) widgets are on screen. `source`/`destination`
+    /// are List `onMove` offsets into `visibleIds`. Disabled widgets keep
+    /// their slots; the visible ones are re-dealt into the visible slots in
+    /// the new order, so Manage and the tab always agree.
+    public static func movingVisible(all: [String], visibleIds: [String], fromOffsets source: IndexSet, toOffset destination: Int) -> [String] {
+        let picked = source.sorted().compactMap { $0 < visibleIds.count ? visibleIds[$0] : nil }
+        var reordered = visibleIds.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let removedBefore = source.filter { $0 < destination }.count
+        reordered.insert(contentsOf: picked, at: max(0, min(reordered.count, destination - removedBefore)))
+        let visibleSet = Set(visibleIds)
+        var next = reordered.makeIterator()
+        return all.map { id in visibleSet.contains(id) ? (next.next() ?? id) : id }
+    }
 }

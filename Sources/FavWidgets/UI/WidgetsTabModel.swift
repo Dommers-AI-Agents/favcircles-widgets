@@ -142,6 +142,15 @@ public final class WidgetsTabModel: ObservableObject {
         recomputeVisible()
     }
 
+    /// Reorder from the tab itself, where offsets refer to `visible`.
+    public func moveVisible(from source: IndexSet, to destination: Int) {
+        let next = WidgetOrdering.movingVisible(all: ordered.map(\.id), visibleIds: visible.map(\.id),
+                                                fromOffsets: source, toOffset: destination)
+        prefs.update { $0.order = next }
+        host.track(WidgetAnalyticsEvent("widget_reordered", [:]))
+        recomputeVisible()
+    }
+
     public func hasSeenHint(_ key: String) -> Bool { prefs.model.seenHints.contains(key) }
 
     public func markHintSeen(_ key: String) {

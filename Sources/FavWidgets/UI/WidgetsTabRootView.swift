@@ -13,13 +13,18 @@ public struct WidgetsTabRootView: View {
         let theme = model.theme
         ZStack {
             theme.background.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(spacing: 12) {
+            // A List (not a ScrollView) so the cards can be reordered in
+            // place: press and hold a card, then drag. Rows are styled flat
+            // so it still reads as the card stack it was.
+            List {
+                Group {
                     header
+                        .moveDisabled(true)
                     if model.hasLoaded && model.visible.isEmpty {
                         WidgetStatusView(theme: theme, isLoading: false,
                                          message: "All widgets are off — tap Manage to turn some on")
                             .frame(height: 160)
+                            .moveDisabled(true)
                     }
                     ForEach(model.visible) { descriptor in
                         if let widget = model.widget(for: descriptor) {
@@ -27,17 +32,27 @@ public struct WidgetsTabRootView: View {
                                 .id(descriptor.id)
                         }
                     }
+                    .onMove { source, destination in
+                        model.moveVisible(from: source, to: destination)
+                        model.host.haptic(.light)
+                    }
                     if let error = model.loadError {
                         Text(error)
                             .font(.system(size: 13))
                             .foregroundStyle(theme.secondaryLabel)
                             .padding(.top, 4)
+                            .moveDisabled(true)
                     }
                     Color.clear.frame(height: 24)
+                        .moveDisabled(true)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 1)
             if model.isLoading && !model.hasLoaded {
                 WidgetStatusView(theme: theme, isLoading: true, message: nil)
             }
