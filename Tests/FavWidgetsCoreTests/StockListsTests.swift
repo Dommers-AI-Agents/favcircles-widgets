@@ -75,3 +75,28 @@ struct StockListsTests {
         #expect(merged.lists[1].name == "Crypto")
     }
 }
+
+struct StockListCollapseAndOrderTests {
+    @Test func listsWithoutTheCollapsedKeyDecodeExpanded() throws {
+        let json = Data(#"{"lists":[{"id":"6BA7B810-9DAD-11D1-80B4-00C04FD430C8","name":"Tech","entries":[]}]}"#.utf8)
+        let w = try JSONDecoder().decode(Watchlist.self, from: json)
+        #expect(w.lists.count == 1 && w.lists[0].isCollapsed == false)
+        var toggled = w
+        toggled.setCollapsed(true, listId: w.lists[0].id)
+        let back = try JSONDecoder().decode(Watchlist.self, from: JSONEncoder().encode(toggled))
+        #expect(back.lists[0].isCollapsed)
+    }
+
+    @Test func listsReorderByDragAndByNeighbourSwap() {
+        var w = Watchlist()
+        let a = w.addList(named: "A")!, b = w.addList(named: "B")!, c = w.addList(named: "C")!
+        w.moveLists(fromOffsets: IndexSet(integer: 2), toOffset: 0)
+        #expect(w.lists.map(\.id) == [c, a, b])
+        w.moveList(b, by: -1)
+        #expect(w.lists.map(\.id) == [c, b, a])
+        w.moveList(c, by: -1)                       // already first: no-op
+        #expect(w.lists.map(\.id) == [c, b, a])
+        w.moveList(a, by: 1)                        // already last: no-op
+        #expect(w.lists.map(\.id) == [c, b, a])
+    }
+}

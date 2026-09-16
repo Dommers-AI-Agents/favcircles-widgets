@@ -38,11 +38,26 @@ public struct StockList: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID
     public var name: String
     public var entries: [WatchlistEntry]
+    /// Folded up in the full view (rows hidden, count shown). Synced with
+    /// the list so every device agrees.
+    public var isCollapsed: Bool
 
-    public init(id: UUID = UUID(), name: String, entries: [WatchlistEntry] = []) {
+    public init(id: UUID = UUID(), name: String, entries: [WatchlistEntry] = [], isCollapsed: Bool = false) {
         self.id = id
         self.name = name
         self.entries = entries
+        self.isCollapsed = isCollapsed
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, name, entries, isCollapsed }
+
+    /// Lists written before `isCollapsed` existed decode as expanded.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        entries = try c.decodeIfPresent([WatchlistEntry].self, forKey: .entries) ?? []
+        isCollapsed = try c.decodeIfPresent(Bool.self, forKey: .isCollapsed) ?? false
     }
 
     public var symbols: [String] { entries.map(\.symbol) }
@@ -149,6 +164,19 @@ public struct Watchlist: WidgetModel {
 
     public mutating func moveLists(fromOffsets source: IndexSet, toOffset destination: Int) {
         lists = Self.moved(lists, fromOffsets: source, toOffset: destination) { $0.id == $1.id }
+    }
+
+    /// Swap a list with its neighbour (the header menu's Move up / Move down).
+    public mutating func moveList(_ id: UUID, by delta: Int) {
+        guard let index = lists.firstIndex(where: { $0.id == id }) else { return }
+        let target = index + delta
+        guard lists.indices.contains(target) else { return }
+        lists.swapAt(index, target)
+    }
+
+    public mutating func setCollapsed(_ collapsed: Bool, listId: UUID) {
+        guard let index = lists.firstIndex(where: { $0.id == listId }) else { return }
+        lists[index].isCollapsed = collapsed
     }
 
     // MARK: Entries

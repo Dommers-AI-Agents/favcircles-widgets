@@ -13,6 +13,7 @@ struct StocksFullView: View {
     @State private var selected: WatchlistEntry?
     @State private var listPrompt: ListPrompt?
     @State private var listName = ""
+    @State private var showListReorder = false
 
     private struct AddTarget: Identifiable { let id: UUID }
     private enum ListPrompt: Identifiable {
@@ -62,6 +63,9 @@ struct StocksFullView: View {
             StockSearchView(context: context, existing: Set(state.model.list(id: target.id)?.symbols ?? [])) { hit in
                 add(hit, to: target.id)
             }
+        }
+        .sheet(isPresented: $showListReorder) {
+            StockListReorderView(context: context, state: state)
         }
         .alert(promptTitle, isPresented: Binding(get: { listPrompt != nil }, set: { if !$0 { listPrompt = nil } })) {
             TextField("List name", text: $listName)
@@ -131,6 +135,9 @@ struct StocksFullView: View {
 
             ForEach(state.model.lists) { list in
                 Section {
+                    if list.isCollapsed {
+                        EmptyView()
+                    } else {
                     if list.entries.isEmpty {
                         Text("Nothing here yet — tap Add Symbol.")
                             .font(.system(size: 14))
@@ -170,12 +177,36 @@ struct StocksFullView: View {
                     .listRowBackground(theme.background)
                     .moveDisabled(true)
                     .deleteDisabled(true)
+                    }
                 } header: {
-                    HStack {
-                        Text(list.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                    HStack(spacing: 8) {
+                        // Tap the name/chevron to fold the list; the count stands in for the rows
+                        Button {
+                            state.update { $0.setCollapsed(!list.isCollapsed, listId: list.id) }
+                            context.host.haptic(.light)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .rotationEffect(.degrees(list.isCollapsed ? -90 : 0))
+                                Text(list.name).font(.system(size: 12, weight: .semibold))
+                                if list.isCollapsed {
+                                    Text("· \(list.entries.count)").font(.system(size: 12))
+                                }
+                            }
+                            .foregroundStyle(theme.secondaryLabel)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(list.isCollapsed ? "Expand \(list.name)" : "Collapse \(list.name)")
                         Spacer()
                         Menu {
                             Button { listName = list.name; listPrompt = .rename(list.id, list.name) } label: { Label("Rename", systemImage: "pencil") }
+                            Button { state.update { $0.moveList(list.id, by: -1) } } label: { Label("Move up", systemImage: "arrow.up") }
+                                .disabled(state.model.lists.first?.id == list.id)
+                            Button { state.update { $0.moveList(list.id, by: 1) } } label: { Label("Move down", systemImage: "arrow.down") }
+                                .disabled(state.model.lists.last?.id == list.id)
+                            Button { showListReorder = true } label: { Label("Reorder lists…", systemImage: "arrow.up.arrow.down") }
                             Button(role: .destructive) { deleteList(list.id) } label: { Label("Delete list", systemImage: "trash") }
                         } label: {
                             Image(systemName: "ellipsis.circle")
@@ -282,5 +313,49 @@ struct StocksFullView: View {
         if !state.model.contains(symbol) { quotes.forget(symbol) }
         context.host.haptic(.light)
         context.track("stocks_symbol_removed", ["symbol": symbol])
+    }
+}
+
+// MARK: - Reorder lists sheet
+
+/// Drag handles for the lists themselves (sections can't be dragged in
+/// place). Whole lists move; their rows are untouched.
+private struct StockListReorderView: View {
+    let context: WidgetContext
+    @ObservedObject var state: WidgetStateController<Watchlist>
+    @Environment(\.dismiss) private var dismiss
+
+    private var theme: WidgetTheme { context.theme }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Reorder lists").font(.system(size: 18, weight: .semibold)).foregroundStyle(theme.label)
+                Spacer()
+                Button("Done") { dismiss() }.font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.primary)
+            }
+            .padding(20)
+            List {
+                ForEach(state.model.lists) { list in
+                    HStack {
+                        Text(list.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+                        Spacer()
+                        Text("\(list.entries.count) \(list.entries.count == 1 ? "stock" : "stocks")")
+                            .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    }
+                    .listRowBackground(Color.clear)
+                }
+                .onMove { source, destination in
+                    state.update { $0.moveLists(fromOffsets: source, toOffset: destination) }
+                    context.host.haptic(.light)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            #if os(iOS)
+            .environment(\.editMode, .constant(.active))
+            #endif
+        }
+        .background(theme.background.ignoresSafeArea())
     }
 }
