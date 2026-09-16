@@ -1,7 +1,7 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// My Watchlist: the stocks (ETFs, indexes, crypto) the person follows, in
+/// My Stocks: the stocks (ETFs, indexes, crypto) the person follows, in
 /// Yahoo Finance's list style — ticker, name, day sparkline, price and a
 /// green/red change pill. The list is the synced document; quotes come
 /// from Yahoo's public chart endpoint and are cached on the device only.
@@ -10,7 +10,7 @@ public struct StocksWidget: FavWidget {
 
     public let descriptor = FavWidgetDescriptor(
         id: "stocks",
-        title: "My Watchlist",
+        title: "My Stocks",
         subtitle: "Stocks you follow, live",
         symbolName: "chart.line.uptrend.xyaxis",
         accentHex: "#6001D2",   // Yahoo Finance purple

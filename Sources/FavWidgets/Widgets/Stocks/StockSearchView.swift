@@ -49,7 +49,7 @@ struct StockSearchView: View {
                 .scrollContentBackground(.hidden)
             }
             .background(theme.background.ignoresSafeArea())
-            .widgetInlineNavigationTitle("Add to Watchlist")
+            .widgetInlineNavigationTitle("Add to My Stocks")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }.foregroundStyle(context.accent)

@@ -16,11 +16,7 @@ struct StocksFullView: View {
         let theme = context.theme
         VStack(spacing: 0) {
             header(theme: theme)
-            if state.model.entries.isEmpty {
-                emptyState(theme: theme)
-            } else {
-                list(theme: theme)
-            }
+            list(theme: theme)
         }
         .background(theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle(context.descriptor.title)
@@ -44,6 +40,10 @@ struct StocksFullView: View {
             if quotes.pendingAddRequest {
                 quotes.pendingAddRequest = false
                 showSearch = true
+            }
+            if let symbol = quotes.pendingDetailSymbol {
+                quotes.pendingDetailSymbol = nil
+                selected = (MarketIndexes.entries + state.model.entries).first { $0.symbol == symbol }
             }
         }
         .refreshable { await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols, force: true) }
@@ -113,6 +113,15 @@ struct StocksFullView: View {
                 Text("Indexes").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
             }
             Section {
+                if state.hasLoaded && state.model.entries.isEmpty {
+                    Text("No stocks yet — add the stocks, ETFs and crypto you follow.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(theme.secondaryLabel)
+                        .padding(.vertical, 6)
+                        .listRowBackground(theme.background)
+                        .moveDisabled(true)
+                        .deleteDisabled(true)
+                }
                 ForEach(state.model.entries) { entry in
                     Button { open(entry) } label: {
                         StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme)
@@ -144,7 +153,7 @@ struct StocksFullView: View {
                 .moveDisabled(true)
                 .deleteDisabled(true)
             } header: {
-                Text("My Watchlist").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                Text("My Stocks").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
             } footer: {
                 Text("Quotes by Yahoo Finance. Prices may be delayed.")
                     .font(.system(size: 11))
@@ -153,27 +162,6 @@ struct StocksFullView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-    }
-
-    private func emptyState(theme: WidgetTheme) -> some View {
-        VStack(spacing: 14) {
-            Spacer()
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 40, weight: .semibold))
-                .foregroundStyle(context.accent)
-            Text("Your watchlist is empty")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(theme.label)
-            Text("Search for a company, ETF, index or coin and it shows up here with a live price and chart — like Yahoo Finance, inside FavCircles.")
-                .font(.system(size: 14))
-                .foregroundStyle(theme.secondaryLabel)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            WidgetUI.primaryButton("Add a symbol", color: context.accent) { openSearch() }
-                .padding(.horizontal, 40)
-            Spacer()
-            Spacer()
-        }
     }
 
     // MARK: - Actions
@@ -194,7 +182,7 @@ struct StocksFullView: View {
         guard added else {
             context.host.presentAlert(WidgetAlert(title: "Already on your list",
                                                   message: state.model.contains(hit.symbol)
-                                                      ? "\(hit.symbol) is already in your watchlist."
+                                                      ? "\(hit.symbol) is already in My Stocks."
                                                       : "Your watchlist holds up to \(Watchlist.maxEntries) symbols."))
             return
         }

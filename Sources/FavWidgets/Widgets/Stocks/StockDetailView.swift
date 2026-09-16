@@ -28,7 +28,7 @@ struct StockDetailView: View {
                     Button(role: .destructive) {
                         onRemove()
                     } label: {
-                        Text("Remove from Watchlist")
+                        Text("Remove from My Stocks")
                             .font(.system(size: 15, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .frame(height: 46)

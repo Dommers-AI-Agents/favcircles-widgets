@@ -17,6 +17,9 @@ final class StockQuoteStore: ObservableObject {
     /// Set by the card's "Add" action so the full view opens straight into
     /// search.
     var pendingAddRequest = false
+    /// A card row was tapped: the full view opens this symbol's detail on
+    /// arrival, then clears it.
+    var pendingDetailSymbol: String?
 
     private let client: YahooFinanceClient
     private let cacheURL: URL?

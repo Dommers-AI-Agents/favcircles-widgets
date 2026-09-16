@@ -1,10 +1,11 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// Card: the three US indexes (Nasdaq, Dow, S&P 500) as Yahoo rows —
-/// fixed height whatever the person follows. Their own watchlist lives in
-/// the full view (tap the card or "Watchlist"). Renders from the on-device
-/// quote cache, so it paints with no network.
+/// Card: the three US indexes (Nasdaq, Dow, S&P 500), name and day change
+/// only — fixed height whatever the person follows. Tap a row for that
+/// index's detail; the person's own list ("My Stocks") lives in the full
+/// view. Renders from the on-device quote cache, so it paints with no
+/// network.
 struct StocksCardView: View {
     let context: WidgetContext
     @ObservedObject var state: WidgetStateController<Watchlist>
@@ -19,8 +20,16 @@ struct StocksCardView: View {
         WidgetCard(context: context, action: quickAction) {
             VStack(spacing: 0) {
                 ForEach(entries) { entry in
-                    StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme, compact: true)
-                        .padding(.vertical, 5)
+                    Button {
+                        quotes.pendingDetailSymbol = entry.symbol
+                        context.track("widget_card_action", ["action": "open_index", "symbol": entry.symbol])
+                        context.openFullView()
+                    } label: {
+                        StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme, compact: true, percentOnly: true)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                     if entry.id != entries.last?.id {
                         Divider().overlay(theme.separator.opacity(0.5))
                     }
@@ -37,8 +46,8 @@ struct StocksCardView: View {
     }
 
     private var quickAction: WidgetQuickAction {
-        WidgetQuickAction("Watchlist", symbolName: "list.star") {
-            context.track("widget_card_action", ["action": "open_watchlist"])
+        WidgetQuickAction("My Stocks", symbolName: "list.star") {
+            context.track("widget_card_action", ["action": "open_my_stocks"])
             context.openFullView()
         }
     }
@@ -51,7 +60,7 @@ struct StocksCardView: View {
                 Text(status)
             }
             if state.hasLoaded {
-                Text(count == 0 ? "· Watchlist empty" : "· \(count) in your watchlist")
+                Text(count == 0 ? "· No stocks yet" : "· \(count) in My Stocks")
             }
             if quotes.isRefreshing {
                 ProgressView().controlSize(.mini)
@@ -63,12 +72,14 @@ struct StocksCardView: View {
     }
 }
 
-/// One Yahoo-style watchlist row. `compact` is the card size.
+/// One Yahoo-style watchlist row. `compact` is the card size; `percentOnly`
+/// drops the sparkline and price so the row is just name + day change.
 struct StockRow: View {
     let entry: WatchlistEntry
     let quote: StockQuote?
     let theme: WidgetTheme
     var compact = false
+    var percentOnly = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -83,16 +94,20 @@ struct StockRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            StockSparklineView(points: quote?.points ?? [], reference: quote?.previousClose,
-                               lineWidth: compact ? 1.2 : 1.5, upColor: StockPalette.up, downColor: StockPalette.down)
-                .frame(width: compact ? 56 : 72, height: compact ? 22 : 28)
+            if !percentOnly {
+                StockSparklineView(points: quote?.points ?? [], reference: quote?.previousClose,
+                                   lineWidth: compact ? 1.2 : 1.5, upColor: StockPalette.up, downColor: StockPalette.down)
+                    .frame(width: compact ? 56 : 72, height: compact ? 22 : 28)
+            }
 
             VStack(alignment: .trailing, spacing: 3) {
                 if let quote {
-                    Text(StockFormat.price(quote.price, hint: quote.priceHint))
-                        .font(.system(size: compact ? 14 : 16, weight: .semibold))
-                        .monospacedDigit()
-                        .foregroundStyle(theme.label)
+                    if !percentOnly {
+                        Text(StockFormat.price(quote.price, hint: quote.priceHint))
+                            .font(.system(size: compact ? 14 : 16, weight: .semibold))
+                            .monospacedDigit()
+                            .foregroundStyle(theme.label)
+                    }
                     if let percent = quote.changePercent {
                         StockChangePill(text: StockFormat.percent(percent), isUp: quote.isUp,
                                         upColor: StockPalette.up, downColor: StockPalette.down)
