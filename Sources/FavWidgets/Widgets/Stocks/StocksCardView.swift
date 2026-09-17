@@ -2,16 +2,19 @@ import SwiftUI
 import FavWidgetsCore
 
 /// Card: the three US indexes (Nasdaq, Dow, S&P 500), name and day change
-/// only — fixed height whatever the person follows. Tap a row for that
-/// index's detail; the person's own list ("My Stocks") lives in the full
+/// only — fixed height whatever the person follows — plus a fold-out row
+/// (collapsed by default) with the 10-year Treasury yield and Bitcoin. Tap a
+/// row for that symbol's detail; the person's own lists live in the full
 /// view. Renders from the on-device quote cache, so it paints with no
 /// network.
 struct StocksCardView: View {
     let context: WidgetContext
     @ObservedObject var state: WidgetStateController<Watchlist>
     @ObservedObject var quotes: StockQuoteStore
+    /// Rates & crypto fold-out; starts folded every time the card appears
+    @State private var extrasExpanded = false
 
-    private var pollSymbols: [String] { MarketIndexes.symbols + state.model.symbols }
+    private var pollSymbols: [String] { MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols }
 
     var body: some View {
         let theme = context.theme
@@ -34,6 +37,8 @@ struct StocksCardView: View {
                         Divider().overlay(theme.separator.opacity(0.5))
                     }
                 }
+                Divider().overlay(theme.separator.opacity(0.5))
+                extrasSection(theme: theme)
                 footer(theme: theme)
             }
         }
@@ -41,8 +46,66 @@ struct StocksCardView: View {
             await state.loadIfNeeded()
             await quotes.refresh(symbols: pollSymbols)
         }
-        .onAppear { quotes.startPolling { MarketIndexes.symbols + state.model.symbols } }
+        .onAppear { quotes.startPolling { MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols } }
         .onDisappear { quotes.stopPolling() }
+    }
+
+    /// "10-Yr Treasury · Bitcoin" header with a chevron; the rows fold out
+    /// under it (yield as a percent, Bitcoin as a price, each with its day
+    /// change) and tap through to detail like the indexes.
+    @ViewBuilder
+    private func extrasSection(theme: WidgetTheme) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) { extrasExpanded.toggle() }
+            context.track("widget_card_action", ["action": extrasExpanded ? "expand_extras" : "collapse_extras"])
+        } label: {
+            HStack(spacing: 6) {
+                Text(extrasExpanded ? "Rates & crypto" : extrasSummary)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.secondaryLabel)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(theme.secondaryLabel)
+                    .rotationEffect(.degrees(extrasExpanded ? 180 : 0))
+            }
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(extrasExpanded ? "Hide rates and crypto" : "Show 10-year Treasury yield and Bitcoin")
+
+        if extrasExpanded {
+            ForEach(MarketExtras.entries) { entry in
+                Button {
+                    quotes.pendingDetailSymbol = entry.symbol
+                    context.track("widget_card_action", ["action": "open_extra", "symbol": entry.symbol])
+                    context.openFullView()
+                } label: {
+                    StockRow(entry: entry, quote: quotes.quote(entry.symbol), theme: theme, compact: true,
+                             showsSparkline: false,
+                             valueText: quotes.quote(entry.symbol).map { MarketExtras.displayValue(symbol: entry.symbol, quote: $0) })
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if entry.id != MarketExtras.entries.last?.id {
+                    Divider().overlay(theme.separator.opacity(0.5))
+                }
+            }
+        }
+    }
+
+    /// Folded header: the two values inline ("10-Yr 4.12% · BTC $115,230")
+    /// so the fold carries information even when closed.
+    private var extrasSummary: String {
+        let parts: [String] = MarketExtras.entries.map { entry in
+            let short = entry.symbol == MarketExtras.treasury10Y ? "10-Yr" : "BTC"
+            guard let quote = quotes.quote(entry.symbol) else { return short }
+            return "\(short) \(MarketExtras.displayValue(symbol: entry.symbol, quote: quote))"
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var quickAction: WidgetQuickAction {
@@ -81,6 +144,10 @@ struct StockRow: View {
     let theme: WidgetTheme
     var compact = false
     var percentOnly = false
+    /// Card fold-out rows: value + pill, no chart
+    var showsSparkline = true
+    /// Overrides the formatted price (the Treasury row shows "4.12%")
+    var valueText: String? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -95,7 +162,7 @@ struct StockRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            if !percentOnly {
+            if !percentOnly && showsSparkline {
                 StockSparklineView(points: quote?.points ?? [], reference: quote?.previousClose,
                                    lineWidth: compact ? 1.2 : 1.5, upColor: StockPalette.up, downColor: StockPalette.down)
                     .frame(width: compact ? 56 : 72, height: compact ? 22 : 28)
@@ -104,7 +171,7 @@ struct StockRow: View {
             VStack(alignment: .trailing, spacing: 3) {
                 if let quote {
                     if !percentOnly {
-                        Text(StockFormat.price(quote.price, hint: quote.priceHint))
+                        Text(valueText ?? StockFormat.price(quote.price, hint: quote.priceHint))
                             .font(.system(size: compact ? 14 : 16, weight: .semibold))
                             .monospacedDigit()
                             .foregroundStyle(theme.label)

@@ -100,3 +100,26 @@ struct StockListCollapseAndOrderTests {
         #expect(w.lists.map(\.id) == [c, b, a])
     }
 }
+
+/// The card's rates & crypto fold-out.
+struct MarketExtrasTests {
+    private func quote(_ symbol: String, price: Double, hint: Int = 2, type: String? = nil) -> StockQuote {
+        StockQuote(symbol: symbol, shortName: nil, longName: nil, currency: "USD", exchangeName: nil, instrumentType: type,
+                   price: price, previousClose: nil, dayHigh: nil, dayLow: nil, fiftyTwoWeekHigh: nil, fiftyTwoWeekLow: nil,
+                   volume: nil, priceHint: hint, marketTime: Date(), regularSessionStart: nil, regularSessionEnd: nil,
+                   exchangeTimezone: nil, points: [])
+    }
+
+    @Test func treasuryYieldReadsAsAPercent() {
+        #expect(MarketExtras.displayValue(symbol: "^TNX", quote: quote("^TNX", price: 4.1234)) == "4.12%")
+    }
+
+    @Test func bitcoinReadsAsAPrice() {
+        #expect(MarketExtras.displayValue(symbol: "BTC-USD", quote: quote("BTC-USD", price: 115230.5, type: "CRYPTOCURRENCY")) == "115,230.50")
+    }
+
+    @Test func extrasAreTheTwoExpectedSymbolsAndNeverInTheUsersLists() {
+        #expect(MarketExtras.symbols == ["^TNX", "BTC-USD"])
+        #expect(Set(MarketExtras.symbols).isDisjoint(with: MarketIndexes.symbols))
+    }
+}

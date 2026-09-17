@@ -33,6 +33,24 @@ public enum MarketIndexes {
     public static var symbols: [String] { entries.map(\.symbol) }
 }
 
+/// The card's fold-out row under the indexes: the 10-year Treasury yield
+/// and Bitcoin. Same quote pipeline; ^TNX's "price" IS the yield in percent.
+public enum MarketExtras {
+    public static let treasury10Y = "^TNX"
+    public static let bitcoin = "BTC-USD"
+    public static let entries: [WatchlistEntry] = [
+        WatchlistEntry(symbol: treasury10Y, name: "10-Yr Treasury yield", exchange: "CBOE", addedAt: Date(timeIntervalSince1970: 0)),
+        WatchlistEntry(symbol: bitcoin, name: "Bitcoin", exchange: "CCC", addedAt: Date(timeIntervalSince1970: 0))
+    ]
+    public static var symbols: [String] { entries.map(\.symbol) }
+
+    /// "4.12%" for the yield, a normal price for everything else.
+    public static func displayValue(symbol: String, quote: StockQuote) -> String {
+        if symbol == treasury10Y { return StockFormat.price(quote.price, hint: 2) + "%" }
+        return StockFormat.price(quote.price, hint: quote.priceHint)
+    }
+}
+
 /// One named list inside My Stocks ("Tech", "Crypto", …).
 public struct StockList: Codable, Equatable, Identifiable, Sendable {
     public var id: UUID

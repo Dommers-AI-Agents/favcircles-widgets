@@ -10,8 +10,8 @@ public struct StocksWidget: FavWidget {
 
     public let descriptor = FavWidgetDescriptor(
         id: "stocks",
-        title: "My Stocks",
-        subtitle: "Stocks you follow, live",
+        title: "Stocks",
+        subtitle: "Indexes, rates, crypto and the stocks you follow",
         symbolName: "chart.line.uptrend.xyaxis",
         accentHex: "#6001D2",   // Yahoo Finance purple
         category: .money,
@@ -37,6 +37,6 @@ public struct StocksWidget: FavWidget {
     public func refresh(context: WidgetContext) async {
         let state = context.state(Watchlist.self)
         await state.reload()
-        await StockQuoteStore.shared(in: context).refresh(symbols: MarketIndexes.symbols + state.model.symbols, force: true)
+        await StockQuoteStore.shared(in: context).refresh(symbols: MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols, force: true)
     }
 }

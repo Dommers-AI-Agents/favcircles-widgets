@@ -46,18 +46,18 @@ struct StocksFullView: View {
         }
         .task {
             await state.loadIfNeeded()
-            await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols)
+            await quotes.refresh(symbols: MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols)
             if quotes.pendingAddRequest {
                 quotes.pendingAddRequest = false
                 openSearch(for: state.model.lists.first?.id)
             }
             if let symbol = quotes.pendingDetailSymbol {
                 quotes.pendingDetailSymbol = nil
-                selected = (MarketIndexes.entries + state.model.entries).first { $0.symbol == symbol }
+                selected = (MarketIndexes.entries + MarketExtras.entries + state.model.entries).first { $0.symbol == symbol }
             }
         }
-        .refreshable { await quotes.refresh(symbols: MarketIndexes.symbols + state.model.symbols, force: true) }
-        .onAppear { quotes.startPolling { MarketIndexes.symbols + state.model.symbols } }
+        .refreshable { await quotes.refresh(symbols: MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols, force: true) }
+        .onAppear { quotes.startPolling { MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols } }
         .onDisappear { quotes.stopPolling() }
         .sheet(item: $addTarget) { target in
             StockSearchView(context: context, existing: Set(state.model.list(id: target.id)?.symbols ?? [])) { hit in
