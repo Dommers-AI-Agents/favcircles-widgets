@@ -88,7 +88,10 @@ struct PostcardMailOrderDisplayTests {
     }
 
     @Test func aMailedCardShowsWhenItArrives() {
-        #expect(order(.submitted, delivery: "2026-09-20").displayStatus.contains("Sep 20"))
+        // Lob's date is an outer bound; the row states the typical window instead
+        #expect(order(.submitted, delivery: "2026-09-20").displayStatus.contains("typically arrives in 4 to 6 business days"))
+        #expect(!order(.submitted, delivery: "2026-09-20").displayStatus.contains("Sep 20"))
+        #expect(order(.inTransit, delivery: nil).displayStatus.hasPrefix("In the mail"))
     }
 
     @Test func anUnparseableDateIsOmittedRatherThanEchoed() {

@@ -115,11 +115,13 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
             return "Waiting for payment"
         case .authorized, .submitting:
             return "Mailing \(recipientName) · not charged until it prints"
-        case .submitted, .inTransit:
-            if let date = PostcardMailOrder.friendlyDate(expectedDeliveryDate) {
-                return "Printed and mailed · arrives around \(date)"
-            }
-            return "Printed and mailed to \(recipientName)"
+        // Lob's expected date is its outer bound (production + 5–7 business
+        // days); the honest, readable line is the typical window (Wes,
+        // 2026-09-18).
+        case .submitted:
+            return "Printed and mailed to \(recipientName) · typically arrives in 4 to 6 business days"
+        case .inTransit:
+            return "In the mail to \(recipientName) · typically arrives in 4 to 6 business days"
         case .delivered:
             return "Delivered to \(recipientName)"
         case .canceled:
