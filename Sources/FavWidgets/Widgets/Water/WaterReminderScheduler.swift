@@ -15,7 +15,7 @@ enum WaterReminderScheduler {
     /// pending water reminder with the current plan. Returns false when
     /// notifications are denied so the UI can say so.
     @discardableResult
-    static func sync(_ log: WaterLog) async -> Bool {
+    static func sync(_ log: WaterLog, quietHours: WidgetQuietHours? = nil) async -> Bool {
         #if canImport(UserNotifications) && !os(macOS)
         let center = UNUserNotificationCenter.current()
         let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(identifierPrefix) }
@@ -29,12 +29,15 @@ enum WaterReminderScheduler {
         }
         guard allowed else { return false }
 
-        for (index, minutes) in WaterReminderPlan.times(log.reminders).enumerated() {
+        for (index, minutes) in WaterReminderPlan.times(log.reminders, quietHours: quietHours).enumerated() {
             let content = UNMutableNotificationContent()
             content.title = "Water"
             content.body = WaterReminderPlan.message(index: index, goalCups: log.goalCups)
             content.sound = .default
             content.threadIdentifier = "water"
+            // The app registers this category with a "Log a cup" action
+            // (WaterQuickLog.logCupAction) that writes the cup without opening.
+            content.categoryIdentifier = WaterQuickLog.categoryIdentifier
             content.userInfo = ["type": notificationType]
             var date = DateComponents()
             date.hour = minutes / 60

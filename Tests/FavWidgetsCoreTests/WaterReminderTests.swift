@@ -31,4 +31,36 @@ struct WaterReminderTests {
         #expect(WaterReminderPlan.times(r).count == 24)
         #expect(WaterReminderPlan.message(index: 5, goalCups: 8) == "Sip break — a cup now keeps the streak going")
     }
+
+    @Test func quietHoursDropSlotsInsideTheWindowIncludingOvernight() {
+        let r = WaterReminders(enabled: true, intervalHours: 2, startMinutes: 6 * 60, endMinutes: 23 * 60)
+        let quiet = WidgetQuietHours(start: "22:00", end: "08:00")!
+        #expect(quiet.contains(minute: 23 * 60) && quiet.contains(minute: 3 * 60) && !quiet.contains(minute: 12 * 60))
+        #expect(WaterReminderPlan.times(r, quietHours: quiet) == [480, 600, 720, 840, 960, 1080, 1200])
+        let daytimeQuiet = WidgetQuietHours(start: "12:00", end: "14:00")!
+        #expect(WaterReminderPlan.times(r, quietHours: daytimeQuiet) == [360, 480, 600, 840, 960, 1080, 1200, 1320])
+        #expect(WidgetQuietHours(start: "25:00", end: "08:00") == nil)
+        #expect(!WidgetQuietHours(startMinutes: 60, endMinutes: 60).contains(minute: 60))
+    }
+
+    @Test func logCupFromTheNotificationCreatesUpdatesAndSurvivesAConflict() async throws {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_789_000_000)
+        let store = InMemoryWidgetDataStore()
+        // No document yet: one is created with a single cup.
+        let first = try await WaterQuickLog.logCup(store: store, now: now, calendar: cal)
+        #expect(first == WaterQuickLog.Result(cups: 1, goal: 8))
+        #expect(store.document(id: "water")?.schemaVersion == 2)
+        // Another device wrote in between: the cup lands on top of its copy.
+        var theirs = try WidgetDocumentCodec.decode(WaterLog.self, from: store.document(id: "water")!.payload)
+        theirs.goalCups = 10
+        theirs.add(2, on: DayKey(now, calendar: cal), calendar: cal)
+        store.overwrite(id: "water", payload: try WidgetDocumentCodec.encode(theirs), schemaVersion: 2)
+        store.nextSaveError = .conflict(server: nil) // force the retry path even though our version is stale anyway
+        let second = try await WaterQuickLog.logCup(store: store, now: now, calendar: cal)
+        #expect(second == WaterQuickLog.Result(cups: 4, goal: 10))
+        let stored = try WidgetDocumentCodec.decode(WaterLog.self, from: store.document(id: "water")!.payload)
+        #expect(stored.cups(on: DayKey(now, calendar: cal)) == 4)
+    }
 }

@@ -3,6 +3,10 @@ import Foundation
 /// Single document for all time. Each month is an array of cup counts
 /// indexed by day-of-month (0-based), so a year is ~1 KB.
 public struct WaterLog: WidgetModel {
+    /// Bumped when the document's shape changes (2: reminder settings).
+    public static let schemaVersion = 2
+    public static let documentId = "water"
+
     public var goalCups: Int
     public var cupMl: Int
     public var months: [MonthKey: [Int]]
@@ -103,23 +107,25 @@ public enum WaterReminderPlan {
     /// including the end time. A window shorter than the interval yields
     /// just the start. iOS allows 64 pending local notifications; a 1-hour
     /// interval over 24 h is 24, well inside that.
-    public static func times(_ reminders: WaterReminders) -> [Int] {
+    public static func times(_ reminders: WaterReminders, quietHours: WidgetQuietHours? = nil) -> [Int] {
         let interval = max(1, reminders.intervalHours) * 60
         let start = max(0, min(23 * 60 + 59, reminders.startMinutes))
         let end = max(start, min(23 * 60 + 59, reminders.endMinutes))
         var out: [Int] = []
         var t = start
         while t <= end && out.count < 24 {
-            out.append(t)
+            // The account's quiet hours win over the window: a reminder the
+            // server would have held back shouldn't ring from the phone either.
+            if !(quietHours?.contains(minute: t) ?? false) { out.append(t) }
             t += interval
         }
         return out
     }
 
     /// "Every 2 hours, 8:00 AM – 9:00 PM · 7 reminders"
-    public static func summary(_ reminders: WaterReminders, locale: Locale = .current) -> String {
+    public static func summary(_ reminders: WaterReminders, quietHours: WidgetQuietHours? = nil, locale: Locale = .current) -> String {
         guard reminders.enabled else { return "Off" }
-        let n = times(reminders).count
+        let n = times(reminders, quietHours: quietHours).count
         let every = reminders.intervalHours == 1 ? "Every hour" : "Every \(reminders.intervalHours) hours"
         return "\(every), \(clock(reminders.startMinutes, locale: locale)) – \(clock(reminders.endMinutes, locale: locale)) · \(n) reminder\(n == 1 ? "" : "s")"
     }

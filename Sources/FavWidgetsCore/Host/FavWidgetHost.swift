@@ -191,6 +191,45 @@ public protocol FavWidgetHost: AnyObject {
     /// Presents the payment sheet and waits for the person to finish with it.
     /// Must be called straight from a user gesture.
     func collectPayment(_ request: WidgetPaymentRequest) async throws -> WidgetPaymentResult
+
+    // MARK: Notifications (added in 0.17.0)
+
+    /// The account's quiet hours, so a widget scheduling local reminders can
+    /// stay silent when the server would. nil = none set.
+    var quietHours: WidgetQuietHours? { get }
+}
+
+public extension FavWidgetHost {
+    var quietHours: WidgetQuietHours? { nil }
+}
+
+/// A daily window, in minutes since local midnight; may cross midnight
+/// (22:00 → 08:00).
+public struct WidgetQuietHours: Equatable, Sendable {
+    public let startMinutes: Int
+    public let endMinutes: Int
+
+    public init(startMinutes: Int, endMinutes: Int) {
+        self.startMinutes = startMinutes
+        self.endMinutes = endMinutes
+    }
+
+    /// From "22:00"/"08:00" as the account stores them.
+    public init?(start: String, end: String) {
+        func minutes(_ text: String) -> Int? {
+            let parts = text.split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 2, (0..<24).contains(parts[0]), (0..<60).contains(parts[1]) else { return nil }
+            return parts[0] * 60 + parts[1]
+        }
+        guard let s = minutes(start), let e = minutes(end) else { return nil }
+        self.init(startMinutes: s, endMinutes: e)
+    }
+
+    public func contains(minute: Int) -> Bool {
+        if startMinutes == endMinutes { return false }
+        if startMinutes < endMinutes { return minute >= startMinutes && minute < endMinutes }
+        return minute >= startMinutes || minute < endMinutes
+    }
 }
 
 public struct WidgetAPIRequest: Sendable {

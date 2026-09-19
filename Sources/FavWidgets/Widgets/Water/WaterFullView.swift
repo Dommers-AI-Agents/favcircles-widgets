@@ -275,7 +275,7 @@ struct WaterFullView: View {
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Remind me to drink").foregroundStyle(theme.label)
-                        Text(WaterReminderPlan.summary(reminders))
+                        Text(WaterReminderPlan.summary(reminders, quietHours: context.host.quietHours))
                             .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     }
                 }
@@ -313,8 +313,9 @@ struct WaterFullView: View {
             if let reminderError {
                 Text(reminderError).font(.system(size: 12)).foregroundStyle(theme.warning)
             } else if reminders.enabled {
-                Text("Reminders are set on this phone. Tap one to open the widget and log a cup.")
+                Text(reminderFootnote)
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .task(id: state.hasLoaded) {
@@ -343,10 +344,19 @@ struct WaterFullView: View {
         .padding(.vertical, 6)
     }
 
+    private var reminderFootnote: String {
+        var text = "Reminders are set on this phone. Press and hold one to log a cup without opening the app."
+        if let quiet = context.host.quietHours {
+            text += " None during your quiet hours (\(WaterReminderPlan.clock(quiet.startMinutes)) – \(WaterReminderPlan.clock(quiet.endMinutes)))."
+        }
+        return text
+    }
+
     private func resync() {
         let log = state.model
+        let quiet = context.host.quietHours
         Task {
-            let ok = await WaterReminderScheduler.sync(log)
+            let ok = await WaterReminderScheduler.sync(log, quietHours: quiet)
             reminderError = ok ? nil : "Notifications are off for Circles. Turn them on in Settings to get reminders."
         }
     }
