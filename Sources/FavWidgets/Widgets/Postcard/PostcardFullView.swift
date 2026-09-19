@@ -392,13 +392,26 @@ struct PostcardFullView: View {
 
     /// Says which thing is missing, rather than leaving a disabled button
     /// with no explanation.
+    /// Why Send is off, named precisely enough to act on.
+    ///
+    /// A greyed-out button with no reason is indistinguishable from a broken
+    /// one — App Review rejected a build for exactly that. Every branch here
+    /// has to name the field or the choice, never "fill in the form".
     private var sendHint: String {
         if photo == nil { return "Add a photo to send." }
+        if emailAddresses.valid.count > PostcardEmail.maxAddresses {
+            return "Up to \(PostcardEmail.maxAddresses) email addresses at a time."
+        }
+        if let bad = emailAddresses.invalid.first {
+            return "\(bad) doesn't look like an email address."
+        }
         if mailOn && mailAvailable {
             if mailMessageTooLong { return "Shorten your message to mail a printed card." }
-            if !mailAddress.isComplete { return "Fill in the mailing address." }
+            // The specific field, not "the mailing address" — every box can be
+            // full and one of them still wrong.
+            if let problem = mailAddress.firstProblem { return problem }
             if isQuoting { return "Checking the mailing address…" }
-            if mailQuote?.deliverable == false { return "That mailing address couldn't be found." }
+            if mailQuote?.deliverable == false { return "We couldn't find that address. Check the street, city, state and ZIP." }
             if mailQuote == nil { return "Checking the mailing address…" }
         }
         return "Choose a connection and/or enter an email, or just share the card."
@@ -411,7 +424,10 @@ struct PostcardFullView: View {
             }
             .disabled(!canSend)
             .opacity(canSend ? 1 : 0.5)
-            if photo == nil || (recipient == nil && emailAddresses.valid.isEmpty && !canMail) {
+            // Shown whenever Send is off, for ANY reason. It used to appear
+            // only when the photo or the recipient was missing, so a bad email
+            // or an unmailable address left a dead button explaining nothing.
+            if !canSend {
                 Text(sendHint)
                     .font(.system(size: 12))
                     .foregroundStyle(theme.secondaryLabel)

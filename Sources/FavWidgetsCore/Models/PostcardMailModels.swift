@@ -33,15 +33,31 @@ public struct PostcardMailAddress: Codable, Equatable, Sendable {
         )
     }
 
+    /// The first thing stopping this address from being mailable, phrased for
+    /// the person looking at the form, in the order they read it.
+    ///
+    /// This exists because "Fill in the mailing address" is a lie once every
+    /// field has something in it. App Review typed a ten-digit number into ZIP,
+    /// got a greyed-out Send and that sentence, and rejected the build as
+    /// "the send button was not responsive" — reasonably, since the app was
+    /// telling them to do something they had already done. Name the field.
+    public var firstProblem: String? {
+        let a = normalized
+        if a.name.isEmpty { return "Add the recipient's name." }
+        if a.line1.isEmpty { return "Add the street address." }
+        if a.city.isEmpty { return "Add the city." }
+        if !PostcardMailAddress.states.contains(a.state) { return "Choose the state." }
+        if a.zip.isEmpty { return "Add the ZIP code." }
+        if a.zip.range(of: #"^\d{5}(-\d{4})?$"#, options: .regularExpression) == nil {
+            return "That ZIP code needs to be 5 digits, like 95014."
+        }
+        return nil
+    }
+
     /// Enough to be worth checking with the server. Deliberately loose — the
     /// real verdict is the address check, and rejecting odd-but-valid
     /// addresses on the device would block real mail.
-    public var isComplete: Bool {
-        let a = normalized
-        return !a.name.isEmpty && !a.line1.isEmpty && !a.city.isEmpty
-            && PostcardMailAddress.states.contains(a.state)
-            && a.zip.range(of: #"^\d{5}(-\d{4})?$"#, options: .regularExpression) != nil
-    }
+    public var isComplete: Bool { firstProblem == nil }
 
     /// "123 Main St, Austin TX 78701"
     public var oneLine: String {

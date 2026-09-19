@@ -117,3 +117,52 @@ struct PostcardMailOrderDisplayTests {
         #expect(record.recipientName == "Ana")
     }
 }
+
+// App Review typed a ten-digit number into ZIP, got a greyed-out Send and the
+// sentence "Fill in the mailing address" — with every field visibly full — and
+// rejected the build as an unresponsive button. The hint has to name the field.
+@Suite("Address problems are named, not generalised")
+struct PostcardMailAddressProblemTests {
+    private func address(name: String = "Ana Ruiz", line1: String = "1 Apple Park Way",
+                         city: String = "Cupertino", state: String = "CA",
+                         zip: String = "95014") -> PostcardMailAddress {
+        PostcardMailAddress(name: name, line1: line1, city: city, state: state, zip: zip)
+    }
+
+    @Test func aGoodAddressHasNoProblem() {
+        #expect(address().firstProblem == nil)
+        #expect(address().isComplete)
+    }
+
+    @Test func theExactAddressAppleReviewTypedNamesTheZip() {
+        // Their screenshot: name "hnhhu", "1 apple Park Way", Cupertino, DE,
+        // zip 6693334444. Everything present; only the ZIP is wrong.
+        let theirs = address(name: "hnhhu", line1: "1 apple Park Way",
+                             city: "Cupertino", state: "DE", zip: "6693334444")
+        #expect(theirs.isComplete == false)
+        let problem = theirs.firstProblem
+        #expect(problem != nil)
+        #expect(problem?.contains("ZIP") == true)
+        // The old message said this, and it was not true of their screen.
+        #expect(problem != "Fill in the mailing address.")
+    }
+
+    @Test func eachMissingFieldNamesItself() {
+        #expect(address(name: "").firstProblem?.contains("name") == true)
+        #expect(address(line1: "").firstProblem?.contains("street") == true)
+        #expect(address(city: "").firstProblem?.contains("city") == true)
+        #expect(address(state: "").firstProblem?.contains("state") == true)
+        #expect(address(zip: "").firstProblem?.contains("ZIP") == true)
+    }
+
+    @Test func aZipPlusFourIsStillFine() {
+        #expect(address(zip: "95014-2084").isComplete)
+    }
+
+    @Test func problemsAreReportedInReadingOrder() {
+        // Everything wrong at once: the person is told about the first field
+        // they'd look at, not the last.
+        let empty = address(name: "", line1: "", city: "", state: "", zip: "")
+        #expect(empty.firstProblem?.contains("name") == true)
+    }
+}
