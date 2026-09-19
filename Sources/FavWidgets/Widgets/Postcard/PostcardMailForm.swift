@@ -33,6 +33,10 @@ struct PostcardMailForm: View {
     /// reached yet is simply not filled in; an empty field they've moved past
     /// is something to point at.
     @State private var touched: Set<Field> = []
+    /// Where focus was a moment ago, kept as state rather than inferred from a
+    /// closure capture — that inference depends on when SwiftUI built the
+    /// closure, and "probably the previous render" is not a guarantee.
+    @State private var lastFocused: Field?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -60,9 +64,10 @@ struct PostcardMailForm: View {
                     field(.zip, "ZIP", text: zipBinding, content: .postalCode, numeric: true)
                 }
                 .onChange(of: address) { _ in onAddressSettled() }
-                .onChange(of: focused) { [previous = focused] now in
+                .onChange(of: focused) { now in
                     // Leaving a field is what makes an empty one worth flagging.
-                    if let previous, previous != now { touched.insert(previous) }
+                    if let last = lastFocused, last != now { touched.insert(last) }
+                    lastFocused = now
                 }
 
                 addressStatus
