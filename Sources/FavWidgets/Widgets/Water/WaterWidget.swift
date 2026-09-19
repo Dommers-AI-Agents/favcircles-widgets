@@ -13,7 +13,9 @@ public struct WaterWidget: FavWidget {
         symbolName: "drop.fill",
         accentHex: "#4299E1",
         category: .health,
-        storage: .single
+        storage: .single,
+        // 2 (2026-09-19): reminder settings in the document.
+        schemaVersion: 2
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

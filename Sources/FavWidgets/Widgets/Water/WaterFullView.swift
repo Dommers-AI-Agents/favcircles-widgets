@@ -9,6 +9,7 @@ struct WaterFullView: View {
 
     /// Month shown in the grid; `nil` means the current month.
     @State private var shownMonth: MonthKey?
+    @State private var reminderError: String?
 
     var body: some View {
         let theme = context.theme
@@ -252,6 +253,101 @@ struct WaterFullView: View {
             Text("Changing the goal applies to every day, including past streaks.")
                 .font(.system(size: 12))
                 .foregroundStyle(theme.secondaryLabel)
+            remindersSection(theme: theme)
+        }
+    }
+
+    // MARK: - Reminders
+
+    @ViewBuilder
+    private func remindersSection(theme: WidgetTheme) -> some View {
+        let reminders = state.model.reminders
+        VStack(alignment: .leading, spacing: 12) {
+            WidgetUI.header("Reminders", theme: theme)
+            VStack(spacing: 0) {
+                Toggle(isOn: Binding(
+                    get: { state.model.reminders.enabled },
+                    set: { on in
+                        state.update { $0.reminders.enabled = on }
+                        context.track("water_reminders_toggled", ["on": on ? "1" : "0"])
+                        resync()
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Remind me to drink").foregroundStyle(theme.label)
+                        Text(WaterReminderPlan.summary(reminders))
+                            .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    }
+                }
+                .tint(context.accent)
+                .padding(.vertical, 10)
+                if reminders.enabled {
+                    Divider().overlay(theme.separator)
+                    HStack {
+                        Text("Every").foregroundStyle(theme.label)
+                        Spacer()
+                        Picker("Interval", selection: Binding(
+                            get: { state.model.reminders.intervalHours },
+                            set: { hours in state.update { $0.reminders.intervalHours = hours }; resync() }
+                        )) {
+                            ForEach(WaterReminders.intervalChoices, id: \.self) { h in Text(h == 1 ? "hour" : "\(h) hours").tag(h) }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 240)
+                    }
+                    .padding(.vertical, 10)
+                    Divider().overlay(theme.separator)
+                    timeRow("From", minutes: Binding(
+                        get: { state.model.reminders.startMinutes },
+                        set: { m in state.update { $0.reminders.startMinutes = m; if $0.reminders.endMinutes < m { $0.reminders.endMinutes = m } }; resync() }
+                    ), theme: theme)
+                    Divider().overlay(theme.separator)
+                    timeRow("Until", minutes: Binding(
+                        get: { state.model.reminders.endMinutes },
+                        set: { m in state.update { $0.reminders.endMinutes = max(m, $0.reminders.startMinutes) } ; resync() }
+                    ), theme: theme)
+                }
+            }
+            .padding(.horizontal, 16)
+            .background(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous).fill(theme.secondaryBackground))
+            if let reminderError {
+                Text(reminderError).font(.system(size: 12)).foregroundStyle(theme.warning)
+            } else if reminders.enabled {
+                Text("Reminders are set on this phone. Tap one to open the widget and log a cup.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+            }
+        }
+        .task(id: state.hasLoaded) {
+            // A device that didn't set the schedule (or a fresh install) picks it up here.
+            if state.hasLoaded, state.model.reminders.enabled { resync() }
+        }
+    }
+
+    private func timeRow(_ title: String, minutes: Binding<Int>, theme: WidgetTheme) -> some View {
+        HStack {
+            Text(title).foregroundStyle(theme.label)
+            Spacer()
+            DatePicker("", selection: Binding(
+                get: {
+                    var comps = DateComponents(); comps.hour = minutes.wrappedValue / 60; comps.minute = minutes.wrappedValue % 60
+                    return Calendar.current.date(from: comps) ?? Date()
+                },
+                set: { date in
+                    let c = Calendar.current.dateComponents([.hour, .minute], from: date)
+                    minutes.wrappedValue = (c.hour ?? 0) * 60 + (c.minute ?? 0)
+                }
+            ), displayedComponents: .hourAndMinute)
+            .labelsHidden()
+            .tint(context.accent)
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func resync() {
+        let log = state.model
+        Task {
+            let ok = await WaterReminderScheduler.sync(log)
+            reminderError = ok ? nil : "Notifications are off for Circles. Turn them on in Settings to get reminders."
         }
     }
 }
