@@ -36,7 +36,8 @@ public enum FavWidgetRegistry {
         PostcardWidget(),
         NextBarWidget(),
         StocksWidget(),
-        FridgeMailWidget()
+        FridgeMailWidget(),
+        SleepSoundsWidget()
     ]
 
     public static var descriptors: [FavWidgetDescriptor] { all.map(\.descriptor) }
