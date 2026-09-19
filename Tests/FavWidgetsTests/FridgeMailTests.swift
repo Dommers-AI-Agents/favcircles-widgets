@@ -119,6 +119,9 @@ struct FridgeMailTests {
         let context = makeContext(host: host)
         let store = FridgeMailStore.shared(context)
         await store.loadIfNeeded(context: context)
+        // The card stops at the plan; the full view asks for the rest.
+        #expect(store.cards.isEmpty && store.config == nil)
+        await store.loadDetails(context: context)
         #expect(store.plan?.recipients.count == 1)
         #expect(store.cards.count == 1)
         #expect(store.config?.isUsable == true)

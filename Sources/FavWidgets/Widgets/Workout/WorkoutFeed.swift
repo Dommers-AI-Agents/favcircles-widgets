@@ -29,32 +29,20 @@ enum WorkoutFeedAPI {
 }
 
 @MainActor
-final class WorkoutFeedStore: ObservableObject {
+final class WorkoutFeedStore: RemoteStore {
     @Published var posts: [WorkoutFeedAPI.Post] = []
-    @Published var isLoading = false
-    @Published var error: String?
-    private var loadedAt: Date?
 
     static func shared(_ context: WidgetContext) -> WorkoutFeedStore {
         context.transient("workouts.feed") { WorkoutFeedStore() }
     }
 
+    /// Refetches after two minutes; sooner is just noise.
     func loadIfStale(context: WidgetContext) async {
-        if let loadedAt, Date().timeIntervalSince(loadedAt) < 120 { return }
-        await load(context: context)
+        await loadIfNeeded(staleAfter: 120) { self.posts = try await WorkoutFeedAPI.feed(context: context) }
     }
 
     func load(context: WidgetContext) async {
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            posts = try await WorkoutFeedAPI.feed(context: context)
-            loadedAt = Date()
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
-        }
+        await load { self.posts = try await WorkoutFeedAPI.feed(context: context) }
     }
 }
 

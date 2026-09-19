@@ -157,9 +157,8 @@ enum FridgeMailAPI {
 
     private static func planCall(_ context: WidgetContext, _ method: WidgetAPIRequest.Method, _ path: String,
                                  body: [String: Any]? = nil) async throws -> FridgeMailPlan {
-        let data = try await context.host.request(WidgetAPIRequest(
-            method, path, body: body.map { try? JSONSerialization.data(withJSONObject: $0) } ?? nil))
-        return try FridgeMailJSON.decode(PlanResponse.self, from: data).plan
+        let response: PlanResponse = try await context.api(method, path, body: body)
+        return response.plan
     }
 }
 
@@ -167,35 +166,28 @@ enum FridgeMailAPI {
 /// `context.transient` so opening the full view doesn't refetch what the
 /// card already has. Server-owned; nothing here is persisted on device.
 @MainActor
-final class FridgeMailStore: ObservableObject {
+final class FridgeMailStore: RemoteStore {
     @Published var plan: FridgeMailPlan?
     @Published var cards: [FridgeMailCard] = []
     @Published var config: PostcardMail.Config?
-    @Published var isLoading = false
-    @Published var loadError: String?
-    private var hasLoaded = false
 
     static func shared(_ context: WidgetContext) -> FridgeMailStore {
         context.transient("fridgemail.store") { FridgeMailStore() }
     }
 
+    /// The card needs only the plan.
     func loadIfNeeded(context: WidgetContext) async {
-        guard !hasLoaded, !isLoading else { return }
-        await load(context: context)
+        await loadIfNeeded { self.plan = try await FridgeMailAPI.plan(context: context) }
     }
 
     func load(context: WidgetContext) async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            plan = try await FridgeMailAPI.plan(context: context)
-            hasLoaded = true
-            loadError = nil
-        } catch {
-            loadError = error.localizedDescription
-        }
-        // History and the Stripe keys are only needed by the full view,
-        // and neither should stop the plan from showing.
+        await load { self.plan = try await FridgeMailAPI.plan(context: context) }
+        await loadDetails(context: context)
+    }
+
+    /// History and the Stripe keys, wanted only by the full view; neither
+    /// stops the plan from showing.
+    func loadDetails(context: WidgetContext) async {
         async let history = try? FridgeMailAPI.cards(context: context)
         async let keys = try? PostcardMail.config(context: context)
         if let history = await history { cards = history }
@@ -204,6 +196,6 @@ final class FridgeMailStore: ObservableObject {
 
     func apply(_ plan: FridgeMailPlan) {
         self.plan = plan
-        hasLoaded = true
+        markLoaded()
     }
 }

@@ -68,8 +68,8 @@ enum CareAPI {
     }
 
     private static func plan(_ context: WidgetContext, _ method: WidgetAPIRequest.Method, _ path: String, body: [String: Any]? = nil) async throws -> CarePlan {
-        let data = try await context.host.request(WidgetAPIRequest(method, path, body: body.map { try? JSONSerialization.data(withJSONObject: $0) } ?? nil))
-        return try WidgetJSON.decode(PlanResponse.self, from: data).plan
+        let response: PlanResponse = try await context.api(method, path, body: body)
+        return response.plan
     }
 }
 
@@ -77,31 +77,19 @@ enum CareAPI {
 /// shows the last fetched state with no network and the full view opens
 /// on it.
 @MainActor
-final class CareStore: ObservableObject {
+final class CareStore: RemoteStore {
     @Published var plans: CarePlans?
-    @Published var isLoading = false
-    @Published var loadError: String?
-    private var hasLoaded = false
 
     static func shared(_ context: WidgetContext) -> CareStore {
         context.transient("care.store") { CareStore() }
     }
 
     func loadIfNeeded(context: WidgetContext) async {
-        guard !hasLoaded, !isLoading else { return }
-        await load(context: context)
+        await loadIfNeeded { self.plans = try await CareAPI.plans(context: context) }
     }
 
     func load(context: WidgetContext) async {
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            plans = try await CareAPI.plans(context: context)
-            hasLoaded = true
-            loadError = nil
-        } catch {
-            loadError = error.localizedDescription
-        }
+        await load { self.plans = try await CareAPI.plans(context: context) }
     }
 
     /// Slots an updated plan into whichever list it belongs to.
@@ -113,7 +101,7 @@ final class CareStore: ObservableObject {
             if let i = current.asParent.firstIndex(where: { $0.planId == plan.planId }) { current.asParent[i] = plan } else { current.asParent.insert(plan, at: 0) }
         }
         plans = current
-        hasLoaded = true
+        markLoaded()
     }
 
     func remove(planId: String) {

@@ -14,42 +14,28 @@ enum QuotesAPI {
         if let categories { body["categories"] = categories }
         if let time { body["time"] = time }
         if let email { body["email"] = email }
-        let encoded = try? JSONSerialization.data(withJSONObject: body)
-        return try WidgetJSON.decode(QuoteSettingsResponse.self,
-                                     from: await context.host.request(WidgetAPIRequest(.put, "widgets/quotes/settings", body: encoded)))
+        return try await context.api(.put, "widgets/quotes/settings", body: body)
     }
 }
 
 @MainActor
-final class QuotesStore: ObservableObject {
+final class QuotesStore: RemoteStore {
     @Published var prefs = QuoteSettings()
     @Published var categories: [QuoteCategory] = []
     @Published var today: DailyQuote?
-    @Published var loadError: String?
-    private var loaded = false
 
-    private static var stores: [String: QuotesStore] = [:]
+    /// Lives with the widget's context like the other stores (a static
+    /// dictionary here used to outlive the context and never emptied).
     static func shared(_ context: WidgetContext) -> QuotesStore {
-        let key = context.descriptor.id
-        if let existing = stores[key] { return existing }
-        let store = QuotesStore()
-        stores[key] = store
-        return store
+        context.transient("quotes.store") { QuotesStore() }
     }
 
     func loadIfNeeded(context: WidgetContext) async {
-        guard !loaded else { return }
-        await load(context: context)
+        await loadIfNeeded { self.apply(try await QuotesAPI.settings(context: context)) }
     }
 
     func load(context: WidgetContext) async {
-        do {
-            apply(try await QuotesAPI.settings(context: context))
-            loadError = nil
-            loaded = true
-        } catch {
-            loadError = error.localizedDescription
-        }
+        await load { self.apply(try await QuotesAPI.settings(context: context)) }
     }
 
     func apply(_ response: QuoteSettingsResponse) {

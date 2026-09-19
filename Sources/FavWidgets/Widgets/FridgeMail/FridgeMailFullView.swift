@@ -50,6 +50,7 @@ struct FridgeMailFullView: View {
         .widgetInlineNavigationTitle("Fridge Mail")
         .task {
             await store.loadIfNeeded(context: context)
+            await store.loadDetails(context: context)
             familyNameDraft = store.plan?.familyName ?? ""
         }
         .onChange(of: store.plan?.familyName) { name in
@@ -471,16 +472,7 @@ struct FridgeMailThumb: View {
     let height: CGFloat
 
     var body: some View {
-        AsyncImage(url: url) { phase in
-            if case .success(let image) = phase {
-                image.resizable().scaledToFit()
-            } else {
-                Color.clear
-            }
-        }
-        .frame(width: width, height: height)
-        .background(FridgeMailCanvasView.cream)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        WidgetUI.thumbnail(url: url, width: width, height: height, background: FridgeMailCanvasView.cream)
     }
 }
 
@@ -553,8 +545,8 @@ struct FridgeMailAddSheet: View {
                     }
                     WidgetUI.header("On the back", theme: theme)
                     HStack(spacing: 8) {
-                        FridgeMailField("Child's name", text: $childName, theme: theme)
-                        FridgeMailField("Age", text: $ageText, theme: theme).frame(width: 80)
+                        WidgetUI.textField("Child's name", text: $childName, theme: theme)
+                        WidgetUI.textField("Age", text: $ageText, theme: theme).frame(width: 80)
                     }
                     TextField("A note for the fridge (optional)", text: $note, axis: .vertical)
                         .font(.system(size: 15))
@@ -637,15 +629,15 @@ struct FridgeMailRecipientSheet: View {
                             .frame(width: 110, height: 38)
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(theme.secondaryBackground))
                         }
-                        FridgeMailField("Name", text: $name, theme: theme)
+                        WidgetUI.textField("Name", text: $name, theme: theme, content: .name)
                     }
                     Text("Printed on the card as \"\(relation.isEmpty ? name : "\(relation) \(name)")\".")
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     WidgetUI.header("Address", theme: theme)
-                    FridgeMailField("Street address", text: $address.line1, theme: theme)
-                    FridgeMailField("Apt, suite (optional)", text: $address.line2, theme: theme)
+                    WidgetUI.textField("Street address", text: $address.line1, theme: theme, content: .streetAddressLine1)
+                    WidgetUI.textField("Apt, suite (optional)", text: $address.line2, theme: theme, content: .streetAddressLine2)
                     HStack(spacing: 8) {
-                        FridgeMailField("City", text: $address.city, theme: theme)
+                        WidgetUI.textField("City", text: $address.city, theme: theme, content: .addressCity)
                         Menu {
                             ForEach(PostcardMailAddress.states, id: \.self) { code in Button(code) { address.state = code } }
                         } label: {
@@ -659,7 +651,7 @@ struct FridgeMailRecipientSheet: View {
                             .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(theme.secondaryBackground))
                         }
                     }
-                    FridgeMailField("ZIP", text: $address.zip, theme: theme, numeric: true)
+                    WidgetUI.textField("ZIP", text: $address.zip, theme: theme, content: .postalCode, numeric: true, capitalizeAll: true)
                     Text("US addresses only for now. We check it with USPS before saving.")
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     WidgetUI.primaryButton(isSaving ? "Checking the address…" : "Add", color: context.accent) { save() }
@@ -701,30 +693,3 @@ struct FridgeMailRecipientSheet: View {
     }
 }
 
-/// The plain text field the two sheets share.
-struct FridgeMailField: View {
-    let placeholder: String
-    @Binding var text: String
-    let theme: WidgetTheme
-    var numeric = false
-
-    init(_ placeholder: String, text: Binding<String>, theme: WidgetTheme, numeric: Bool = false) {
-        self.placeholder = placeholder
-        self._text = text
-        self.theme = theme
-        self.numeric = numeric
-    }
-
-    var body: some View {
-        TextField(placeholder, text: $text)
-            .font(.system(size: 15))
-            .autocorrectionDisabled()
-            .padding(.horizontal, 10)
-            .frame(height: 38)
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(theme.secondaryBackground))
-            #if os(iOS)
-            .keyboardType(numeric ? .numbersAndPunctuation : .default)
-            .textInputAutocapitalization(.words)
-            #endif
-    }
-}
