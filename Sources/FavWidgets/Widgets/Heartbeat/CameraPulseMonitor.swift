@@ -23,6 +23,10 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     @Published private(set) var progress: Double = 0
     @Published private(set) var waveform: [Double] = []
     @Published private(set) var result: HeartReading?
+    /// One line of numbers for the measuring sheet: what the camera sees and
+    /// how sure the estimator is. The only way to tell "no finger" from
+    /// "saturated" from "noisy" on a phone you can't see.
+    @Published private(set) var diagnostic: String = ""
 
     /// Seconds of clean signal before a reading is final.
     let measureSeconds: Double = 20
@@ -31,6 +35,14 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     private var startTime: Double?
     private var frameCount = 0
     private var bpmHistory: [Int] = []
+    /// Frames since the exposure lock in which red was pinned at the top.
+    private var saturatedFrames = 0
+    private var saturationRetries = 0
+    /// When a red-dominant but too-dark frame was first seen (flash too far
+    /// from the lens, as on the larger camera plateaus).
+    private var dimSince: Double?
+    private var torchLevel: Float = 0.3
+    private var torchBoosted = false
 
     #if os(iOS)
     private let session = AVCaptureSession()
@@ -59,6 +71,12 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
         fingerSince = nil
         startTime = nil
         frameCount = 0
+        saturatedFrames = 0
+        saturationRetries = 0
+        dimSince = nil
+        torchLevel = 0.3
+        torchBoosted = false
+        diagnostic = ""
         estimator.reset()
         #if os(iOS)
         AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
@@ -119,7 +137,7 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
                     device.activeVideoMinFrameDuration = CMTime(value: 1, timescale: 30)
                     device.activeVideoMaxFrameDuration = CMTime(value: 1, timescale: 30)
                 }
-                if device.hasTorch { try device.setTorchModeOn(level: 0.3) }
+                if device.hasTorch { try device.setTorchModeOn(level: self?.initialTorchLevel ?? 0.3) }
                 device.unlockForConfiguration()
             } catch {
                 session.commitConfiguration()
@@ -145,6 +163,21 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
         }
     }
 
+    /// Read from the capture queue at session start; the main-actor value is
+    /// always 0.3 there.
+    private nonisolated var initialTorchLevel: Float { 0.3 }
+
+    private func setTorch(level: Float) {
+        guard let device, device.hasTorch else { return }
+        let clamped = max(0.05, min(AVCaptureDevice.maxAvailableTorchLevel, level))
+        torchLevel = clamped
+        queue.async {
+            guard (try? device.lockForConfiguration()) != nil else { return }
+            try? device.setTorchModeOn(level: clamped)
+            device.unlockForConfiguration()
+        }
+    }
+
     private func unlockExposure() {
         guard locked, let device else { return }
         locked = false
@@ -158,10 +191,34 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     #endif
 
     /// One frame's colour, from the capture queue.
+    ///
+    /// Order matters here and was wrong once: the exposure used to be locked
+    /// the instant a finger was seen, which froze the *room's* exposure with a
+    /// torch behind a fingertip. Red pinned at 255, the frame was flat, and
+    /// there was no pulse to find. Now: finger seen → let auto-exposure adapt
+    /// (0.8 s) → lock → let the lock settle (0.5 s) → measure.
     fileprivate func ingest(red: Double, green: Double, blue: Double, time: Double) {
         guard phase == .waitingForFinger || phase == .measuring else { return }
         let covered = HeartRateEstimator.isFingerCovering(meanRed: red, meanGreen: green, meanBlue: blue)
+        if frameCount % 6 == 0 || !covered {
+            diagnostic = String(format: "red %.0f · green %.0f · blue %.0f · torch %.2f · confidence %.2f · %@",
+                                red, green, blue, torchLevel, confidence, phaseLabel)
+        }
         if !covered {
+            #if os(iOS)
+            // Red-dominant but dark: the flash isn't reaching the lens well.
+            // Brighten it once, and give AE a second to use it.
+            let dimRed = red > 25 && red > green * 1.6 && red > blue * 1.6
+            if dimRed, !torchBoosted {
+                if dimSince == nil { dimSince = time }
+                if let since = dimSince, time - since > 1.0 {
+                    torchBoosted = true
+                    setTorch(level: AVCaptureDevice.maxAvailableTorchLevel)
+                }
+            } else if !dimRed {
+                dimSince = nil
+            }
+            #endif
             if phase == .measuring {
                 // Finger lifted: start over, but keep the session warm.
                 phase = .waitingForFinger
@@ -174,17 +231,39 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
                 #if os(iOS)
                 unlockExposure()
                 #endif
+            } else {
+                fingerSince = nil
             }
             return
         }
-        if fingerSince == nil {
-            fingerSince = time
-            #if os(iOS)
-            lockExposureIfNeeded()
-            #endif
+        if fingerSince == nil { fingerSince = time; saturatedFrames = 0 }
+        guard let since = fingerSince else { return }
+        #if os(iOS)
+        // Let auto-exposure adapt to the finger before freezing it.
+        if time - since > 0.8 { lockExposureIfNeeded() }
+        guard locked, time - since > 1.3 else { return }
+        // Locked but pinned at the top: the torch is too bright for this
+        // finger. Dim it and let AE re-settle, up to twice.
+        if red > 250 {
+            saturatedFrames += 1
+            if saturatedFrames >= 15, saturationRetries < 2 {
+                saturationRetries += 1
+                saturatedFrames = 0
+                setTorch(level: torchLevel * 0.35)
+                unlockExposure()
+                fingerSince = time
+                if phase == .measuring {
+                    phase = .waitingForFinger
+                    estimator.reset(); startTime = nil; bpmHistory = []; progress = 0; bpm = nil
+                }
+                return
+            }
+        } else {
+            saturatedFrames = 0
         }
-        // Give the exposure lock a moment to settle before trusting frames.
-        guard let since = fingerSince, time - since > 0.6 else { return }
+        #else
+        guard time - since > 1.3 else { return }
+        #endif
         if phase == .waitingForFinger {
             phase = .measuring
             startTime = time
@@ -210,9 +289,20 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
         }
     }
 
+    private var phaseLabel: String {
+        switch phase {
+        case .idle: return "idle"
+        case .starting: return "starting"
+        case .waitingForFinger: return fingerSince == nil ? "no finger" : "settling"
+        case .measuring: return "measuring"
+        case .done: return "done"
+        case .failed: return "failed"
+        }
+    }
+
     private func finish() {
         guard let bpm, bpmHistory.count >= 4 else {
-            phase = .failed("Couldn't find a steady pulse. Hold your fingertip gently but fully over the lens and flash, and keep still.")
+            phase = .failed("Couldn't find a steady pulse. Rest your fingertip lightly over the rear camera lens, don't press hard, and keep still.")
             stop()
             return
         }

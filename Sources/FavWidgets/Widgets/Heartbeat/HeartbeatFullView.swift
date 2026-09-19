@@ -73,7 +73,7 @@ struct HeartbeatFullView: View {
                     showMeasure = true
                     camera.start()
                 }
-                Text("Rest your fingertip over the rear camera and flash. It takes about 20 seconds; hold still.")
+                Text("Rest your fingertip lightly over the rear camera lens. It takes about 20 seconds; hold still.")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Camera measuring needs an iPhone with a rear camera.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
@@ -201,6 +201,10 @@ struct PulseMeasureView: View {
 
                 Text(statusText).font(.system(size: 15)).foregroundStyle(theme.label)
                     .multilineTextAlignment(.center).padding(.horizontal, 24).fixedSize(horizontal: false, vertical: true)
+                if !camera.diagnostic.isEmpty {
+                    Text(camera.diagnostic).font(.system(size: 11, design: .monospaced)).foregroundStyle(theme.secondaryLabel)
+                        .multilineTextAlignment(.center).padding(.horizontal, 24).fixedSize(horizontal: false, vertical: true)
+                }
 
                 Spacer()
 
@@ -228,7 +232,7 @@ struct PulseMeasureView: View {
     private var statusText: String {
         switch camera.phase {
         case .idle, .starting: return "Starting the camera…"
-        case .waitingForFinger: return "Rest your fingertip over the rear camera and the flash. Cover both fully."
+        case .waitingForFinger: return camera.diagnostic.hasSuffix("settling") ? "Got it. Adjusting to your finger…" : "Rest your fingertip lightly over the rear camera lens. The flash lights it from the side."
         case .measuring: return camera.bpm == nil ? "Reading your pulse. Hold still…" : "Keep holding, a few more seconds…"
         case .done: return "Done."
         case .failed(let message): return message
