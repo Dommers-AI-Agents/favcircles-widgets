@@ -380,3 +380,26 @@ public enum ExerciseCatalog {
         ])
     ]
 }
+
+/// What "Finish workout" hands back for the summary sheet.
+public struct WorkoutSummary: Identifiable {
+    public let id = UUID()
+    public let name: String
+    public let duration: TimeInterval
+    public let completedSets: Int
+    public let unit: WeightUnit
+    public let newRecords: [(id: String, exercise: String, record: PersonalRecord)]
+    /// Best sets, cardio and PR count: the summary sheet, the share text
+    /// and the Inner Circle post all read from this.
+    public let share: WorkoutShareSummary
+
+    public init(name: String, duration: TimeInterval, completedSets: Int, unit: WeightUnit,
+                newRecords: [(id: String, exercise: String, record: PersonalRecord)], share: WorkoutShareSummary) {
+        self.name = name
+        self.duration = duration
+        self.completedSets = completedSets
+        self.unit = unit
+        self.newRecords = newRecords
+        self.share = share
+    }
+}

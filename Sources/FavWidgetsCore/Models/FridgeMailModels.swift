@@ -200,27 +200,8 @@ public struct FridgeMailCard: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// Decoding shared by the client and its tests. Dates come from the server
-/// as ISO-8601 strings, with or without fractional seconds.
-public enum FridgeMailJSON {
-    public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let text = try decoder.singleValueContainer().decode(String.self)
-            if let date = iso.date(from: text) { return date }
-            if let date = isoPlain.date(from: text) { return date }
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Bad date \(text)"))
-        }
-        return try decoder.decode(type, from: data)
-    }
-
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-    private static let isoPlain = ISO8601DateFormatter()
-}
+/// Kept for callers written before `WidgetJSON` existed.
+public typealias FridgeMailJSON = WidgetJSON
 
 /// The words. Kept in Core so the copy is testable without a simulator.
 public enum FridgeMailCopy {
@@ -331,27 +312,11 @@ public enum FridgeMailCopy {
     }
 
     static func shortDate(_ date: Date, calendar: Calendar) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar
-        f.setLocalizedDateFormatFromTemplate("MMM d")
-        return f.string(from: date)
+        WidgetDateCopy.formatted(date, template: "MMM d", calendar: calendar)
     }
 
-    /// "today", "tomorrow", "Monday", or "Mon, Oct 5" beyond a week.
     static func relativeDay(_ date: Date, calendar: Calendar) -> String {
-        if calendar.isDateInToday(date) { return "today" }
-        if calendar.isDateInTomorrow(date) { return "tomorrow" }
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: date)).day ?? 99
-        if days < 7 {
-            let f = DateFormatter()
-            f.calendar = calendar
-            f.setLocalizedDateFormatFromTemplate("EEEE")
-            return f.string(from: date)
-        }
-        let f = DateFormatter()
-        f.calendar = calendar
-        f.setLocalizedDateFormatFromTemplate("EEE MMM d")
-        return f.string(from: date)
+        WidgetDateCopy.futureDay(date, calendar: calendar)
     }
 }
 

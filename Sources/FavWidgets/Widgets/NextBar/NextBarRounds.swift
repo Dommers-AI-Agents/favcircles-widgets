@@ -67,42 +67,30 @@ struct NextBarRound: Codable, Identifiable, Equatable {
 struct NextBarRoundsClient {
     let host: FavWidgetHost
 
-    private static let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
-        d.dateDecodingStrategy = .custom { decoder in
-            let raw = try decoder.singleValueContainer().decode(String.self)
-            if let date = fractional.date(from: raw) ?? plain.date(from: raw) { return date }
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Bad date \(raw)"))
-        }
-        return d
-    }()
 
     private struct ListResponse: Decodable { let rounds: [NextBarRound] }
     private struct SingleResponse: Decodable { let round: NextBarRound }
 
     func list() async throws -> [NextBarRound] {
         let data = try await host.request(WidgetAPIRequest(.get, "widgets/nextbar/rounds"))
-        return try Self.decoder.decode(ListResponse.self, from: data).rounds
+        return try WidgetJSON.decode(ListResponse.self, from: data).rounds
     }
 
     func create(_ draft: NextBarRound.Draft) async throws -> NextBarRound {
         let body = try JSONEncoder().encode(draft)
         let data = try await host.request(WidgetAPIRequest(.post, "widgets/nextbar/rounds", body: body))
-        return try Self.decoder.decode(SingleResponse.self, from: data).round
+        return try WidgetJSON.decode(SingleResponse.self, from: data).round
     }
 
     func vote(roundId: String, placeId: String) async throws -> NextBarRound {
         let body = try JSONEncoder().encode(["placeId": placeId])
         let data = try await host.request(WidgetAPIRequest(.post, "widgets/nextbar/rounds/\(roundId)/vote", body: body))
-        return try Self.decoder.decode(SingleResponse.self, from: data).round
+        return try WidgetJSON.decode(SingleResponse.self, from: data).round
     }
 
     func close(roundId: String) async throws -> NextBarRound {
         let data = try await host.request(WidgetAPIRequest(.post, "widgets/nextbar/rounds/\(roundId)/close"))
-        return try Self.decoder.decode(SingleResponse.self, from: data).round
+        return try WidgetJSON.decode(SingleResponse.self, from: data).round
     }
 }
 

@@ -194,11 +194,16 @@ struct CardioRowView: View {
 
     private func field(_ placeholder: String, text: Binding<String>, width: CGFloat, decimal: Bool = false) -> some View {
         VStack(spacing: 2) {
-            TextField("0", text: text)
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.center)
-                .frame(width: width)
-                .modifier(NumericKeyboard(decimal: decimal))
+            Group {
+                if decimal {
+                    TextField("0", text: text).widgetDecimalKeyboard()
+                } else {
+                    TextField("0", text: text).widgetNumberKeyboard()
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.center)
+            .frame(width: width)
             Text(placeholder).font(.system(size: 10)).foregroundStyle(theme.secondaryLabel)
         }
     }
@@ -221,13 +226,6 @@ struct CardioRowView: View {
         let completing = !isDone
         mutate { $0.completedAt = completing ? Date() : nil }
         if completing { onCompleted() }
-    }
-}
-
-private struct NumericKeyboard: ViewModifier {
-    let decimal: Bool
-    func body(content: Content) -> some View {
-        if decimal { content.widgetDecimalKeyboard() } else { content.widgetNumberKeyboard() }
     }
 }
 

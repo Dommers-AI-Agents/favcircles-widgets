@@ -151,6 +151,6 @@ public enum WaterReminderPlan {
         f.locale = locale
         f.dateStyle = .none
         f.timeStyle = .short
-        return f.string(from: date).replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
+        return f.string(from: date).plainSpaces
     }
 }

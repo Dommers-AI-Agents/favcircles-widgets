@@ -64,22 +64,11 @@ enum WorkoutFormat {
     }
 
     static func relativeDay(_ date: Date, calendar: Calendar) -> String {
-        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: Date())).day ?? 0
-        switch days {
-        case ..<0: return "later"
-        case 0: return "today"
-        case 1: return "yesterday"
-        case 2..<14: return "\(days) days ago"
-        case 14..<60: return "\(days / 7) weeks ago"
-        default: return shortDate(date, calendar: calendar)
-        }
+        WidgetDateCopy.pastDay(date, calendar: calendar)
     }
 
     static func shortDate(_ date: Date, calendar: Calendar) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar
-        f.setLocalizedDateFormatFromTemplate("EEE d MMM")
-        return f.string(from: date)
+        WidgetDateCopy.formatted(date, template: "EEE d MMM", calendar: calendar)
     }
 
     static func monthTitle(_ month: MonthKey, calendar: Calendar) -> String {

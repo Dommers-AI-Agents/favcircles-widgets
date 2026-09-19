@@ -249,14 +249,6 @@ public struct CarePlans: Decodable, Equatable, Sendable {
     }
 }
 
-/// Shared JSON decoding for server-owned widgets (ISO-8601 dates with or
-/// without fractional seconds).
-public enum WidgetJSON {
-    public static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        try FridgeMailJSON.decode(type, from: data)
-    }
-}
-
 public enum CareCopy {
     public static let defaultTimes = ["08:30", "13:00", "19:00"]
     public static let timeChoices: [String] = stride(from: 6, through: 22, by: 1).flatMap { h in ["00", "30"].map { String(format: "%02d:%@", h, $0) } }
@@ -279,9 +271,7 @@ public enum CareCopy {
 
     /// Newer systems put a narrow no-break space before AM/PM; one kind of
     /// space keeps copy (and tests) predictable.
-    static func plainSpaces(_ s: String) -> String {
-        s.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
-    }
+    static func plainSpaces(_ s: String) -> String { s.plainSpaces }
 
     /// "8:30 AM, 1:00 PM and 7:00 PM"
     public static func timesLine(_ times: [String], locale: Locale = .current) -> String {
@@ -322,18 +312,7 @@ public enum CareCopy {
 
     /// "9:02 AM" today, "yesterday 7:10 PM", or "Sep 12".
     public static func relative(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar
-        if calendar.isDate(date, inSameDayAs: now) {
-            f.timeStyle = .short; f.dateStyle = .none
-            return plainSpaces(f.string(from: date))
-        }
-        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(date, inSameDayAs: yesterday) {
-            f.timeStyle = .short; f.dateStyle = .none
-            return "yesterday " + plainSpaces(f.string(from: date))
-        }
-        f.setLocalizedDateFormatFromTemplate("MMM d")
-        return f.string(from: date)
+        WidgetDateCopy.dayTime(date, now: now, calendar: calendar)
     }
 
     /// The status chip on a plan row.

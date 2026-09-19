@@ -1,19 +1,6 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// What "Finish workout" hands back for the summary sheet.
-struct WorkoutSummary: Identifiable {
-    let id = UUID()
-    let name: String
-    let duration: TimeInterval
-    let completedSets: Int
-    let unit: WeightUnit
-    let newRecords: [(id: String, exercise: String, record: PersonalRecord)]
-    /// Best sets, cardio and PR count: the summary sheet, the share text
-    /// and the Inner Circle post all read from this.
-    let share: WorkoutShareSummary
-}
-
 /// The in-progress workout. Every edit goes through `settings.update` so
 /// the session survives relaunches exactly as typed.
 struct ActiveSessionView: View {

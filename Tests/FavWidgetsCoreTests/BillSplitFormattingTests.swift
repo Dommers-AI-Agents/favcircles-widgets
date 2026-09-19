@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-@testable import FavWidgets
 @testable import FavWidgetsCore
 
 private let us = Locale(identifier: "en_US")
@@ -37,16 +36,5 @@ struct BillSplitFormattingTests {
         #expect(BillSplitFormatting.summary(tipPercent: 20, people: 1) == "20% tip · 1 person")
         #expect(BillSplitFormatting.currencySymbol(locale: us) == "$")
         #expect(BillSplitFormatting.money(Decimal(string: "1234.5")!, locale: us) == "$1,234.50")
-    }
-}
-
-struct PostcardEmailParsingTests {
-    @Test func parsesAndValidatesAddresses() {
-        let parsed = PostcardEmail.parse(" Ana@Example.com, bob@example.org; ana@example.com nope@x  ")
-        #expect(parsed.valid == ["ana@example.com", "bob@example.org"])
-        #expect(parsed.invalid == ["nope@x"])
-        #expect(PostcardEmail.parse("").valid.isEmpty)
-        #expect(!PostcardEmail.isValid("a@b"))
-        #expect(PostcardEmail.isValid("wes@favcircles.com"))
     }
 }

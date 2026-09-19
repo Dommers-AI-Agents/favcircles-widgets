@@ -194,20 +194,6 @@ enum PostcardMail {
     // MARK: Decoding
 
     private static func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .custom { decoder in
-            let text = try decoder.singleValueContainer().decode(String.self)
-            if let date = PostcardMail.iso.date(from: text) { return date }
-            if let date = PostcardMail.isoPlain.date(from: text) { return date }
-            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Bad date \(text)"))
-        }
-        return try decoder.decode(type, from: data)
+        try WidgetJSON.decode(type, from: data)
     }
-
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-    private static let isoPlain = ISO8601DateFormatter()
 }

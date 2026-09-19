@@ -1,6 +1,5 @@
 import Testing
 import Foundation
-@testable import FavWidgets
 @testable import FavWidgetsCore
 
 // MARK: - Siblings

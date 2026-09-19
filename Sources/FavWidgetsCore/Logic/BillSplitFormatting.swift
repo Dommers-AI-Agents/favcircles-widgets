@@ -1,5 +1,4 @@
 import Foundation
-import FavWidgetsCore
 
 /// Pure formatting for the bill split widget: currency strings, input
 /// parsing, and the share text. No UI, so it is unit-tested directly.
