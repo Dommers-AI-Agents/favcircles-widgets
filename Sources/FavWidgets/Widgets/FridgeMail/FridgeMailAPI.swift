@@ -47,6 +47,14 @@ enum FridgeMailAPI {
         ])
     }
 
+    static func updateRecipient(context: WidgetContext, id: String, name: String, relation: String, address: PostcardMailAddress) async throws -> FridgeMailPlan {
+        let a = address.normalized
+        return try await planCall(context, .put, "widgets/fridgemail/recipients/\(id)", body: [
+            "name": name, "relation": relation,
+            "address": ["line1": a.line1, "line2": a.line2, "city": a.city, "state": a.state, "zip": a.zip]
+        ])
+    }
+
     static func removeRecipient(context: WidgetContext, id: String) async throws -> FridgeMailPlan {
         try await planCall(context, .delete, "widgets/fridgemail/recipients/\(id)")
     }

@@ -81,6 +81,7 @@ struct PostcardFullView: View {
         }
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await seed() }
+        .task { await reconcileMailHistory(); openLaunchedOrder() }
         .task { await loadMailConfig() }
         .onChange(of: mailOn) { on in
             // Start the print upload as soon as they opt in: it has to be

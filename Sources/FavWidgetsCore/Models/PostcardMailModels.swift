@@ -172,16 +172,30 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
     public var recipientName: String
     public var expectedDeliveryDate: String?
     public var cancelableUntil: Date?
+    /// What the server knows about the card itself, so an order this phone
+    /// never recorded (the send looked like a failure, the app was reinstalled)
+    /// can still be shown in history. Absent on records written before 0.18.
+    public var imageUrl: String?
+    public var message: String?
+    public var createdAt: Date?
 
     public init(orderId: String, status: PostcardMailStatus, priceCents: Int, recipientName: String,
-                expectedDeliveryDate: String? = nil, cancelableUntil: Date? = nil) {
+                expectedDeliveryDate: String? = nil, cancelableUntil: Date? = nil,
+                imageUrl: String? = nil, message: String? = nil, createdAt: Date? = nil) {
         self.orderId = orderId
         self.status = status
         self.priceCents = priceCents
         self.recipientName = recipientName
         self.expectedDeliveryDate = expectedDeliveryDate
         self.cancelableUntil = cancelableUntil
+        self.imageUrl = imageUrl
+        self.message = message
+        self.createdAt = createdAt
     }
+
+    /// The history row's id for this order, shared by the send path and the
+    /// reconciler so the two never write the same card twice.
+    public var recordMessageId: String { "mail:\(orderId)" }
 
     /// The line the sent panel and history row show. Leads with the money
     /// position while it still matters, because "am I charged?" is the

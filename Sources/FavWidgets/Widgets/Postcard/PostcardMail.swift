@@ -64,6 +64,9 @@ enum PostcardMail {
         let expectedDeliveryDate: String?
         let cancelableUntil: Date?
         let canCancel: Bool
+        let imageUrl: String?
+        let message: String?
+        let createdAt: Date?
 
         var asRecordOrder: PostcardMailOrder {
             PostcardMailOrder(
@@ -72,7 +75,10 @@ enum PostcardMail {
                 priceCents: amountCents,
                 recipientName: recipientName ?? "",
                 expectedDeliveryDate: expectedDeliveryDate,
-                cancelableUntil: cancelableUntil
+                cancelableUntil: cancelableUntil,
+                imageUrl: imageUrl,
+                message: message,
+                createdAt: createdAt
             )
         }
     }

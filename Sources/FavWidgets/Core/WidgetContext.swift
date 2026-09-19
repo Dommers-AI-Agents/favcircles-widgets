@@ -77,6 +77,11 @@ public final class WidgetContext: ObservableObject {
     /// with a photo already in place. The widget clears it as it reads it, so
     /// the photo is used once and a later visit starts empty.
     public var launchPhoto: WidgetLaunchPhoto?
+    /// A printed-postcard order the host wants shown (the "your postcard is
+    /// printing" push). The postcard page reads and clears it on appear and
+    /// opens that card's detail, topping up history from the server first
+    /// if this phone never recorded the send.
+    public var launchPostcardOrderId: String?
 
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host

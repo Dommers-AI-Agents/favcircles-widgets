@@ -84,14 +84,24 @@ struct FridgeMailAddSheet: View {
 
 /// Name, relation and a US address. The server checks the address with
 /// USPS before it's saved, so a typo is caught here and not at the printer.
+/// Add a grandparent, or change one. The address is checked with the postal
+/// service as it's typed (the same form the postcard uses); a correction is
+/// shown and must be accepted before anything is saved, and a grandparent's
+/// name or address can be changed without removing and re-adding them.
 struct FridgeMailRecipientSheet: View {
     let context: WidgetContext
     @ObservedObject var store: FridgeMailStore
+    /// Set when changing someone who is already on the list.
+    var editing: FridgeMailRecipient? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var name = ""
     @State private var relation = "Grandma"
     @State private var address = PostcardMailAddress()
+    @State private var quote: PostcardMail.Quote?
+    @State private var quoteError: String?
+    @State private var isQuoting = false
+    @State private var quoteTask: Task<Void, Never>?
     @State private var isSaving = false
 
     private static let relations = ["Grandma", "Grandpa", "Nana", "Papa", "Aunt", "Uncle", ""]
@@ -120,60 +130,111 @@ struct FridgeMailRecipientSheet: View {
                     Text("Printed on the card as \"\(relation.isEmpty ? name : "\(relation) \(name)")\".")
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     WidgetUI.header("Address", theme: theme)
-                    WidgetUI.textField("Street address", text: $address.line1, theme: theme, content: .streetAddressLine1)
-                    WidgetUI.textField("Apt, suite (optional)", text: $address.line2, theme: theme, content: .streetAddressLine2)
-                    HStack(spacing: 8) {
-                        WidgetUI.textField("City", text: $address.city, theme: theme, content: .addressCity)
-                        Menu {
-                            ForEach(PostcardMailAddress.states, id: \.self) { code in Button(code) { address.state = code } }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(address.state.isEmpty ? "State" : address.state)
-                                    .foregroundStyle(address.state.isEmpty ? theme.secondaryLabel : theme.label)
-                                Image(systemName: "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
-                            }
-                            .font(.system(size: 15))
-                            .frame(width: 78, height: 38)
-                            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(theme.secondaryBackground))
-                        }
-                    }
-                    WidgetUI.textField("ZIP", text: $address.zip, theme: theme, content: .postalCode, numeric: true, capitalizeAll: true)
-                    Text("US addresses only for now. We check it with USPS before saving.")
+                    MailAddressForm(theme: theme, accent: context.accent, address: $address, quote: quote, quoteError: quoteError,
+                                    isQuoting: isQuoting, showsName: false,
+                                    onAddressSettled: scheduleQuote, onAcceptCorrection: acceptCorrection)
+                    Text("US addresses only for now.")
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
-                    WidgetUI.primaryButton(isSaving ? "Checking the address…" : "Add", color: context.accent) { save() }
+                    WidgetUI.primaryButton(saveTitle, color: context.accent) { save() }
                         .disabled(isSaving || !canSave)
                         .opacity(canSave ? 1 : 0.5)
                 }
                 .padding(16)
             }
             .background(theme.background.ignoresSafeArea())
-            .widgetInlineNavigationTitle("Add a grandparent")
+            .widgetInlineNavigationTitle(editing == nil ? "Add a grandparent" : "Edit \(editing?.displayName ?? "")")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(isSaving) }
+            }
+            .onAppear(perform: prefill)
+        }
+    }
+
+    private var saveTitle: String {
+        if isSaving { return "Saving…" }
+        if isQuoting { return "Checking the address…" }
+        return editing == nil ? "Add" : "Save"
+    }
+
+    /// Everything filled in, and the postal service agreed with it (or the
+    /// person accepted the correction). Never saves an address they haven't
+    /// seen confirmed.
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespaces).isEmpty
+            && addressWithName.isComplete
+            && MailAddressForm.isSettled(addressWithName, quote: quote)
+    }
+
+    private var addressWithName: PostcardMailAddress {
+        var a = address
+        a.name = name.trimmingCharacters(in: .whitespaces)
+        return a
+    }
+
+    private func prefill() {
+        guard let editing, address.line1.isEmpty else { return }
+        name = editing.name
+        relation = editing.relation
+        address = editing.address
+        address.name = editing.name
+        scheduleQuote()
+    }
+
+    /// Re-checks the address a beat after typing stops. The check is metered
+    /// on the vendor's side, so it runs once per settled address rather than
+    /// once per keystroke.
+    private func scheduleQuote() {
+        quoteTask?.cancel()
+        quote = nil
+        quoteError = nil
+        var probe = address
+        probe.name = name.isEmpty ? "Recipient" : name
+        guard probe.isComplete else { return }
+        quoteTask = Task {
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard !Task.isCancelled else { return }
+            isQuoting = true
+            defer { isQuoting = false }
+            do {
+                let result = try await PostcardMail.quote(context: context, address: probe)
+                guard !Task.isCancelled else { return }
+                quote = result
+            } catch {
+                guard !Task.isCancelled else { return }
+                quoteError = error.localizedDescription
             }
         }
     }
 
-    private var canSave: Bool {
-        var a = address
-        a.name = name
-        return a.isComplete
+    /// Accepting the correction writes it into the form; the re-check comes
+    /// back matching and the fields show what will actually print.
+    private func acceptCorrection() {
+        guard let quote else { return }
+        var corrected = quote.address
+        corrected.name = address.name
+        address = corrected
     }
 
     private func save() {
-        guard !isSaving else { return }
+        guard !isSaving, canSave else { return }
         isSaving = true
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
         Task {
             defer { isSaving = false }
             do {
-                let plan = try await FridgeMailAPI.addRecipient(
-                    context: context, name: name.trimmingCharacters(in: .whitespaces), relation: relation, address: address)
+                let plan: FridgeMailPlan
+                if let editing {
+                    plan = try await FridgeMailAPI.updateRecipient(context: context, id: editing.id, name: trimmed, relation: relation, address: address)
+                    context.track("fridgemail_recipient_edited")
+                } else {
+                    plan = try await FridgeMailAPI.addRecipient(context: context, name: trimmed, relation: relation, address: address)
+                    context.track("fridgemail_recipient_added")
+                }
                 store.apply(plan)
-                context.track("fridgemail_recipient_added")
                 context.host.haptic(.success)
                 dismiss()
             } catch {
-                context.host.presentAlert(WidgetAlert(title: "Couldn't add them", message: error.localizedDescription))
+                context.host.presentAlert(WidgetAlert(title: editing == nil ? "Couldn't add them" : "Couldn't save that", message: error.localizedDescription))
             }
         }
     }

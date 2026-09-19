@@ -9,16 +9,25 @@ extension FridgeMailFullView {
             WidgetUI.header("Grandparents", theme: theme)
             ForEach(plan.recipients) { recipient in
                 HStack(spacing: 12) {
-                    ZStack {
-                        Circle().fill(context.accent.opacity(0.15))
-                        Image(systemName: "house.fill").foregroundStyle(context.accent)
+                    // Tap the person to change their name or address.
+                    Button { recipientSheet = RecipientSheet(recipient: recipient) } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle().fill(context.accent.opacity(0.15))
+                                Image(systemName: "house.fill").foregroundStyle(context.accent)
+                            }
+                            .frame(width: 40, height: 40)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(recipient.displayName).font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).lineLimit(1)
+                                Text(recipient.address.oneLine).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
+                                Text("Tap to edit").font(.system(size: 11)).foregroundStyle(context.accent)
+                            }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
                     }
-                    .frame(width: 40, height: 40)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(recipient.displayName).font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).lineLimit(1)
-                        Text(recipient.address.oneLine).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
-                    }
-                    Spacer()
+                    .buttonStyle(.plain)
+                    .disabled(busy != nil)
                     Button { removeRecipient(recipient) } label: {
                         Image(systemName: "minus.circle").font(.system(size: 18)).foregroundStyle(theme.secondaryLabel)
                             .frame(width: 32, height: 32)
@@ -30,7 +39,7 @@ extension FridgeMailFullView {
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
             }
             if plan.recipients.count < 3 {
-                Button { showRecipientSheet = true } label: { addLabel(plan.recipients.isEmpty ? "Add a grandparent" : "Add another", symbol: "plus") }
+                Button { recipientSheet = .add } label: { addLabel(plan.recipients.isEmpty ? "Add a grandparent" : "Add another", symbol: "plus") }
                     .buttonStyle(.plain)
             } else {
                 Text("Three is the most Fridge Mail sends each week.").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)

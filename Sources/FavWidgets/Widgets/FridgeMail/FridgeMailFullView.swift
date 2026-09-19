@@ -13,7 +13,7 @@ struct FridgeMailFullView: View {
     @State var showCamera = false
     @State var pickedImage: PostcardPlatformImage?
     @State var showAddSheet = false
-    @State var showRecipientSheet = false
+    @State var recipientSheet: RecipientSheet?
     /// Which button is mid-flight, so the rest stay tappable but that one
     /// can't be double-tapped.
     @State var busy: String?
@@ -73,9 +73,16 @@ struct FridgeMailFullView: View {
                 FridgeMailAddSheet(context: context, store: store, image: image)
             }
         }
-        .sheet(isPresented: $showRecipientSheet) {
-            FridgeMailRecipientSheet(context: context, store: store)
+        .sheet(item: $recipientSheet) { item in
+            FridgeMailRecipientSheet(context: context, store: store, editing: item.recipient)
         }
+    }
+
+    /// Which grandparent sheet is up: a blank one, or one filled in for editing.
+    struct RecipientSheet: Identifiable {
+        let recipient: FridgeMailRecipient?
+        var id: String { recipient?.id ?? "new" }
+        static let add = RecipientSheet(recipient: nil)
     }
 
     // MARK: - Explainer
