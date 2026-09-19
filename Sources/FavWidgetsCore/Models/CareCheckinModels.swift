@@ -95,9 +95,34 @@ public struct CareQuestion: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// A sibling on someone else's check-in. One child sets the arrangement up and
+/// the rest join it, so the parent is asked once rather than once per child.
+/// The parent decides who is on this list — agreeing to one person seeing how
+/// you are is not agreeing to four.
+public struct CareWatcher: Decodable, Equatable, Identifiable, Sendable {
+    public var userId: String
+    public var name: String
+    /// "invited" (waiting on the parent) or "active".
+    public var status: String
+    public var invitedBy: String?
+    public var acceptedAt: Date?
+
+    public var id: String { userId }
+    public var isPending: Bool { status == "invited" }
+
+    public init(userId: String, name: String, status: String, invitedBy: String? = nil, acceptedAt: Date? = nil) {
+        self.userId = userId
+        self.name = name
+        self.status = status
+        self.invitedBy = invitedBy
+        self.acceptedAt = acceptedAt
+    }
+}
+
 public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public var planId: String
-    /// "owner" (the child who set it up) or "parent" (the one being asked).
+    /// "owner" (the child who set it up), "parent" (the one being asked),
+    /// "watcher" (a sibling the parent let in) or "pending_watcher".
     public var role: String
     public var ownerId: String
     public var ownerName: String
@@ -117,9 +142,16 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public var lastAnsweredAt: Date?
     public var openAsk: CareAsk?
     public var lastAnswer: CareAsk?
+    public var watchers: [CareWatcher]
 
     public var id: String { planId }
     public var isOwner: Bool { role == "owner" }
+    /// Reads the answers but never changes the schedule.
+    public var isWatcher: Bool { role == "watcher" }
+    public var isParent: Bool { role == "parent" }
+    /// Siblings waiting on this parent to say yes.
+    public var pendingWatchers: [CareWatcher] { watchers.filter(\.isPending) }
+    public var activeWatchers: [CareWatcher] { watchers.filter { $0.status == "active" } }
     public var isInvited: Bool { status == "invited" }
     public var isActive: Bool { status == "active" }
     public var isPaused: Bool { status == "paused" }
@@ -129,7 +161,8 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public init(planId: String, role: String, ownerId: String, ownerName: String, parentId: String, parentName: String,
                 status: String, questions: [CareQuestion] = [], usesDefaultQuestions: Bool = true, defaultQuestions: [String] = [],
                 times: [String] = ["08:30", "13:00", "19:00"], timezone: String? = nil, createdAt: Date? = nil, acceptedAt: Date? = nil,
-                lastAskedAt: Date? = nil, lastAnsweredAt: Date? = nil, openAsk: CareAsk? = nil, lastAnswer: CareAsk? = nil) {
+                lastAskedAt: Date? = nil, lastAnsweredAt: Date? = nil, openAsk: CareAsk? = nil, lastAnswer: CareAsk? = nil,
+                watchers: [CareWatcher] = []) {
         self.planId = planId
         self.role = role
         self.ownerId = ownerId
@@ -148,6 +181,39 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         self.lastAnsweredAt = lastAnsweredAt
         self.openAsk = openAsk
         self.lastAnswer = lastAnswer
+        self.watchers = watchers
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case planId, role, ownerId, ownerName, parentId, parentName, status, questions
+        case usesDefaultQuestions, defaultQuestions, times, timezone, createdAt, acceptedAt
+        case lastAskedAt, lastAnsweredAt, openAsk, lastAnswer, watchers
+    }
+
+    // Hand-written so a field the server has not shipped yet is a default
+    // rather than a decode failure. A widget that refuses to parse is a blank
+    // screen, and this one is how a family finds out a parent went quiet.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        planId = try c.decode(String.self, forKey: .planId)
+        role = try c.decodeIfPresent(String.self, forKey: .role) ?? "owner"
+        ownerId = try c.decodeIfPresent(String.self, forKey: .ownerId) ?? ""
+        ownerName = try c.decodeIfPresent(String.self, forKey: .ownerName) ?? ""
+        parentId = try c.decodeIfPresent(String.self, forKey: .parentId) ?? ""
+        parentName = try c.decodeIfPresent(String.self, forKey: .parentName) ?? ""
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? "invited"
+        questions = try c.decodeIfPresent([CareQuestion].self, forKey: .questions) ?? []
+        usesDefaultQuestions = try c.decodeIfPresent(Bool.self, forKey: .usesDefaultQuestions) ?? true
+        defaultQuestions = try c.decodeIfPresent([String].self, forKey: .defaultQuestions) ?? []
+        times = try c.decodeIfPresent([String].self, forKey: .times) ?? ["08:30", "13:00", "19:00"]
+        timezone = try c.decodeIfPresent(String.self, forKey: .timezone)
+        createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        acceptedAt = try c.decodeIfPresent(Date.self, forKey: .acceptedAt)
+        lastAskedAt = try c.decodeIfPresent(Date.self, forKey: .lastAskedAt)
+        lastAnsweredAt = try c.decodeIfPresent(Date.self, forKey: .lastAnsweredAt)
+        openAsk = try c.decodeIfPresent(CareAsk.self, forKey: .openAsk)
+        lastAnswer = try c.decodeIfPresent(CareAsk.self, forKey: .lastAnswer)
+        watchers = try c.decodeIfPresent([CareWatcher].self, forKey: .watchers) ?? []
     }
 }
 
@@ -155,13 +221,27 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
 public struct CarePlans: Decodable, Equatable, Sendable {
     public var asOwner: [CarePlan]
     public var asParent: [CarePlan]
+    /// Plans someone else set up that this person was let in on.
+    public var asWatcher: [CarePlan]
 
-    public init(asOwner: [CarePlan] = [], asParent: [CarePlan] = []) {
+    public init(asOwner: [CarePlan] = [], asParent: [CarePlan] = [], asWatcher: [CarePlan] = []) {
         self.asOwner = asOwner
         self.asParent = asParent
+        self.asWatcher = asWatcher
     }
 
-    public var isEmpty: Bool { asOwner.isEmpty && asParent.isEmpty }
+    enum CodingKeys: String, CodingKey { case asOwner, asParent, asWatcher }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        asOwner = try c.decodeIfPresent([CarePlan].self, forKey: .asOwner) ?? []
+        asParent = try c.decodeIfPresent([CarePlan].self, forKey: .asParent) ?? []
+        asWatcher = try c.decodeIfPresent([CarePlan].self, forKey: .asWatcher) ?? []
+    }
+
+    public var isEmpty: Bool { asOwner.isEmpty && asParent.isEmpty && asWatcher.isEmpty }
+    /// Everything this person follows, however they came to it.
+    public var following: [CarePlan] { asOwner + asWatcher }
     /// Invitations waiting on this person, then open questions for them.
     public var invitations: [CarePlan] { asParent.filter(\.isInvited) }
     public var openAsks: [(plan: CarePlan, ask: CareAsk)] {

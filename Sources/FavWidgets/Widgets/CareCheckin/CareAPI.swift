@@ -31,6 +31,31 @@ enum CareAPI {
         try await plan(context, .post, "widgets/care/plans/\(planId)/respond", body: ["accept": accept, "timezone": TimeZone.current.identifier])
     }
 
+    // MARK: - Siblings
+    //
+    // A sibling asks to join, or the owner invites one; either way the PARENT
+    // answers. `watcherId` omitted means "me".
+
+    static func requestToJoin(context: WidgetContext, planId: String, watcherId: String? = nil) async throws -> CarePlan {
+        var body: [String: Any] = [:]
+        if let watcherId { body["watcherId"] = watcherId }
+        return try await plan(context, .post, "widgets/care/plans/\(planId)/watchers", body: body)
+    }
+
+    /// Join whatever plan already exists on this parent — a sibling knows who
+    /// they meant to watch, not the id of the arrangement someone else made.
+    static func requestToJoinForParent(context: WidgetContext, parentId: String) async throws -> CarePlan {
+        try await plan(context, .post, "widgets/care/join", body: ["parentId": parentId])
+    }
+
+    static func respondToWatcher(context: WidgetContext, planId: String, watcherId: String, accept: Bool) async throws -> CarePlan {
+        try await plan(context, .post, "widgets/care/plans/\(planId)/watchers/\(watcherId)/respond", body: ["accept": accept])
+    }
+
+    static func removeWatcher(context: WidgetContext, planId: String, watcherId: String) async throws -> CarePlan {
+        try await plan(context, .delete, "widgets/care/plans/\(planId)/watchers/\(watcherId)")
+    }
+
     static func asks(context: WidgetContext, planId: String) async throws -> [CareAsk] {
         try WidgetJSON.decode(AsksResponse.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/care/asks?planId=\(planId)&limit=60"))).asks
     }

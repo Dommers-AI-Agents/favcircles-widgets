@@ -19,8 +19,12 @@ struct CareCheckinFullView: View {
                 if let plans = store.plans {
                     if plans.isEmpty { explainer }
                     ForEach(plans.invitations) { invitation(plan: $0) }
+                    // Siblings waiting on this parent to let them in.
+                    ForEach(plans.asParent.flatMap { plan in plan.pendingWatchers.map { (plan, $0) } }, id: \.1.id) {
+                        watcherRequest(plan: $0.0, watcher: $0.1)
+                    }
                     ForEach(plans.asParent.filter { !$0.isInvited && $0.status != "declined" }) { askedSection(plan: $0) }
-                    ownedSection(plans.asOwner)
+                    ownedSection(plans.following)
                 } else if let error = store.loadError {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(error).font(.system(size: 14)).foregroundStyle(theme.danger)
@@ -79,6 +83,61 @@ struct CareCheckinFullView: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// The parent decides who joins. Agreeing to one child seeing how you are
+    /// is not agreeing to the whole family, so this is asked each time rather
+    /// than left to whoever set the check-in up.
+    private func watcherRequest(plan: CarePlan, watcher: CareWatcher) -> some View {
+        let theme = context.theme
+        return VStack(alignment: .leading, spacing: 10) {
+            WidgetUI.header("Someone else wants to join", theme: theme)
+            Text("\(watcher.name) would like to see your check-ins too")
+                .font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.label)
+            Text("They'd see the same answers as \(plan.ownerName), and hear if you haven't answered. You won't get any extra questions.")
+                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                WidgetUI.primaryButton(busy == "w-yes-\(watcher.userId)" ? "…" : "Yes, that's fine", color: context.accent) {
+                    run("w-yes-\(watcher.userId)") {
+                        try await CareAPI.respondToWatcher(context: context, planId: plan.planId, watcherId: watcher.userId, accept: true)
+                    }
+                }
+                Button("No thanks") {
+                    run("w-no-\(watcher.userId)") {
+                        try await CareAPI.respondToWatcher(context: context, planId: plan.planId, watcherId: watcher.userId, accept: false)
+                    }
+                }
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                .frame(width: 100)
+            }
+            .disabled(busy != nil)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// Who else is on this check-in, shown on the child's side so it is obvious
+    /// the parent is asked once and the family shares one arrangement.
+    @ViewBuilder
+    private func familyRow(plan: CarePlan) -> some View {
+        let theme = context.theme
+        if !plan.watchers.isEmpty || plan.isOwner {
+            VStack(alignment: .leading, spacing: 6) {
+                if !plan.activeWatchers.isEmpty {
+                    Text("Also watching: " + plan.activeWatchers.map(\.name).joined(separator: ", "))
+                        .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                }
+                ForEach(plan.pendingWatchers) { w in
+                    Text("\(w.name) asked to join — waiting on \(plan.parentName)")
+                        .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                }
+                if plan.isWatcher {
+                    Text("\(plan.ownerName) set this up. You see the answers; they choose the times.")
+                        .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func askedSection(plan: CarePlan) -> some View {
@@ -157,6 +216,7 @@ struct CareCheckinFullView: View {
                                     .padding(.horizontal, 6).padding(.vertical, 2)
                                     .background(Capsule().fill(plan.isActive ? context.accent : theme.tertiaryBackground))
                             }
+                            familyRow(plan: plan)
                             Text(CareCopy.ownerLine(plan, calendar: context.calendar))
                                 .font(.system(size: 12))
                                 .foregroundStyle(plan.openAsk.flatMap(\.dueBy).map { $0 <= Date() } == true ? theme.warning : theme.secondaryLabel)
@@ -226,6 +286,10 @@ struct CareInvitePicker: View {
     @State private var loading = true
     @State private var error: String?
     @State private var creating: String?
+    /// A plan someone else already made on this person, offered instead of a
+    /// duplicate that would ask them twice.
+    struct JoinOffer: Identifiable { let contact: WidgetContact; let message: String; var id: String { contact.id } }
+    @State private var joinOffer: JoinOffer?
     @State private var query = ""
 
     private var filtered: [WidgetContact] {
@@ -277,6 +341,15 @@ struct CareInvitePicker: View {
             .background(theme.background.ignoresSafeArea())
             .widgetInlineNavigationTitle("Who to check on")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .alert("Already being checked on", isPresented: Binding(
+                get: { joinOffer != nil },
+                set: { if !$0 { joinOffer = nil } }
+            ), presenting: joinOffer) { offer in
+                Button("Ask to join") { join(offer.contact) }
+                Button("Not now", role: .cancel) { joinOffer = nil }
+            } message: { offer in
+                Text(offer.message)
+            }
             .task {
                 do { contacts = try await context.host.fetchConnections().sorted { $0.displayName < $1.displayName } }
                 catch { self.error = error.localizedDescription }
@@ -295,8 +368,38 @@ struct CareInvitePicker: View {
                 context.track("care_plan_created")
                 context.host.haptic(.success)
                 dismiss()
+            } catch let api as WidgetAPIError where api.code == "plan_exists" {
+                // Someone in the family already set this up. A second plan
+                // would ask the parent twice on two schedules, so offer to
+                // join theirs instead of leaving a dead end.
+                offerToJoin(contact, because: api.message)
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't invite them", message: error.localizedDescription))
+            }
+        }
+    }
+
+    private func offerToJoin(_ contact: WidgetContact, because message: String) {
+        joinOffer = JoinOffer(contact: contact, message: message)
+    }
+
+    private func join(_ contact: WidgetContact) {
+        joinOffer = nil
+        creating = contact.id
+        Task {
+            defer { creating = nil }
+            do {
+                let plan = try await CareAPI.requestToJoinForParent(context: context, parentId: contact.id)
+                store.apply(plan)
+                context.track("care_join_requested")
+                context.host.haptic(.success)
+                context.host.presentAlert(WidgetAlert(
+                    title: "Asked to join",
+                    message: "\(plan.parentName) decides who sees their check-ins. You'll hear once they answer."
+                ))
+                dismiss()
+            } catch {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't ask to join", message: error.localizedDescription))
             }
         }
     }
