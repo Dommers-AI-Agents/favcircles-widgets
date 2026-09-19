@@ -166,3 +166,76 @@ struct PostcardMailAddressProblemTests {
         #expect(empty.firstProblem?.contains("name") == true)
     }
 }
+
+// The postal service will take a street, a city and a WRONG zip, find the one
+// real address that fits, and return it as deliverable. Wes typed a Charlotte
+// ZIP under a Belmar NJ street; verification came back "WALL TOWNSHIP NJ 07719"
+// and the card was sendable to an address he never saw.
+@Suite("Corrections that change the place need a yes")
+struct PostcardMailCorrectionTests {
+    private let typed = PostcardMailAddress(name: "The Sgroi's", line1: "1516 Bay Plaza",
+                                            city: "Belmar", state: "NJ", zip: "28203")
+
+    @Test func aRewrittenZipAndCityIsMaterial() {
+        let corrected = PostcardMailAddress(name: "", line1: "1516 BAY PLZ",
+                                            city: "WALL TOWNSHIP", state: "NJ", zip: "07719")
+        #expect(corrected.differsMaterially(from: typed))
+    }
+
+    @Test func tidyingIsNotMaterial() {
+        // Same door. Upper case, "PLZ" for "Plaza", a +4 the service added.
+        let honest = PostcardMailAddress(name: "The Sgroi's", line1: "1516 Bay Plaza",
+                                         city: "Belmar", state: "NJ", zip: "07719")
+        let tidied = PostcardMailAddress(name: "", line1: "1516 BAY PLZ",
+                                         city: "BELMAR", state: "NJ", zip: "07719-2084")
+        #expect(!tidied.differsMaterially(from: honest))
+    }
+
+    @Test func aDifferentHouseNumberIsMaterial() {
+        let honest = PostcardMailAddress(line1: "1516 Bay Plaza", city: "Belmar", state: "NJ", zip: "07719")
+        let other = PostcardMailAddress(line1: "1518 BAY PLZ", city: "BELMAR", state: "NJ", zip: "07719")
+        #expect(other.differsMaterially(from: honest))
+    }
+
+    @Test func aDifferentStateIsMaterial() {
+        let honest = PostcardMailAddress(line1: "1 Main St", city: "Portland", state: "OR", zip: "97201")
+        let other = PostcardMailAddress(line1: "1 MAIN ST", city: "PORTLAND", state: "ME", zip: "04101")
+        #expect(other.differsMaterially(from: honest))
+    }
+
+    @Test func nameIsNeverMaterial() {
+        // Verification doesn't check names; the form keeps the typed one.
+        var renamed = typed
+        renamed.name = ""
+        #expect(!renamed.differsMaterially(from: typed))
+    }
+}
+
+@Suite("Each field reports its own problem")
+struct PostcardMailFieldProblemTests {
+    @Test func theSevenDigitZipIsFlaggedOnTheZipFieldAlone() {
+        let a = PostcardMailAddress(name: "The Sgroi's", line1: "1516 Bay Plaza",
+                                    city: "Belmar", state: "NJ", zip: "28203555")
+        #expect(a.problem(for: .name) == nil)
+        #expect(a.problem(for: .line1) == nil)
+        #expect(a.problem(for: .city) == nil)
+        #expect(a.problem(for: .state) == nil)
+        #expect(a.problem(for: .zip)?.contains("5 digits") == true)
+    }
+
+    @Test func emptyRequiredFieldsEachSaySo() {
+        let empty = PostcardMailAddress()
+        for field in PostcardMailAddress.Field.allCases {
+            #expect(empty.problem(for: field) != nil, "\(field) should report a problem when empty")
+        }
+    }
+
+    @Test func zipPlusFourPasses() {
+        #expect(PostcardMailAddress(zip: "07719-2084").problem(for: .zip) == nil)
+        #expect(PostcardMailAddress(zip: "07719").problem(for: .zip) == nil)
+    }
+
+    @Test func zip5DropsTheSuffix() {
+        #expect(PostcardMailAddress(zip: "07719-2084").zip5 == "07719")
+    }
+}

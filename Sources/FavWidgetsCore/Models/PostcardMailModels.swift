@@ -33,8 +33,45 @@ public struct PostcardMailAddress: Codable, Equatable, Sendable {
         )
     }
 
-    /// The first thing stopping this address from being mailable, phrased for
-    /// the person looking at the form, in the order they read it.
+    /// The fields a person fills in, in the order they read them. `line2` is
+    /// optional and never has a problem.
+    public enum Field: CaseIterable, Sendable {
+        case name, line1, city, state, zip
+    }
+
+    public func value(for field: Field) -> String {
+        let a = normalized
+        switch field {
+        case .name: return a.name
+        case .line1: return a.line1
+        case .city: return a.city
+        case .state: return a.state
+        case .zip: return a.zip
+        }
+    }
+
+    /// What's wrong with one field, phrased for the person looking at it —
+    /// or nil if that field is fine. Shown right under the field, because a
+    /// message at the bottom of the form sits behind the keyboard while the
+    /// person is typing into the field it's about.
+    public func problem(for field: Field) -> String? {
+        let value = value(for: field)
+        switch field {
+        case .name: return value.isEmpty ? "Add the recipient's name." : nil
+        case .line1: return value.isEmpty ? "Add the street address." : nil
+        case .city: return value.isEmpty ? "Add the city." : nil
+        case .state: return PostcardMailAddress.states.contains(value) ? nil : "Choose the state."
+        case .zip:
+            if value.isEmpty { return "Add the ZIP code." }
+            if value.range(of: #"^\d{5}(-\d{4})?$"#, options: .regularExpression) == nil {
+                return "ZIP codes are 5 digits, like 95014."
+            }
+            return nil
+        }
+    }
+
+    /// The first thing stopping this address from being mailable, in the
+    /// order the person reads the form.
     ///
     /// This exists because "Fill in the mailing address" is a lie once every
     /// field has something in it. App Review typed a ten-digit number into ZIP,
@@ -42,14 +79,8 @@ public struct PostcardMailAddress: Codable, Equatable, Sendable {
     /// "the send button was not responsive" — reasonably, since the app was
     /// telling them to do something they had already done. Name the field.
     public var firstProblem: String? {
-        let a = normalized
-        if a.name.isEmpty { return "Add the recipient's name." }
-        if a.line1.isEmpty { return "Add the street address." }
-        if a.city.isEmpty { return "Add the city." }
-        if !PostcardMailAddress.states.contains(a.state) { return "Choose the state." }
-        if a.zip.isEmpty { return "Add the ZIP code." }
-        if a.zip.range(of: #"^\d{5}(-\d{4})?$"#, options: .regularExpression) == nil {
-            return "That ZIP code needs to be 5 digits, like 95014."
+        for field in Field.allCases {
+            if let problem = problem(for: field) { return problem }
         }
         return nil
     }
@@ -58,6 +89,36 @@ public struct PostcardMailAddress: Codable, Equatable, Sendable {
     /// real verdict is the address check, and rejecting odd-but-valid
     /// addresses on the device would block real mail.
     public var isComplete: Bool { firstProblem == nil }
+
+    /// The five-digit part, so a "+4" the postal service added doesn't read as
+    /// a change of ZIP.
+    public var zip5: String { String(normalized.zip.prefix(5)) }
+
+    /// Does the address the postal service returned describe a different
+    /// place from the one the person typed?
+    ///
+    /// Address verification rewrites everything — "1516 Bay Plaza" comes back
+    /// "1516 BAY PLZ", and that's fine, it's the same door. But it will also
+    /// happily take a street, a city and a wrong ZIP, find the one real address
+    /// that matches, and return it as deliverable. Someone who typed a Charlotte
+    /// ZIP under a New Jersey street had made a mistake somewhere, and the card
+    /// must not go out until they've seen the correction and said yes.
+    ///
+    /// Material: a different ZIP, state, city or house number. Not material:
+    /// case, abbreviations, a ZIP+4 suffix, a name (never verified).
+    public func differsMaterially(from typed: PostcardMailAddress) -> Bool {
+        let mine = normalized
+        let theirs = typed.normalized
+        if mine.zip5 != theirs.zip5 { return true }
+        if mine.state != theirs.state { return true }
+        if mine.city.uppercased() != theirs.city.uppercased() { return true }
+        if mine.houseNumber != theirs.houseNumber { return true }
+        return false
+    }
+
+    private var houseNumber: String {
+        normalized.line1.split(separator: " ").first.map { String($0).uppercased() } ?? ""
+    }
 
     /// "123 Main St, Austin TX 78701"
     public var oneLine: String {

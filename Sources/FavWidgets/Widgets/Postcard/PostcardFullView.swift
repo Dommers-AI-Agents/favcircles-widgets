@@ -174,7 +174,26 @@ struct PostcardFullView: View {
     private var canMail: Bool {
         mailOn && mailAvailable && mailAddress.isComplete
             && mailQuote?.deliverable == true
+            && !mailCorrectionPending
             && !mailMessageTooLong
+    }
+
+    /// The postal service found a different place from the one typed — a
+    /// different ZIP, city, state or house number — and the person hasn't
+    /// accepted it yet. A Charlotte ZIP under a New Jersey street used to sail
+    /// through here: verification "fixed" it, the card was sendable, and it
+    /// would have gone to an address the person never saw.
+    private var mailCorrectionPending: Bool {
+        guard let quote = mailQuote, quote.deliverable else { return false }
+        return quote.address.differsMaterially(from: mailAddress)
+    }
+
+    /// Accepting the correction means writing it into the form. The fields
+    /// then show what will actually print, the re-check comes back matching,
+    /// and there's no separate "confirmed" state to get out of sync.
+    private func acceptMailCorrection() {
+        guard let quote = mailQuote else { return }
+        mailAddress = applyingName(quote.address)
     }
 
     /// The printed back holds less than the digital card's 500 characters.
@@ -393,7 +412,8 @@ struct PostcardFullView: View {
                     quote: mailQuote,
                     quoteError: mailQuoteError,
                     isQuoting: isQuoting,
-                    onAddressSettled: scheduleQuote
+                    onAddressSettled: scheduleQuote,
+                    onAcceptCorrection: acceptMailCorrection
                 )
             }
 
@@ -433,6 +453,7 @@ struct PostcardFullView: View {
                 return "We couldn't check that address: \(failure)"
             }
             if mailQuote?.deliverable == false { return "We couldn't find that address. Check the street, city, state and ZIP." }
+            if mailCorrectionPending { return "Check the corrected address above before sending." }
             if mailQuote == nil { return "Checking the mailing address…" }
         }
         return "Choose a connection and/or enter an email, or just share the card."
