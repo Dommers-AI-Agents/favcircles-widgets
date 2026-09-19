@@ -136,10 +136,25 @@ struct PostcardFullView: View {
 
     private var caption: String { PostcardCopy.caption(placeName: placeName) }
     private var emailAddresses: (valid: [String], invalid: [String]) { PostcardEmail.parse(emailText) }
+    /// The rule itself lives in FavWidgetsCore, under test — it has been wrong
+    /// twice, once refusing with a reason that contradicted the screen and once
+    /// allowing a send that quietly dropped the printed card.
     private var canSend: Bool {
-        photo != nil && !isSending && emailAddresses.invalid.isEmpty
-            && (recipient != nil || !emailAddresses.valid.isEmpty || canMail)
-            && emailAddresses.valid.count <= PostcardEmail.maxAddresses
+        PostcardSendGate.canSend(.init(
+            hasPhoto: photo != nil,
+            isSending: isSending,
+            hasInvalidEmail: !emailAddresses.invalid.isEmpty,
+            tooManyEmails: emailAddresses.valid.count > PostcardEmail.maxAddresses,
+            hasDigitalRecipient: recipient != nil || !emailAddresses.valid.isEmpty,
+            mailRequested: mailOn && mailAvailable,
+            mailReady: canMail
+        ))
+    }
+
+    /// They asked for a printed card and it isn't mailable yet — used by the
+    /// hint so it explains the wait rather than leaving a dead button.
+    private var mailRequestedButNotReady: Bool {
+        mailOn && mailAvailable && !canMail
     }
 
     /// The paid option is offered only when the server has it switched on
@@ -411,6 +426,12 @@ struct PostcardFullView: View {
             // full and one of them still wrong.
             if let problem = mailAddress.firstProblem { return problem }
             if isQuoting { return "Checking the mailing address…" }
+            // A failed CHECK is not a pending one. Without this the hint reads
+            // "Checking the mailing address…" forever behind a button that will
+            // never enable — the same dead end that got 1.3.3 rejected.
+            if let failure = mailQuoteError {
+                return "We couldn't check that address: \(failure)"
+            }
             if mailQuote?.deliverable == false { return "We couldn't find that address. Check the street, city, state and ZIP." }
             if mailQuote == nil { return "Checking the mailing address…" }
         }
