@@ -25,6 +25,8 @@ struct ActiveSessionView: View {
     private var session: WorkoutSession { settings.model.activeSession ?? WorkoutSession(name: "Workout") }
     private var completedCount: Int { WorkoutSessionLogic.completedSetCount(session) }
     private var exerciseIds: [String] { WorkoutSessionLogic.orderedExerciseIds(in: session) }
+    /// One pass over the sets per body, instead of one filter per exercise.
+    private var setsByExercise: [String: [SetEntry]] { Dictionary(grouping: session.sets, by: \.exerciseId) }
     /// Nothing ticked and nothing typed: there is nothing to save yet.
     private var isEmptyWorkout: Bool { !WorkoutSessionLogic.hasUserData(session) }
     private var cardioIds: [UUID] { session.cardio.map(\.id) }
@@ -228,7 +230,7 @@ struct ActiveSessionView: View {
 
     @ViewBuilder
     private func exerciseBlock(_ exerciseId: String) -> some View {
-        let sets = session.sets.filter { $0.exerciseId == exerciseId }
+        let sets = setsByExercise[exerciseId] ?? []
         let name = settings.model.exercise(id: exerciseId)?.name ?? "Exercise"
         let best = settings.model.prsByExercise[exerciseId]
         let targetReps = WorkoutSessionLogic.targetReps(for: exerciseId, in: session, routines: settings.model.routines + ExerciseCatalog.starterRoutines)
@@ -389,7 +391,7 @@ private struct ExerciseReorderView: View {
             .padding(20)
             List {
                 ForEach(WorkoutSessionLogic.orderedExerciseIds(in: session), id: \.self) { id in
-                    let count = session.sets.filter { $0.exerciseId == id }.count
+                    let count = session.sets.reduce(0) { $0 + ($1.exerciseId == id ? 1 : 0) }
                     HStack {
                         Text(settings.model.exercise(id: id)?.name ?? "Exercise")
                             .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)

@@ -151,7 +151,7 @@ struct SleepSoundsFullView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(group).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
                     LazyVGrid(columns: columns, spacing: 10) {
-                        ForEach(SleepSoundCatalog.all.filter { $0.group == group }) { sound in
+                        ForEach(SleepSoundCatalog.byGroup[group] ?? []) { sound in
                             tile(sound)
                         }
                     }

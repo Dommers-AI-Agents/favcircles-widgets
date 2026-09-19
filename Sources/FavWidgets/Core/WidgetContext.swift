@@ -103,6 +103,13 @@ public final class WidgetContext: ObservableObject {
     /// the card and the full view.
     private var transientObjects: [String: AnyObject] = [:]
 
+    /// Drops every transient object (stores, polling pools). The tab calls
+    /// this when the widget is switched off, so a hidden widget stops
+    /// holding its feeds and quotes for the life of the app.
+    public func clearTransients() {
+        transientObjects.removeAll()
+    }
+
     public func transient<T: AnyObject>(_ key: String, make: () -> T) -> T {
         if let existing = transientObjects[key] as? T { return existing }
         let object = make()

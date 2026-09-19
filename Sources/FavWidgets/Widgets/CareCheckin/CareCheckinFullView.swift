@@ -443,7 +443,7 @@ struct CarePlanDetailView: View {
             .background(theme.background.ignoresSafeArea())
             .widgetInlineNavigationTitle(plan?.parentName ?? "Check-in")
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .task { history = (try? await CareAPI.asks(context: context, planId: planId)) ?? [] }
+            .task { history = await store.history(context: context, planId: planId) }
         }
     }
 

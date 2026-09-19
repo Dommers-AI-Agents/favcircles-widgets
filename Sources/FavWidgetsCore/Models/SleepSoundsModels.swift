@@ -46,6 +46,8 @@ public enum SleepSoundCatalog {
 
     public static func sound(id: String) -> SleepSound? { all.first { $0.id == id } }
     public static let groups: [String] = ["Nature", "Indoors", "Noise"]
+    /// Tiles by group, built once; the mixer grid reads it per row.
+    public static let byGroup: [String: [SleepSound]] = Dictionary(grouping: all, by: \.group)
 }
 
 /// A named set of levels, 0…1 per sound id. Absent = off.

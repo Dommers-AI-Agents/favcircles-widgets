@@ -132,6 +132,7 @@ public final class WidgetsTabModel: ObservableObject {
     public func setEnabled(_ enabled: Bool, id: String) {
         prefs.update { $0.setEnabled(enabled, id: id) }
         host.track(WidgetAnalyticsEvent("widget_toggled", ["widget_id": id, "enabled": enabled ? "1" : "0"]))
+        if !enabled { contexts[id]?.clearTransients() }
         recomputeVisible()
     }
 

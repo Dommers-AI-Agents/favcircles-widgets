@@ -107,5 +107,17 @@ final class CareStore: RemoteStore {
     func remove(planId: String) {
         plans?.asOwner.removeAll { $0.planId == planId }
         plans?.asParent.removeAll { $0.planId == planId }
+        histories.removeValue(forKey: planId)
+    }
+
+    /// Answer history per plan, fetched once per store rather than on every
+    /// open of the detail sheet. `apply` on an answer invalidates it.
+    @Published private(set) var histories: [String: [CareAsk]] = [:]
+
+    func history(context: WidgetContext, planId: String, refresh: Bool = false) async -> [CareAsk] {
+        if !refresh, let cached = histories[planId] { return cached }
+        let asks = (try? await CareAPI.asks(context: context, planId: planId)) ?? histories[planId] ?? []
+        histories[planId] = asks
+        return asks
     }
 }
