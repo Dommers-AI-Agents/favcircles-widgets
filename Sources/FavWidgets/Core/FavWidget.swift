@@ -39,6 +39,7 @@ public enum FavWidgetRegistry {
         FridgeMailWidget(),
         SleepSoundsWidget(),
         CareCheckinWidget(),
+        QuotesWidget(),
         HeartbeatWidget()
     ]
 
