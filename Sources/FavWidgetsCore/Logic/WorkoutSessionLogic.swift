@@ -72,6 +72,11 @@ public enum WorkoutSessionLogic {
         session.sets.filter { $0.completedAt != nil }.count
     }
 
+    /// Anything worth saving: a set with data, or a cardio entry with data.
+    public static func hasUserData(_ session: WorkoutSession) -> Bool {
+        session.sets.contains(where: holdsUserData) || session.cardio.contains(where: \.holdsUserData)
+    }
+
     public static func duration(of session: WorkoutSession, now: Date = Date()) -> TimeInterval {
         max(0, (session.endedAt ?? now).timeIntervalSince(session.startedAt))
     }
@@ -90,6 +95,11 @@ public enum WorkoutSessionLogic {
         var finished = session
         finished.endedAt = endedAt
         finished.sets = session.sets.filter(holdsUserData)
+        finished.cardio = session.cardio.filter(\.holdsUserData).map { entry in
+            var e = entry
+            if e.completedAt == nil { e.completedAt = endedAt }
+            return e
+        }
         var completedOnly = finished
         completedOnly.sets = finished.sets.filter { $0.completedAt != nil }
         let records = PRDetector.newRecords(in: completedOnly, existing: existingRecords)

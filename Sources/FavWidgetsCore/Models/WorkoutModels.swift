@@ -10,12 +10,123 @@ public struct Exercise: Codable, Equatable, Identifiable, Hashable, Sendable {
     public var id: String
     public var name: String
     public var muscleGroup: String
+    /// A photo the user attached (the machine's placard, say). Built-in
+    /// exercises get theirs from `WorkoutSettings.exerciseImages`.
+    public var imageUrl: String?
 
-    public init(id: String = UUID().uuidString, name: String, muscleGroup: String) {
+    public init(id: String = UUID().uuidString, name: String, muscleGroup: String, imageUrl: String? = nil) {
         self.id = id
         self.name = name
         self.muscleGroup = muscleGroup
+        self.imageUrl = imageUrl
     }
+
+    /// SF Symbol stand-in when there is no photo.
+    public var symbolName: String {
+        switch muscleGroup.lowercased() {
+        case "chest": return "figure.strengthtraining.traditional"
+        case "back": return "figure.rowing"
+        case "legs": return "figure.step.training"
+        case "shoulders": return "figure.arms.open"
+        case "arms": return "dumbbell.fill"
+        case "core": return "figure.core.training"
+        case "cardio": return "figure.run"
+        default: return "figure.mixed.cardio"
+        }
+    }
+}
+
+// MARK: - Cardio
+
+public enum CardioKind: String, Codable, CaseIterable, Sendable {
+    case treadmill, stepper, cycle, elliptical, rower, walk, run
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = CardioKind(rawValue: raw) ?? .treadmill
+    }
+
+    public var name: String {
+        switch self {
+        case .treadmill: return "Treadmill"
+        case .stepper: return "Stepper"
+        case .cycle: return "Cycle"
+        case .elliptical: return "Elliptical"
+        case .rower: return "Rower"
+        case .walk: return "Walk"
+        case .run: return "Run"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .treadmill, .run: return "figure.run"
+        case .stepper: return "figure.stairs"
+        case .cycle: return "figure.outdoor.cycle"
+        case .elliptical: return "figure.elliptical"
+        case .rower: return "figure.rower"
+        case .walk: return "figure.walk"
+        }
+    }
+
+    /// Whether distance makes sense for this machine.
+    public var tracksDistance: Bool { self != .stepper }
+}
+
+public enum CardioIntensity: String, Codable, CaseIterable, Sendable {
+    case easy, moderate, hard
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = CardioIntensity(rawValue: raw) ?? .moderate
+    }
+
+    public var label: String { rawValue.capitalized }
+}
+
+/// One stretch on a machine, alongside the sets.
+public struct CardioEntry: Codable, Equatable, Identifiable, Sendable {
+    public var id: UUID
+    public var kind: CardioKind
+    public var minutes: Int
+    /// In the session's distance unit (mi when lifting in lb, km in kg).
+    public var distance: Double?
+    public var intensity: CardioIntensity
+    /// Typed from the machine's display, or estimated from the profile.
+    public var calories: Int?
+    public var completedAt: Date?
+
+    public init(id: UUID = UUID(), kind: CardioKind, minutes: Int = 0, distance: Double? = nil,
+                intensity: CardioIntensity = .moderate, calories: Int? = nil, completedAt: Date? = nil) {
+        self.id = id
+        self.kind = kind
+        self.minutes = minutes
+        self.distance = distance
+        self.intensity = intensity
+        self.calories = calories
+        self.completedAt = completedAt
+    }
+
+    public var holdsUserData: Bool { completedAt != nil || minutes > 0 || (distance ?? 0) > 0 }
+}
+
+/// Height, weight and the rest, for calorie estimates. Stored metric;
+/// shown in the unit the lifter uses.
+public struct BodyProfile: Codable, Equatable, Sendable {
+    public var heightCm: Double?
+    public var weightKg: Double?
+    public var birthYear: Int?
+    /// "male" / "female" / nil; only used by the calorie estimate.
+    public var sex: String?
+
+    public init(heightCm: Double? = nil, weightKg: Double? = nil, birthYear: Int? = nil, sex: String? = nil) {
+        self.heightCm = heightCm
+        self.weightKg = weightKg
+        self.birthYear = birthYear
+        self.sex = sex
+    }
+
+    public var isEmpty: Bool { heightCm == nil && weightKg == nil && birthYear == nil && sex == nil }
 }
 
 public struct RoutineItem: Codable, Equatable, Identifiable, Sendable {
@@ -69,20 +180,40 @@ public struct WorkoutSession: Codable, Equatable, Identifiable, Sendable {
     public var startedAt: Date
     public var endedAt: Date?
     public var sets: [SetEntry]
+    public var cardio: [CardioEntry]
     public var notes: String?
 
     public init(id: UUID = UUID(), routineId: UUID? = nil, name: String, startedAt: Date = Date(),
-                endedAt: Date? = nil, sets: [SetEntry] = [], notes: String? = nil) {
+                endedAt: Date? = nil, sets: [SetEntry] = [], cardio: [CardioEntry] = [], notes: String? = nil) {
         self.id = id
         self.routineId = routineId
         self.name = name
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.sets = sets
+        self.cardio = cardio
         self.notes = notes
     }
 
+    private enum CodingKeys: String, CodingKey { case id, routineId, name, startedAt, endedAt, sets, cardio, notes }
+
+    /// Sessions stored before cardio existed decode with none.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        routineId = try c.decodeIfPresent(UUID.self, forKey: .routineId)
+        name = try c.decode(String.self, forKey: .name)
+        startedAt = try c.decode(Date.self, forKey: .startedAt)
+        endedAt = try c.decodeIfPresent(Date.self, forKey: .endedAt)
+        sets = try c.decodeIfPresent([SetEntry].self, forKey: .sets) ?? []
+        cardio = try c.decodeIfPresent([CardioEntry].self, forKey: .cardio) ?? []
+        notes = try c.decodeIfPresent(String.self, forKey: .notes)
+    }
+
     public var isActive: Bool { endedAt == nil }
+
+    public var cardioMinutes: Int { cardio.filter(\.holdsUserData).reduce(0) { $0 + $1.minutes } }
+    public var exerciseCount: Int { Set(sets.filter { $0.completedAt != nil || $0.weight > 0 || $0.reps > 0 }.map(\.exerciseId)).count }
 
     public var totalVolume: Double {
         sets.filter { !$0.isWarmup }.reduce(0) { $0 + $1.weight * Double($1.reps) }
@@ -122,9 +253,16 @@ public struct WorkoutSettings: WidgetModel {
     /// A workout in progress survives app relaunches here, then moves into
     /// its month document when finished.
     public var activeSession: WorkoutSession?
+    public var profile: BodyProfile
+    /// Photos attached to exercises (built-in ones included), by exercise id.
+    public var exerciseImages: [String: String]
+    /// Remembered from the finish sheet: post finished workouts to the
+    /// Inner Circle feed.
+    public var shareWithInnerCircle: Bool
 
     public init(unit: WeightUnit = .lb, restTimerSeconds: Int = 90, autoRestTimer: Bool = true, customExercises: [Exercise] = [],
-                routines: [Routine] = [], prsByExercise: [String: PersonalRecord] = [:], activeSession: WorkoutSession? = nil) {
+                routines: [Routine] = [], prsByExercise: [String: PersonalRecord] = [:], activeSession: WorkoutSession? = nil,
+                profile: BodyProfile = BodyProfile(), exerciseImages: [String: String] = [:], shareWithInnerCircle: Bool = false) {
         self.unit = unit
         self.restTimerSeconds = restTimerSeconds
         self.autoRestTimer = autoRestTimer
@@ -132,10 +270,14 @@ public struct WorkoutSettings: WidgetModel {
         self.routines = routines
         self.prsByExercise = prsByExercise
         self.activeSession = activeSession
+        self.profile = profile
+        self.exerciseImages = exerciseImages
+        self.shareWithInnerCircle = shareWithInnerCircle
     }
 
     private enum CodingKeys: String, CodingKey {
         case unit, restTimerSeconds, autoRestTimer, customExercises, routines, prsByExercise, activeSession
+        case profile, exerciseImages, shareWithInnerCircle
     }
 
     /// Documents written before a field existed decode with that field's
@@ -150,7 +292,20 @@ public struct WorkoutSettings: WidgetModel {
         routines = try c.decodeIfPresent([Routine].self, forKey: .routines) ?? []
         prsByExercise = try c.decodeIfPresent([String: PersonalRecord].self, forKey: .prsByExercise) ?? [:]
         activeSession = try c.decodeIfPresent(WorkoutSession.self, forKey: .activeSession)
+        profile = try c.decodeIfPresent(BodyProfile.self, forKey: .profile) ?? BodyProfile()
+        exerciseImages = try c.decodeIfPresent([String: String].self, forKey: .exerciseImages) ?? [:]
+        shareWithInnerCircle = try c.decodeIfPresent(Bool.self, forKey: .shareWithInnerCircle) ?? false
     }
+
+    /// The photo for an exercise: the attached one, else the custom
+    /// exercise's own.
+    public func imageURL(for exerciseId: String) -> URL? {
+        if let url = exerciseImages[exerciseId] { return URL(string: url) }
+        return exercise(id: exerciseId)?.imageUrl.flatMap(URL.init(string:))
+    }
+
+    /// Distance unit follows the lifting unit.
+    public var distanceUnit: String { unit == .kg ? "km" : "mi" }
 
     public static let empty = WorkoutSettings()
 

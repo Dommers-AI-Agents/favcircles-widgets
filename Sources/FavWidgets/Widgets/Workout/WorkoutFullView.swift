@@ -1,19 +1,27 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// Full screen: the active session when there is one; otherwise Start
-/// (routines), History (months on demand), PRs and settings.
+/// Full screen: the active session when there is one (unless the person
+/// backed out of it to the widget's home page); otherwise Start (routines),
+/// Inner Circle workouts, History (months on demand), PRs and settings.
 struct WorkoutFullView: View {
     let context: WidgetContext
     @ObservedObject var settings: WidgetStateController<WorkoutSettings>
     @State private var summary: WorkoutSummary?
+    /// The live workout is still running, but the person tapped Back to
+    /// look at the home page. Resume brings it back.
+    @State private var showHomeWhileActive = false
+
+    private var showsSession: Bool { settings.model.activeSession != nil && !showHomeWhileActive }
 
     var body: some View {
         Group {
-            if settings.model.activeSession != nil {
-                ActiveSessionView(context: context, settings: settings) { summary = $0 }
+            if showsSession {
+                ActiveSessionView(context: context, settings: settings, onFinished: { summary = $0 }, onBack: {
+                    showHomeWhileActive = true
+                })
             } else {
-                WorkoutHomeView(context: context, settings: settings)
+                WorkoutHomeView(context: context, settings: settings, onResume: { showHomeWhileActive = false })
             }
         }
         .task {
@@ -21,18 +29,22 @@ struct WorkoutFullView: View {
             await context.month(WorkoutMonth.self, context.currentMonth).loadIfNeeded()
             await context.month(WorkoutMonth.self, context.currentMonth.previous).loadIfNeeded()
         }
+        .onChange(of: settings.model.activeSession == nil) { ended in
+            if ended { showHomeWhileActive = false }
+        }
         .sheet(item: $summary) { summary in
-            WorkoutSummaryView(context: context, summary: summary)
+            WorkoutSummaryView(context: context, settings: settings, summary: summary)
         }
         .background(context.theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle("Workouts")
     }
 }
 
-/// Start + History + PRs.
+/// Start + Inner Circle + History + PRs.
 private struct WorkoutHomeView: View {
     let context: WidgetContext
     @ObservedObject var settings: WidgetStateController<WorkoutSettings>
+    let onResume: () -> Void
 
     @State private var showSettings = false
     @State private var editor: RoutineEditorTarget?
@@ -45,15 +57,17 @@ private struct WorkoutHomeView: View {
         let routine: Routine?
     }
 
-    init(context: WidgetContext, settings: WidgetStateController<WorkoutSettings>) {
+    init(context: WidgetContext, settings: WidgetStateController<WorkoutSettings>, onResume: @escaping () -> Void) {
         self.context = context
         self.settings = settings
+        self.onResume = onResume
         _oldestMonth = State(initialValue: context.currentMonth.previous)
     }
 
     private var theme: WidgetTheme { context.theme }
     private var usesStarters: Bool { settings.model.routines.isEmpty }
     private var routines: [Routine] { usesStarters ? ExerciseCatalog.starterRoutines : settings.model.routines }
+    private var hasActive: Bool { settings.model.activeSession != nil }
 
     private var months: [MonthKey] {
         var result: [MonthKey] = []
@@ -69,7 +83,9 @@ private struct WorkoutHomeView: View {
         List {
             Group {
                 topBar
+                if let active = settings.model.activeSession { resumeBanner(active) }
                 startSection
+                WorkoutFollowingSection(context: context, store: WorkoutFeedStore.shared(context))
                 historySection
                 prSection
             }
@@ -100,7 +116,7 @@ private struct WorkoutHomeView: View {
         VStack(alignment: .leading, spacing: 6) {
             WidgetSyncBadge(state: syncState, theme: theme)
             HStack {
-                Text("Start a workout").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.label)
+                Text(hasActive ? "Workout in progress" : "Start a workout").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.label)
                 Spacer()
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
@@ -112,6 +128,29 @@ private struct WorkoutHomeView: View {
                 .accessibilityLabel("Workout settings")
             }
         }
+        .listRowSeparator(.hidden)
+    }
+
+    private func resumeBanner(_ session: WorkoutSession) -> some View {
+        Button(action: onResume) {
+            HStack(spacing: 12) {
+                Image(systemName: "play.circle.fill").font(.system(size: 30)).foregroundStyle(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Resume \(session.name)").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                    TimelineView(.periodic(from: session.startedAt, by: 1)) { timeline in
+                        let sets = WorkoutSessionLogic.completedSetCount(session)
+                        Text("\(WorkoutFormat.duration(timeline.date.timeIntervalSince(session.startedAt))) · \(sets) \(sets == 1 ? "set" : "sets") done")
+                            .font(.system(size: 12)).foregroundStyle(.white.opacity(0.85)).monospacedDigit()
+                    }
+                }
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold)).foregroundStyle(.white.opacity(0.9))
+            }
+            .padding(14)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .listRowSeparator(.hidden)
     }
 
@@ -128,57 +167,60 @@ private struct WorkoutHomeView: View {
 
     @ViewBuilder
     private var startSection: some View {
-        ForEach(routines) { routine in
-            Button { start(routine) } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "play.circle.fill").font(.system(size: 28)).foregroundStyle(context.accent)
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 6) {
-                            Text(routine.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
-                            if usesStarters {
-                                Text("Starter")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(theme.secondaryLabel)
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(Capsule().fill(theme.tertiaryBackground))
+        if !hasActive {
+            ForEach(routines) { routine in
+                Button { start(routine) } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "play.circle.fill").font(.system(size: 28)).foregroundStyle(context.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(routine.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+                                if usesStarters {
+                                    Text("Starter")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(theme.secondaryLabel)
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(Capsule().fill(theme.tertiaryBackground))
+                                }
                             }
+                            Text(routine.items.compactMap { settings.model.exercise(id: $0.exerciseId)?.name }.joined(separator: ", "))
+                                .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
                         }
-                        Text(routine.items.compactMap { settings.model.exercise(id: $0.exerciseId)?.name }.joined(separator: ", "))
-                            .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
+                        Spacer()
                     }
-                    Spacer()
+                    .frame(minHeight: 52)
+                    .contentShape(Rectangle())
                 }
-                .frame(minHeight: 52)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .listRowSeparator(.hidden)
+                .contextMenu {
+                    Button { editor = RoutineEditorTarget(id: routine.id, routine: usesStarters ? Routine(name: routine.name, items: routine.items) : routine) } label: {
+                        Label(usesStarters ? "Copy to my routines" : "Edit", systemImage: "pencil")
+                    }
+                    if !usesStarters {
+                        Button(role: .destructive) { confirmDeleteRoutine = routine } label: { Label("Delete", systemImage: "trash") }
+                    }
+                }
             }
-            .buttonStyle(.plain)
+            HStack(spacing: 10) {
+                WidgetUI.primaryButton("Empty workout", color: context.accent) { start(nil) }
+                Button { editor = RoutineEditorTarget(id: UUID(), routine: nil) } label: {
+                    Text("New routine")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(context.accent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.14)))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 6)
             .listRowSeparator(.hidden)
-            .contextMenu {
-                Button { editor = RoutineEditorTarget(id: routine.id, routine: usesStarters ? Routine(name: routine.name, items: routine.items) : routine) } label: {
-                    Label(usesStarters ? "Copy to my routines" : "Edit", systemImage: "pencil")
-                }
-                if !usesStarters {
-                    Button(role: .destructive) { confirmDeleteRoutine = routine } label: { Label("Delete", systemImage: "trash") }
-                }
-            }
         }
-        HStack(spacing: 10) {
-            WidgetUI.primaryButton("Empty workout", color: context.accent) { start(nil) }
-            Button { editor = RoutineEditorTarget(id: UUID(), routine: nil) } label: {
-                Text("New routine")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(context.accent)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.14)))
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.vertical, 6)
-        .listRowSeparator(.hidden)
     }
 
     private func start(_ routine: Routine?) {
+        guard !hasActive else { return }
         let session = routine.map { WorkoutSessionLogic.session(from: $0) } ?? WorkoutSession(name: "Workout")
         settings.update { $0.activeSession = session }
         context.host.haptic(.light)
@@ -221,7 +263,9 @@ private struct WorkoutHomeView: View {
                 .padding(.top, 8)
                 .listRowSeparator(.hidden)
             ForEach(records, id: \.id) { item in
-                HStack {
+                HStack(spacing: 10) {
+                    ExerciseThumb(url: settings.model.imageURL(for: item.id), symbolName: settings.model.exercise(id: item.id)?.symbolName ?? "dumbbell.fill",
+                                  accent: context.accent, theme: theme, size: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name).font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label)
                         Text(WorkoutFormat.shortDate(item.record.date, calendar: context.calendar))
@@ -247,41 +291,116 @@ private struct WorkoutHomeView: View {
 
 struct WorkoutSummaryView: View {
     let context: WidgetContext
+    @ObservedObject var settings: WidgetStateController<WorkoutSettings>
     let summary: WorkoutSummary
     @Environment(\.dismiss) private var dismiss
+    @State private var posting = false
+    @State private var posted = false
 
     private var theme: WidgetTheme { context.theme }
+    private var share: WorkoutShareSummary { summary.share }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Workout complete").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
-                    Text(summary.name).font(.system(size: 24, weight: .bold)).foregroundStyle(theme.label)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Workout complete").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                        Text(summary.name).font(.system(size: 24, weight: .bold)).foregroundStyle(theme.label)
+                    }
+                    Spacer()
+                    Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(theme.success)
                 }
-                Spacer()
-                Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(theme.success)
-            }
-            HStack(spacing: 12) {
-                stat("Duration", WorkoutFormat.duration(summary.duration))
-                stat("Sets", "\(summary.completedSets)")
-                stat("Volume", WorkoutFormat.volume(summary.volume, unit: summary.unit))
-            }
-            if !summary.newRecords.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    WidgetUI.header("New PRs", theme: theme)
-                    ForEach(summary.newRecords, id: \.id) { item in
-                        Label("New PR: \(item.exercise) \(WorkoutFormat.set(item.record.weight, item.record.reps))", systemImage: "trophy.fill")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(theme.label)
+                HStack(spacing: 12) {
+                    stat("Duration", WorkoutFormat.duration(summary.duration))
+                    if !share.exercises.isEmpty {
+                        stat("Exercises", "\(share.exercises.count)")
+                        stat("Sets", "\(summary.completedSets)")
+                    }
+                    if share.cardioMinutes > 0 { stat("Cardio", "\(share.cardioMinutes) min") }
+                }
+                if !share.exercises.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        WidgetUI.header("Best sets", theme: theme)
+                        ForEach(Array(share.exercises.enumerated()), id: \.offset) { _, line in
+                            HStack {
+                                Text(line.name).font(.system(size: 15)).foregroundStyle(theme.label)
+                                Spacer()
+                                Text(line.bestSet).font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(theme.label)
+                                if line.isPR { Image(systemName: "trophy.fill").font(.system(size: 12)).foregroundStyle(theme.warning) }
+                            }
+                        }
                     }
                 }
+                if !share.cardio.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        WidgetUI.header("Cardio", theme: theme)
+                        ForEach(Array(share.cardio.enumerated()), id: \.offset) { _, line in
+                            HStack {
+                                Text(line.name).font(.system(size: 15)).foregroundStyle(theme.label)
+                                Spacer()
+                                Text(line.detail).font(.system(size: 14, design: .rounded)).foregroundStyle(theme.secondaryLabel)
+                            }
+                        }
+                    }
+                }
+                if !summary.newRecords.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        WidgetUI.header("New PRs", theme: theme)
+                        ForEach(summary.newRecords, id: \.id) { item in
+                            Label("\(item.exercise) \(WorkoutFormat.set(item.record.weight, item.record.reps))", systemImage: "trophy.fill")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(theme.label)
+                        }
+                    }
+                }
+                Toggle(isOn: Binding(get: { settings.model.shareWithInnerCircle }, set: { on in settings.update { $0.shareWithInnerCircle = on } })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Post to my Inner Circle").font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label)
+                        Text(posted ? "Posted." : "The people on your Inner Circle list see it in their Workouts widget.").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    }
+                }
+                .tint(context.accent)
+                HStack(spacing: 10) {
+                    Button {
+                        shareOut()
+                    } label: {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(context.accent)
+                            .frame(maxWidth: .infinity).frame(height: 50)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.14)))
+                    }
+                    .buttonStyle(.plain)
+                    WidgetUI.primaryButton(posting ? "Posting…" : "Done", color: context.accent) { finish() }
+                        .disabled(posting)
+                }
             }
-            Spacer()
-            WidgetUI.primaryButton("Done", color: context.accent) { dismiss() }
+            .padding(20)
         }
-        .padding(20)
         .background(theme.background.ignoresSafeArea())
+    }
+
+    private func shareOut() {
+        var items: [WidgetShareItem] = [.text(share.shareText(calendar: context.calendar))]
+        if let jpeg = WorkoutShareCard.jpeg(summary: share, accent: context.accent) { items.append(.imageJPEG(jpeg)) }
+        context.track("workout_shared")
+        context.host.share(items)
+    }
+
+    private func finish() {
+        guard settings.model.shareWithInnerCircle, !posted else { dismiss(); return }
+        posting = true
+        Task {
+            defer { posting = false }
+            do {
+                try await WorkoutFeedAPI.share(context: context, summary: share)
+                posted = true
+                context.track("workout_posted_inner_circle")
+                dismiss()
+            } catch {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't post to your Inner Circle", message: error.localizedDescription))
+            }
+        }
     }
 
     private func stat(_ title: String, _ value: String) -> some View {

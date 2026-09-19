@@ -67,6 +67,12 @@ public final class WidgetContext: ObservableObject {
     /// Set by the tab so a full view can close itself (after Send, etc.).
     public var closeFullView: () -> Void = {}
 
+    /// A full view that wants the navigation bar's back button for itself
+    /// (a live workout returning to the widget's home page) sets this while
+    /// that screen is up and clears it after. Return true to consume the
+    /// tap; false lets the host pop the widget as usual.
+    public var handleBack: (() -> Bool)?
+
     /// Set by the host immediately before `openFullView` so a widget opens
     /// with a photo already in place. The widget clears it as it reads it, so
     /// the photo is used once and a later visit starts empty.

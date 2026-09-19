@@ -39,7 +39,7 @@ struct WorkoutMonthSection: View {
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("\(WorkoutFormat.shortDuration(WorkoutSessionLogic.duration(of: session))) · \(WorkoutSessionLogic.completedSetCount(session)) sets")
                                 .font(.system(size: 13)).foregroundStyle(theme.label)
-                            Text(WorkoutFormat.volume(session.totalVolume, unit: settings.model.unit))
+                            Text(rowDetail(session))
                                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                         }
                         Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
@@ -53,6 +53,15 @@ struct WorkoutMonthSection: View {
         }
         .listRowBackground(Color.clear)
         .task { await controller.loadIfNeeded() }
+    }
+
+    /// "4 exercises · 20 min cardio" — the volume number said nothing.
+    private func rowDetail(_ session: WorkoutSession) -> String {
+        var parts: [String] = []
+        let n = session.exerciseCount
+        if n > 0 { parts.append("\(n) \(n == 1 ? "exercise" : "exercises")") }
+        if session.cardioMinutes > 0 { parts.append("\(session.cardioMinutes) min cardio") }
+        return parts.isEmpty ? "—" : parts.joined(separator: " · ")
     }
 }
 
@@ -70,7 +79,7 @@ struct WorkoutSessionDetailView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.name).font(.system(size: 20, weight: .bold)).foregroundStyle(theme.label)
-                    Text("\(WorkoutFormat.shortDate(session.startedAt, calendar: context.calendar)) · \(WorkoutFormat.duration(WorkoutSessionLogic.duration(of: session))) · \(WorkoutFormat.volume(session.totalVolume, unit: settings.model.unit))")
+                    Text("\(WorkoutFormat.shortDate(session.startedAt, calendar: context.calendar)) · \(WorkoutFormat.duration(WorkoutSessionLogic.duration(of: session))) · \(WorkoutSessionLogic.completedSetCount(session)) sets" + (session.cardioMinutes > 0 ? " · \(session.cardioMinutes) min cardio" : ""))
                         .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                 }
                 Spacer()
@@ -101,7 +110,27 @@ struct WorkoutSessionDetailView: View {
                             .listRowBackground(Color.clear)
                         }
                     } header: {
-                        WidgetUI.header(settings.model.exercise(id: exerciseId)?.name ?? "Exercise", theme: theme)
+                        HStack(spacing: 8) {
+                            ExerciseThumb(url: settings.model.imageURL(for: exerciseId), symbolName: settings.model.exercise(id: exerciseId)?.symbolName ?? "dumbbell.fill",
+                                          accent: context.accent, theme: theme, size: 28)
+                            WidgetUI.header(settings.model.exercise(id: exerciseId)?.name ?? "Exercise", theme: theme)
+                        }
+                    }
+                }
+                if !session.cardio.isEmpty {
+                    Section {
+                        ForEach(session.cardio) { entry in
+                            HStack(spacing: 10) {
+                                Image(systemName: entry.kind.symbolName).font(.system(size: 14)).foregroundStyle(context.accent).frame(width: 24)
+                                Text(entry.kind.name).font(.system(size: 15)).foregroundStyle(theme.label)
+                                Spacer()
+                                Text(WorkoutCardioLogic.line(for: entry, distanceUnit: settings.model.distanceUnit, weightKg: settings.model.profile.weightKg))
+                                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                            }
+                            .listRowBackground(Color.clear)
+                        }
+                    } header: {
+                        WidgetUI.header("Cardio", theme: theme)
                     }
                 }
                 if let notes = session.notes, !notes.isEmpty {

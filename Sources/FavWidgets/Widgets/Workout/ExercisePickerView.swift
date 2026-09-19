@@ -43,7 +43,9 @@ struct ExercisePickerView: View {
                             Button {
                                 pick(exercise)
                             } label: {
-                                HStack {
+                                HStack(spacing: 10) {
+                                    ExerciseThumb(url: settings.model.imageURL(for: exercise.id), symbolName: exercise.symbolName,
+                                                  accent: context.accent, theme: theme, size: 36)
                                     Text(exercise.name).font(.system(size: 16)).foregroundStyle(theme.label)
                                     Spacer()
                                     if !ExerciseCatalog.builtIn.contains(where: { $0.id == exercise.id }) {

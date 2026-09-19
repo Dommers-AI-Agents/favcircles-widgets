@@ -7,9 +7,11 @@ struct WorkoutSummary: Identifiable {
     let name: String
     let duration: TimeInterval
     let completedSets: Int
-    let volume: Double
     let unit: WeightUnit
     let newRecords: [(id: String, exercise: String, record: PersonalRecord)]
+    /// Best sets, cardio and PR count: the summary sheet, the share text
+    /// and the Inner Circle post all read from this.
+    let share: WorkoutShareSummary
 }
 
 /// The in-progress workout. Every edit goes through `settings.update` so
@@ -18,11 +20,17 @@ struct ActiveSessionView: View {
     let context: WidgetContext
     @ObservedObject var settings: WidgetStateController<WorkoutSettings>
     let onFinished: (WorkoutSummary) -> Void
+    /// The navigation bar's Back was tapped: show the widget's home page
+    /// with the workout still running.
+    let onBack: () -> Void
 
     @State private var restEndsAt: Date?
     @State private var showPicker = false
     @State private var showReorder = false
     @State private var confirmDiscard = false
+    @State private var photoTarget: PhotoTarget?
+
+    private struct PhotoTarget: Identifiable { let id: String }
     /// The list has scrolled past the header: the pinned time bar shrinks.
     @State private var isCompact = false
 
@@ -31,7 +39,8 @@ struct ActiveSessionView: View {
     private var completedCount: Int { WorkoutSessionLogic.completedSetCount(session) }
     private var exerciseIds: [String] { WorkoutSessionLogic.orderedExerciseIds(in: session) }
     /// Nothing ticked and nothing typed: there is nothing to save yet.
-    private var isEmptyWorkout: Bool { !session.sets.contains(where: WorkoutSessionLogic.holdsUserData) }
+    private var isEmptyWorkout: Bool { !WorkoutSessionLogic.hasUserData(session) }
+    private var cardioIds: [UUID] { session.cardio.map(\.id) }
     private var autoRest: Bool { settings.model.autoRestTimer }
 
     var body: some View {
@@ -40,6 +49,19 @@ struct ActiveSessionView: View {
                 header
                 ForEach(exerciseIds, id: \.self) { exerciseId in
                     exerciseBlock(exerciseId)
+                }
+                if !cardioIds.isEmpty {
+                    Text("Cardio").font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.label)
+                        .padding(.top, 10).listRowSeparator(.hidden)
+                    ForEach(cardioIds, id: \.self) { id in
+                        CardioRowView(context: context, settings: settings, entryId: id, onCompleted: { context.host.haptic(.light); context.track("cardio_completed") })
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    settings.update { $0.activeSession?.cardio.removeAll { $0.id == id } }
+                                } label: { Label("Delete", systemImage: "trash") }
+                            }
+                    }
                 }
                 addExerciseRow
                 footer
@@ -71,6 +93,15 @@ struct ActiveSessionView: View {
         .sheet(isPresented: $showReorder) {
             ExerciseReorderView(context: context, settings: settings)
         }
+        .sheet(item: $photoTarget) { target in
+            ExercisePhotoSheet(context: context, settings: settings, exerciseId: target.id)
+        }
+        .onAppear {
+            // Back goes to the widget's home page, not out of the widget.
+            let back = onBack
+            context.handleBack = { back(); return true }
+        }
+        .onDisappear { context.handleBack = nil }
         .confirmationDialog("Discard this workout?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard workout", role: .destructive, action: discard)
             Button("Keep going", role: .cancel) {}
@@ -134,7 +165,7 @@ struct ActiveSessionView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
             WidgetSyncBadge(state: settings.syncState, theme: theme)
-            Text("\(completedCount) \(completedCount == 1 ? "set" : "sets") done · \(WorkoutFormat.volume(session.totalVolume, unit: settings.model.unit))")
+            Text(headerLine)
                 .font(.system(size: 13))
                 .foregroundStyle(theme.secondaryLabel)
         }
@@ -143,6 +174,14 @@ struct ActiveSessionView: View {
             Color.clear.preference(key: SessionScrollOffsetKey.self, value: proxy.frame(in: .named("session")).minY)
         })
         .listRowSeparator(.hidden)
+    }
+
+    private var headerLine: String {
+        var parts = ["\(completedCount) \(completedCount == 1 ? "set" : "sets") done"]
+        if !exerciseIds.isEmpty { parts.append("\(exerciseIds.count) \(exerciseIds.count == 1 ? "exercise" : "exercises")") }
+        let cardio = session.cardioMinutes
+        if cardio > 0 { parts.append("\(cardio) min cardio") }
+        return parts.joined(separator: " · ")
     }
 
     private var addExerciseRow: some View {
@@ -154,6 +193,17 @@ struct ActiveSessionView: View {
                     .frame(minHeight: 48)
             }
             .buttonStyle(.plain)
+            Menu {
+                ForEach(CardioKind.allCases, id: \.self) { kind in
+                    Button { addCardio(kind) } label: { Label(kind.name, systemImage: kind.symbolName) }
+                }
+            } label: {
+                Label("Cardio", systemImage: "figure.run")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(context.accent)
+                    .frame(minHeight: 48)
+                    .padding(.leading, 14)
+            }
             Spacer()
             if exerciseIds.count > 1 {
                 Button { showReorder = true } label: {
@@ -195,7 +245,20 @@ struct ActiveSessionView: View {
         let name = settings.model.exercise(id: exerciseId)?.name ?? "Exercise"
         let best = settings.model.prsByExercise[exerciseId]
         let targetReps = WorkoutSessionLogic.targetReps(for: exerciseId, in: session, routines: settings.model.routines + ExerciseCatalog.starterRoutines)
-        HStack(alignment: .firstTextBaseline) {
+        HStack(alignment: .center, spacing: 10) {
+            Button { photoTarget = PhotoTarget(id: exerciseId) } label: {
+                ExerciseThumb(url: settings.model.imageURL(for: exerciseId),
+                              symbolName: settings.model.exercise(id: exerciseId)?.symbolName ?? "dumbbell.fill",
+                              accent: context.accent, theme: theme, size: 44)
+                    .overlay(alignment: .bottomTrailing) {
+                        if settings.model.imageURL(for: exerciseId) == nil {
+                            Image(systemName: "camera.fill").font(.system(size: 8, weight: .bold)).foregroundStyle(.white)
+                                .padding(3).background(Circle().fill(context.accent)).offset(x: 3, y: 3)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Add a photo for \(name)")
             Text(name).font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.label)
             Spacer()
             if let best {
@@ -245,6 +308,12 @@ struct ActiveSessionView: View {
 
     // MARK: Actions
 
+    private func addCardio(_ kind: CardioKind) {
+        settings.update { $0.activeSession?.cardio.append(CardioEntry(kind: kind)) }
+        context.host.haptic(.light)
+        context.track("cardio_added", ["kind": kind.rawValue])
+    }
+
     private func startRest() {
         context.host.haptic(.light)
         context.track("set_completed")
@@ -285,13 +354,15 @@ struct ActiveSessionView: View {
         let records = result.newRecords
             .map { (id: $0.key, exercise: settings.model.exercise(id: $0.key)?.name ?? $0.key, record: $0.value) }
             .sorted { $0.exercise < $1.exercise }
+        let share = WorkoutShareSummary.make(session: result.session, newRecords: result.newRecords, unit: unit,
+                                             weightKg: settings.model.profile.weightKg) { settings.model.exercise(id: $0)?.name ?? "Exercise" }
         onFinished(WorkoutSummary(
             name: result.session.name,
             duration: WorkoutSessionLogic.duration(of: result.session),
             completedSets: WorkoutSessionLogic.completedSetCount(result.session),
-            volume: result.session.totalVolume,
             unit: unit,
-            newRecords: records
+            newRecords: records,
+            share: share
         ))
     }
 

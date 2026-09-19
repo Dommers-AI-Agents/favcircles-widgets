@@ -2,7 +2,8 @@ import SwiftUI
 import FavWidgetsCore
 
 /// Workouts ("Strong-lite"): routines, an in-progress session that lives in
-/// the settings document until finished, monthly history, running PRs.
+/// the settings document until finished, cardio alongside the sets, monthly
+/// history, running PRs, and workouts shared with the Inner Circle.
 public struct WorkoutWidget: FavWidget {
     public init() {}
 
@@ -13,7 +14,9 @@ public struct WorkoutWidget: FavWidget {
         symbolName: "dumbbell.fill",
         accentHex: "#3182CE",
         category: .fitness,
-        storage: .monthly
+        storage: .monthly,
+        // 2 (2026-09-19): body profile, cardio entries, exercise photos.
+        schemaVersion: 2
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
