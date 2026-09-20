@@ -1,6 +1,6 @@
 import Foundation
 
-/// A topic someone can ask for their daily quote from.
+/// A topic someone can ask for their quotes from.
 public struct QuoteCategory: Decodable, Equatable, Identifiable, Sendable {
     public var id: String
     public var label: String
@@ -15,18 +15,21 @@ public struct QuoteCategory: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// What actually went out today, if it has.
+/// The latest line that went out today, if one has.
 public struct DailyQuote: Decodable, Equatable, Sendable {
     public var text: String
     public var author: String?
     public var category: String?
     public var sentAt: Date?
+    /// Which of the day's times it was for ("HH:mm").
+    public var slot: String?
 
-    public init(text: String, author: String? = nil, category: String? = nil, sentAt: Date? = nil) {
+    public init(text: String, author: String? = nil, category: String? = nil, sentAt: Date? = nil, slot: String? = nil) {
         self.text = text
         self.author = author
         self.category = category
         self.sentAt = sentAt
+        self.slot = slot
     }
 
     /// "— Marcus Aurelius", or nothing for the anonymous ones.
@@ -36,40 +39,49 @@ public struct DailyQuote: Decodable, Equatable, Sendable {
     }
 }
 
-/// The three things someone controls: whether, when, and about what — plus
-/// whether it also lands in their inbox.
+/// The three things someone controls: whether, when (one time a day or
+/// several), and about what — plus whether it also lands in their inbox.
 public struct QuoteSettings: Decodable, Equatable, Sendable {
+    public static let maxTimes = 6
+
     public var enabled: Bool
     public var categories: [String]
-    /// "HH:mm" in their own timezone.
-    public var time: String
+    /// "HH:mm" entries in their own timezone, sorted. Always at least one.
+    public var times: [String]
     public var email: Bool
 
-    public init(enabled: Bool = false, categories: [String] = ["motivation"], time: String = "08:00", email: Bool = false) {
+    /// The first slot; what older servers and clients call "the" time.
+    public var time: String { times.first ?? "08:00" }
+
+    public init(enabled: Bool = false, categories: [String] = ["motivation"], times: [String] = ["08:00"], email: Bool = false) {
         self.enabled = enabled
         self.categories = categories
-        self.time = time
+        self.times = times.isEmpty ? ["08:00"] : times
         self.email = email
     }
 
-    private enum CodingKeys: String, CodingKey { case enabled, categories, time, email }
+    private enum CodingKeys: String, CodingKey { case enabled, categories, time, times, email }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
         categories = try c.decodeIfPresent([String].self, forKey: .categories) ?? ["motivation"]
-        time = try c.decodeIfPresent(String.self, forKey: .time) ?? "08:00"
+        let list = try c.decodeIfPresent([String].self, forKey: .times) ?? []
+        let single = try c.decodeIfPresent(String.self, forKey: .time)
+        times = list.isEmpty ? [single ?? "08:00"] : list
         email = try c.decodeIfPresent(Bool.self, forKey: .email) ?? false
     }
 
-    /// The hour as a date on an arbitrary day, for a wheel picker.
-    public var timeAsDate: Date {
-        let parts = time.split(separator: ":").compactMap { Int($0) }
+    /// "HH:mm" as a date on an arbitrary day, for a wheel picker.
+    public static func date(from hhmm: String) -> Date {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
         var components = DateComponents()
         components.hour = parts.first ?? 8
         components.minute = parts.count > 1 ? parts[1] : 0
         return Calendar(identifier: .gregorian).date(from: components) ?? Date()
     }
+
+    public var timeAsDate: Date { Self.date(from: time) }
 
     public static func time(from date: Date, calendar: Calendar = Calendar(identifier: .gregorian)) -> String {
         let c = calendar.dateComponents([.hour, .minute], from: date)

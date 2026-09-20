@@ -33,11 +33,11 @@ struct QuotesTests {
     }
 
     @Test func theTimeSurvivesTheRoundTripThroughThePicker() {
-        let settings = QuoteSettings(time: "21:05")
+        let settings = QuoteSettings(times: ["21:05"])
         let asDate = settings.timeAsDate
         #expect(QuoteSettings.time(from: asDate) == "21:05")
         // Midnight is a real choice and must not become 12:00.
-        #expect(QuoteSettings.time(from: QuoteSettings(time: "00:00").timeAsDate) == "00:00")
+        #expect(QuoteSettings.time(from: QuoteSettings(times: ["00:00"]).timeAsDate) == "00:00")
     }
 
     @Test func theCardSpellsTheHourOutTheWayPeopleSayIt() {
@@ -50,5 +50,24 @@ struct QuotesTests {
     @Test func theWidgetIsRegisteredAndKeepsItsId() async {
         let ids = await MainActor.run { FavWidgetRegistry.all.map(\.descriptor.id) }
         #expect(ids.contains("quotes"))
+    }
+}
+
+struct QuoteTimesTests {
+    @Test func decodesTimesWithFallbackToTheSingleTime() throws {
+        let old = try WidgetJSON.decode(QuoteSettings.self, from: Data(#"{"enabled":true,"time":"07:15"}"#.utf8))
+        #expect(old.times == ["07:15"])
+        #expect(old.time == "07:15")
+        let new = try WidgetJSON.decode(QuoteSettings.self, from: Data(#"{"enabled":true,"times":["08:00","13:00"],"time":"08:00"}"#.utf8))
+        #expect(new.times == ["08:00", "13:00"])
+    }
+
+    @Test func scheduleCopyAndNextSlot() {
+        #expect(QuoteCopy.schedule(["08:00"]) == "Your quote arrives at 8:00 AM")
+        #expect(QuoteCopy.schedule(["08:00", "18:30"]) == "Your quotes arrive at 8:00 AM and 6:30 PM")
+        #expect(QuoteCopy.schedule(["08:00", "13:00", "18:30"]) == "Your quotes arrive at 8:00 AM, 1:00 PM and 6:30 PM")
+        #expect(QuoteCopy.nextSuggestedTime(after: ["08:00"]) == "13:00")
+        #expect(QuoteCopy.nextSuggestedTime(after: ["08:00", "20:00"]) == "21:00")
+        #expect(QuoteCopy.nextSuggestedTime(after: ["23:00"]) == "23:00")
     }
 }

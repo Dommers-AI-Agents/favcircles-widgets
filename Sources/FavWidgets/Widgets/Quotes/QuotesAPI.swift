@@ -8,11 +8,11 @@ enum QuotesAPI {
 
     /// Only the fields being changed are sent; the server merges the rest.
     static func update(context: WidgetContext, enabled: Bool? = nil, categories: [String]? = nil,
-                       time: String? = nil, email: Bool? = nil) async throws -> QuoteSettingsResponse {
+                       times: [String]? = nil, email: Bool? = nil) async throws -> QuoteSettingsResponse {
         var body: [String: Any] = [:]
         if let enabled { body["enabled"] = enabled }
         if let categories { body["categories"] = categories }
-        if let time { body["time"] = time }
+        if let times { body["times"] = times; body["time"] = times.first ?? "08:00" }
         if let email { body["email"] = email }
         return try await context.api(.put, "widgets/quotes/settings", body: body)
     }

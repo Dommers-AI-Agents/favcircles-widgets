@@ -27,6 +27,10 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     /// how sure the estimator is. The only way to tell "no finger" from
     /// "saturated" from "noisy" on a phone you can't see.
     @Published private(set) var diagnostic: String = ""
+    /// What the camera sees right now, as 0…1 red/green/blue: the sheet's
+    /// "you're on the right lens" dot. Comes from the same frames the pulse
+    /// is read from, so it can't disagree with the detection.
+    @Published private(set) var frameRGB: [Double] = [0, 0, 0]
 
     /// Longest a measurement runs; it ends sooner once the number is steady.
     let measureSeconds: Double = 20
@@ -40,11 +44,8 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     /// Frames since the exposure lock in which red was pinned at the top.
     private var saturatedFrames = 0
     private var saturationRetries = 0
-    /// When a red-dominant but too-dark frame was first seen (flash too far
-    /// from the lens, as on the larger camera plateaus).
-    private var dimSince: Double?
     private var torchLevel: Float = 0.3
-    private var torchBoosted = false
+    private var framesSeen = 0
 
     #if os(iOS)
     /// The running capture session, for the sheet's small live view (it
@@ -77,10 +78,10 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
         frameCount = 0
         saturatedFrames = 0
         saturationRetries = 0
-        dimSince = nil
         torchLevel = 0.3
-        torchBoosted = false
+        framesSeen = 0
         diagnostic = ""
+        frameRGB = [0, 0, 0]
         estimator.reset()
         #if os(iOS)
         AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
@@ -171,9 +172,14 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     /// always 0.3 there.
     private nonisolated var initialTorchLevel: Float { 0.3 }
 
+    /// Never above half power: full torch for more than a moment trips the
+    /// phone's thermal protection, which switches the torch OFF mid-measure.
+    /// Half is plenty to light a fingertip.
+    static let maxTorch: Float = 0.5
+
     private func setTorch(level: Float) {
         guard let device, device.hasTorch else { return }
-        let clamped = max(0.05, min(AVCaptureDevice.maxAvailableTorchLevel, level))
+        let clamped = max(0.05, min(Self.maxTorch, level))
         torchLevel = clamped
         queue.async {
             guard (try? device.lockForConfiguration()) != nil else { return }
@@ -204,25 +210,25 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     fileprivate func ingest(red: Double, green: Double, blue: Double, time: Double) {
         guard phase == .waitingForFinger || phase == .measuring else { return }
         let covered = HeartRateEstimator.isFingerCovering(meanRed: red, meanGreen: green, meanBlue: blue)
-        if frameCount % 6 == 0 || !covered {
-            diagnostic = String(format: "red %.0f · green %.0f · blue %.0f · torch %.2f · confidence %.2f · %@",
-                                red, green, blue, torchLevel, confidence, phaseLabel)
+        framesSeen += 1
+        if framesSeen % 3 == 0 {
+            frameRGB = [red / 255, green / 255, blue / 255]
+        }
+        #if os(iOS)
+        // The system can switch the torch off (heat, a phone call). Relight
+        // it as soon as it's allowed again; say so meanwhile.
+        var torchNote = ""
+        if framesSeen % 15 == 0, let device, device.hasTorch, !device.isTorchActive {
+            if device.isTorchAvailable { setTorch(level: torchLevel) } else { torchNote = " · torch off (phone warm?)" }
+        }
+        #else
+        let torchNote = ""
+        #endif
+        if framesSeen % 6 == 0 {
+            diagnostic = String(format: "red %.0f · green %.0f · blue %.0f · torch %.2f · confidence %.2f · %@%@",
+                                red, green, blue, torchLevel, confidence, phaseLabel, torchNote)
         }
         if !covered {
-            #if os(iOS)
-            // Red-dominant but dark: the flash isn't reaching the lens well.
-            // Brighten it once, and give AE a second to use it.
-            let dimRed = red > 25 && red > green * 1.6 && red > blue * 1.6
-            if dimRed, !torchBoosted {
-                if dimSince == nil { dimSince = time }
-                if let since = dimSince, time - since > 1.0 {
-                    torchBoosted = true
-                    setTorch(level: AVCaptureDevice.maxAvailableTorchLevel)
-                }
-            } else if !dimRed {
-                dimSince = nil
-            }
-            #endif
             if phase == .measuring {
                 // Finger lifted: start over, but keep the session warm.
                 phase = .waitingForFinger

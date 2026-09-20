@@ -1,8 +1,8 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// A quote a day, at an hour you choose, about the things you asked for —
-/// pushed to the phone, and to your inbox if you want it there too.
+/// Good lines at the times you choose — one a day or several — about the
+/// things you asked for; pushed to the phone, and to your inbox if you want.
 ///
 /// The settings live on the server rather than in a widget document, because
 /// the scheduler has to read them to know who to send to and when.
@@ -11,8 +11,8 @@ public struct QuotesWidget: FavWidget {
 
     public let descriptor = FavWidgetDescriptor(
         id: "quotes",
-        title: "Daily Quote",
-        subtitle: "One good line each morning",
+        title: "Quotes",
+        subtitle: "Good lines at the times you pick",
         symbolName: "quote.opening",
         accentHex: "#7C6BD6",
         category: .social,

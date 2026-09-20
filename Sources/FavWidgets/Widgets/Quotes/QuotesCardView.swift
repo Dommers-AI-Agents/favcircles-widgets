@@ -25,9 +25,9 @@ struct QuotesCardView: View {
                         Text(attribution).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     }
                 } else if store.prefs.enabled {
-                    WidgetUI.summary("Your quote arrives at \(QuoteCopy.friendly(store.prefs.time))", theme: theme)
+                    WidgetUI.summary(QuoteCopy.schedule(store.prefs.times), theme: theme)
                 } else {
-                    WidgetUI.summary("A good line to start the day · tap to choose your topics and time", theme: theme)
+                    WidgetUI.summary("Good lines, when you want them · tap to choose topics and times", theme: theme)
                 }
             }
         }

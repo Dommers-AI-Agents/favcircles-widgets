@@ -200,16 +200,15 @@ struct PulseMeasureView: View {
                     // when it's on the right lens.
                     HStack(spacing: 20) {
                         LensGuide(accent: context.accent, theme: theme)
-                        #if os(iOS)
                         VStack(spacing: 6) {
-                            CameraLiveDot(session: camera.session)
+                            Circle()
+                                .fill(Color(red: camera.frameRGB[0], green: camera.frameRGB[1], blue: camera.frameRGB[2]))
                                 .frame(width: 64, height: 64)
-                                .clipShape(Circle())
                                 .overlay(Circle().stroke(theme.tertiaryBackground, lineWidth: 2))
+                                .animation(.linear(duration: 0.15), value: camera.frameRGB)
                             Text("Turns red on the\nright lens").font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
                                 .multilineTextAlignment(.center)
                         }
-                        #endif
                     }
                 } else {
                     PulseWaveform(samples: camera.waveform, color: context.accent)
@@ -325,28 +324,3 @@ struct LensGuide: View {
             .overlay(Circle().fill(theme.label.opacity(0.7)).frame(width: 14, height: 14))
     }
 }
-
-#if os(iOS)
-import AVFoundation
-import UIKit
-
-/// A live view of the measuring camera: black or the room until the right
-/// lens is covered, then solid red. The clearest "you're on the right one".
-struct CameraLiveDot: UIViewRepresentable {
-    let session: AVCaptureSession
-
-    func makeUIView(context: Context) -> PreviewView {
-        let view = PreviewView()
-        view.previewLayer.session = session
-        view.previewLayer.videoGravity = .resizeAspectFill
-        return view
-    }
-
-    func updateUIView(_ uiView: PreviewView, context: Context) {}
-
-    final class PreviewView: UIView {
-        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
-        var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
-    }
-}
-#endif

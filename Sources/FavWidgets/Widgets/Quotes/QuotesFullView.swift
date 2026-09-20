@@ -1,14 +1,12 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// The full view is the settings: on or off, what about, what time, and
-/// whether it also goes to email.
+/// The full view is the settings: on or off, what about, which times of day
+/// (one or several), and whether it also goes to email.
 struct QuotesFullView: View {
     let context: WidgetContext
     @ObservedObject var store: QuotesStore
     @State private var saving = false
-    @State private var pickedTime = Date()
-    @State private var timeLoaded = false
 
     var body: some View {
         let theme = context.theme
@@ -22,9 +20,9 @@ struct QuotesFullView: View {
                         set: { save(enabled: $0) }
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Send me a quote each day")
+                            Text("Send me quotes")
                                 .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
-                            Text("As a notification, so alerts need to be on for Circles.")
+                            Text("One a day, or a few at the times you pick. As notifications, so alerts need to be on for Circles.")
                                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                         }
                     }
@@ -32,15 +30,7 @@ struct QuotesFullView: View {
 
                     if store.prefs.enabled {
                         Divider()
-                        DatePicker("What time", selection: $pickedTime, displayedComponents: .hourAndMinute)
-                            .font(.system(size: 15))
-                            .tint(context.accent)
-                            .onChange(of: pickedTime) { newValue in
-                                let time = QuoteSettings.time(from: newValue, calendar: context.calendar)
-                                if time != store.prefs.time { save(time: time) }
-                            }
-                        Text("In your own timezone.")
-                            .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                        timesSection(theme: theme)
 
                         Divider()
                         Toggle(isOn: Binding(
@@ -66,16 +56,60 @@ struct QuotesFullView: View {
         }
         .background(theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle(context.descriptor.title)
-        .task {
-            await store.loadIfNeeded(context: context)
-            if !timeLoaded { pickedTime = store.prefs.timeAsDate; timeLoaded = true }
-        }
+        .task { await store.loadIfNeeded(context: context) }
         .refreshable { await store.load(context: context) }
+    }
+
+    /// One row per time of day, each its own wheel; remove any but the last,
+    /// add up to six.
+    private func timesSection(theme: WidgetTheme) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(store.prefs.times.count == 1 ? "What time" : "What times")
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+            ForEach(Array(store.prefs.times.enumerated()), id: \.offset) { index, slot in
+                HStack(spacing: 10) {
+                    DatePicker("", selection: Binding(
+                        get: { QuoteSettings.date(from: slot) },
+                        set: { newValue in
+                            let time = QuoteSettings.time(from: newValue, calendar: context.calendar)
+                            guard time != slot else { return }
+                            var next = store.prefs.times
+                            next[index] = time
+                            save(times: next)
+                        }
+                    ), displayedComponents: .hourAndMinute)
+                    .labelsHidden()
+                    .tint(context.accent)
+                    Spacer()
+                    if store.prefs.times.count > 1 {
+                        Button {
+                            var next = store.prefs.times
+                            next.remove(at: index)
+                            save(times: next)
+                        } label: {
+                            Image(systemName: "minus.circle").font(.system(size: 18)).foregroundStyle(theme.secondaryLabel)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            if store.prefs.times.count < QuoteSettings.maxTimes {
+                Button {
+                    save(times: store.prefs.times + [QuoteCopy.nextSuggestedTime(after: store.prefs.times)])
+                } label: {
+                    Label("Add another time", systemImage: "plus.circle")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                }
+                .buttonStyle(.plain)
+            }
+            Text("In your own timezone. Up to six a day.")
+                .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+        }
     }
 
     private func todayCard(_ quote: DailyQuote, theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            WidgetUI.header("Today", theme: theme)
+            WidgetUI.header(quote.slot.map { "Latest · \(QuoteCopy.friendly($0))" } ?? "Latest", theme: theme)
             Text(quote.text)
                 .font(.system(size: 19, weight: .medium))
                 .foregroundStyle(theme.label)
@@ -122,12 +156,13 @@ struct QuotesFullView: View {
         save(categories: next)
     }
 
-    private func save(enabled: Bool? = nil, categories: [String]? = nil, time: String? = nil, email: Bool? = nil) {
+    private func save(enabled: Bool? = nil, categories: [String]? = nil, times: [String]? = nil, email: Bool? = nil) {
         saving = true
         Task {
             defer { saving = false }
             do {
-                let response = try await QuotesAPI.update(context: context, enabled: enabled, categories: categories, time: time, email: email)
+                let response = try await QuotesAPI.update(context: context, enabled: enabled, categories: categories,
+                                                          times: times.map { Array(Set($0)).sorted() }, email: email)
                 store.apply(response)
                 context.host.haptic(.light)
                 context.track("quotes_settings_saved")
@@ -140,6 +175,29 @@ struct QuotesFullView: View {
 }
 
 enum QuoteCopy {
+    /// "Your quotes arrive at 8:00 AM, 1:00 PM and 6:30 PM"
+    static func schedule(_ times: [String]) -> String {
+        let pretty = times.map(friendly)
+        switch pretty.count {
+        case 0: return "Pick a time"
+        case 1: return "Your quote arrives at \(pretty[0])"
+        case 2: return "Your quotes arrive at \(pretty[0]) and \(pretty[1])"
+        default: return "Your quotes arrive at \(pretty.dropLast().joined(separator: ", ")) and \(pretty.last!)"
+        }
+    }
+
+    /// A sensible next slot: a few hours after the latest one, wrapping
+    /// before midnight rather than past it.
+    static func nextSuggestedTime(after times: [String]) -> String {
+        let minutes = times.compactMap { slot -> Int? in
+            let p = slot.split(separator: ":").compactMap { Int($0) }
+            return p.count == 2 ? p[0] * 60 + p[1] : nil
+        }
+        let last = minutes.max() ?? 8 * 60
+        let next = last + 5 * 60 < 22 * 60 ? last + 5 * 60 : min(last + 60, 23 * 60)
+        return String(format: "%02d:%02d", next / 60, next % 60)
+    }
+
     /// "08:00" → "8:00 AM"
     static func friendly(_ hhmm: String) -> String {
         let parts = hhmm.split(separator: ":").compactMap { Int($0) }
