@@ -28,8 +28,10 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     /// "saturated" from "noisy" on a phone you can't see.
     @Published private(set) var diagnostic: String = ""
 
-    /// Seconds of clean signal before a reading is final.
+    /// Longest a measurement runs; it ends sooner once the number is steady.
     let measureSeconds: Double = 20
+    /// Shortest: the estimator needs a full window plus a few agreeing reads.
+    let minSeconds: Double = 8
     private var estimator = HeartRateEstimator(sampleRate: 30, windowSeconds: 8)
     private var fingerSince: Double?
     private var startTime: Double?
@@ -45,7 +47,9 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     private var torchBoosted = false
 
     #if os(iOS)
-    private let session = AVCaptureSession()
+    /// The running capture session, for the sheet's small live view (it
+    /// turns red when the right lens is covered).
+    let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "com.favcircles.widgets.pulse", qos: .userInitiated)
     private var device: AVCaptureDevice?
     private var locked = false
@@ -284,7 +288,9 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
                 }
             }
         }
-        if time - startTime >= measureSeconds {
+        // Done when the number has settled, or at the cap either way.
+        let steady = time - startTime >= minSeconds && confidence >= 0.5 && HeartRateEstimator.isSteady(bpmHistory)
+        if steady || time - startTime >= measureSeconds {
             finish()
         }
     }
@@ -307,6 +313,7 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
             return
         }
         result = HeartReading(at: Date(), bpm: bpm, source: .camera, confidence: confidence)
+        progress = 1
         phase = .done
         stop()
     }

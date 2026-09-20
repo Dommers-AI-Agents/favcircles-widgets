@@ -43,6 +43,13 @@ struct HeartbeatTests {
         #expect((estimate?.confidence ?? 0) < 0.5)
     }
 
+    @Test func steadyOnceSixEstimatesAgree() {
+        #expect(!HeartRateEstimator.isSteady([70, 71, 70, 72, 71]))               // not enough yet
+        #expect(HeartRateEstimator.isSteady([90, 70, 71, 70, 72, 71, 70]))        // an old outlier doesn't count
+        #expect(!HeartRateEstimator.isSteady([70, 71, 70, 72, 71, 78]))           // still moving
+        #expect(HeartRateEstimator.isSteady([68, 71, 70, 72, 71, 73]))            // within ±3 of the mean
+    }
+
     @Test func fingerDetection() {
         #expect(HeartRateEstimator.isFingerCovering(meanRed: 180, meanGreen: 40, meanBlue: 30))
         #expect(!HeartRateEstimator.isFingerCovering(meanRed: 120, meanGreen: 110, meanBlue: 100)) // a room

@@ -73,8 +73,8 @@ struct HeartbeatFullView: View {
                     showMeasure = true
                     camera.start()
                 }
-                Text("Rest your fingertip lightly over the rear camera lens. It takes about 20 seconds; hold still.")
-                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+                Text("Rest your fingertip lightly over the main rear camera lens (the 1× one). Hold still; it usually takes 8 to 20 seconds.")
+                    .font(.system(size: 15)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("Camera measuring needs an iPhone with a rear camera.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
             }
@@ -195,9 +195,27 @@ struct PulseMeasureView: View {
                 }
                 .frame(width: 220, height: 220)
 
-                PulseWaveform(samples: camera.waveform, color: context.accent)
-                    .frame(height: 60)
-                    .padding(.horizontal, 24)
+                if showsGuide {
+                    // Where the finger goes, and a live view that turns red
+                    // when it's on the right lens.
+                    HStack(spacing: 20) {
+                        LensGuide(accent: context.accent, theme: theme)
+                        #if os(iOS)
+                        VStack(spacing: 6) {
+                            CameraLiveDot(session: camera.session)
+                                .frame(width: 64, height: 64)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(theme.tertiaryBackground, lineWidth: 2))
+                            Text("Turns red on the\nright lens").font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
+                                .multilineTextAlignment(.center)
+                        }
+                        #endif
+                    }
+                } else {
+                    PulseWaveform(samples: camera.waveform, color: context.accent)
+                        .frame(height: 60)
+                        .padding(.horizontal, 24)
+                }
 
                 Text(statusText).font(.system(size: 15)).foregroundStyle(theme.label)
                     .multilineTextAlignment(.center).padding(.horizontal, 24).fixedSize(horizontal: false, vertical: true)
@@ -229,10 +247,18 @@ struct PulseMeasureView: View {
         }
     }
 
+    /// The guide shows until a pulse is actually being read.
+    private var showsGuide: Bool {
+        switch camera.phase {
+        case .idle, .starting, .waitingForFinger, .failed: return true
+        case .measuring, .done: return false
+        }
+    }
+
     private var statusText: String {
         switch camera.phase {
         case .idle, .starting: return "Starting the camera…"
-        case .waitingForFinger: return camera.diagnostic.hasSuffix("settling") ? "Got it. Adjusting to your finger…" : "Rest your fingertip lightly over the rear camera lens. The flash lights it from the side."
+        case .waitingForFinger: return camera.diagnostic.hasSuffix("settling") ? "Got it. Adjusting to your finger…" : "Rest your fingertip lightly over the main 1× lens, top-left of the camera block. The flash lights it from the side."
         case .measuring: return camera.bpm == nil ? "Reading your pulse. Hold still…" : "Keep holding, a few more seconds…"
         case .done: return "Done."
         case .failed(let message): return message
@@ -260,3 +286,67 @@ struct PulseWaveform: View {
         }
     }
 }
+
+/// The back of a three-lens iPhone with the main (1×) lens marked and a
+/// fingertip resting on it. On every current iPhone the 1× camera is the
+/// top-left lens of the block (the top one on two-lens phones).
+struct LensGuide: View {
+    let accent: Color
+    let theme: WidgetTheme
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(theme.tertiaryBackground)
+                .frame(width: 110, height: 150)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(theme.secondaryLabel.opacity(0.25))
+                .frame(width: 78, height: 78)
+                .offset(x: -8, y: -28)
+            // Lenses: main top-left, ultra-wide below it, telephoto right.
+            lens.offset(x: -26, y: -46)
+            lens.offset(x: -26, y: -10)
+            lens.offset(x: 10, y: -28)
+            Circle().fill(Color.yellow.opacity(0.8)).frame(width: 8, height: 8).offset(x: 30, y: -48)
+            // The finger, over the main lens.
+            Capsule()
+                .fill(Color(red: 0.93, green: 0.72, blue: 0.60))
+                .frame(width: 30, height: 84)
+                .rotationEffect(.degrees(-20))
+                .offset(x: -18, y: -14)
+            Circle().stroke(accent, lineWidth: 3).frame(width: 34, height: 34).offset(x: -26, y: -46)
+            Text("1×").font(.system(size: 11, weight: .bold)).foregroundStyle(accent).offset(x: -52, y: -46)
+        }
+        .accessibilityLabel("Fingertip over the main rear camera lens, top-left of the camera block")
+    }
+
+    private var lens: some View {
+        Circle().fill(theme.background).frame(width: 24, height: 24)
+            .overlay(Circle().fill(theme.label.opacity(0.7)).frame(width: 14, height: 14))
+    }
+}
+
+#if os(iOS)
+import AVFoundation
+import UIKit
+
+/// A live view of the measuring camera: black or the room until the right
+/// lens is covered, then solid red. The clearest "you're on the right one".
+struct CameraLiveDot: UIViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeUIView(context: Context) -> PreviewView {
+        let view = PreviewView()
+        view.previewLayer.session = session
+        view.previewLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateUIView(_ uiView: PreviewView, context: Context) {}
+
+    final class PreviewView: UIView {
+        override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+        var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    }
+}
+#endif

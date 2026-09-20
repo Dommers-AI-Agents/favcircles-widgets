@@ -195,6 +195,16 @@ public struct HeartRateEstimator: Sendable {
         return out
     }
 
+    /// A reading is steady when the last few estimates agree with each other.
+    /// Used to stop early: once six consecutive estimates sit within
+    /// `tolerance` bpm of their mean, more seconds would only confirm it.
+    public static func isSteady(_ history: [Int], count: Int = 6, tolerance: Int = 3) -> Bool {
+        guard history.count >= count else { return false }
+        let recent = history.suffix(count)
+        let mean = Double(recent.reduce(0, +)) / Double(recent.count)
+        return recent.allSatisfy { abs(Double($0) - mean) <= Double(tolerance) }
+    }
+
     /// A fingertip over the lens with the torch on reads as a bright,
     /// strongly red frame. Anything else is the room.
     public static func isFingerCovering(meanRed: Double, meanGreen: Double, meanBlue: Double) -> Bool {
