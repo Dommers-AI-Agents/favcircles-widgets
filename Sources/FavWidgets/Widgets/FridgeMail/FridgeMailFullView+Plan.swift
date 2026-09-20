@@ -131,10 +131,16 @@ extension FridgeMailFullView {
         let n = max(1, plan.recipients.count)
         let monthly = PostcardMailOrder.price(cents: plan.subscriptionPriceCents * n)
         return VStack(alignment: .leading, spacing: 6) {
-            WidgetUI.primaryButton(busy == "subscribe" ? "Opening Apple Pay…" : "Subscribe · \(monthly)/month", color: context.accent) {
-                subscribe(plan)
+            // Apple's button, not ours: this is a purchase, and Guideline 4.9
+            // wants Apple Pay's own branding on it.
+            Text("Subscribe · \(monthly)/month")
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+            WidgetApplePayButton(.subscribe) { subscribe(plan) }
+                .disabled(busy != nil)
+            if busy == "subscribe" {
+                Text("Opening Apple Pay…")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             }
-            .disabled(busy != nil)
             Text(n == 1
                  ? "One card every week to your grandparent, \(FridgeMailCopy.subscriptionPriceText) a month. Cancel anytime."
                  : "One card every week to each of \(n) grandparents, \(FridgeMailCopy.subscriptionPriceText) a month each. Cancel anytime.")
@@ -150,7 +156,7 @@ extension FridgeMailFullView {
                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.label)
             HStack(spacing: 8) {
                 ForEach(plan.packs) { pack in
-                    Button { buy(pack) } label: {
+                    Button { selectedPackId = pack.id } label: {
                         VStack(spacing: 2) {
                             Text(pack.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.label)
                             Text(pack.priceText).font(.system(size: 13)).foregroundStyle(context.accent)
@@ -159,11 +165,19 @@ extension FridgeMailFullView {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.background))
-                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(busy == pack.id ? context.accent : theme.separator, lineWidth: 1))
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(selectedPackId == pack.id || busy == pack.id ? context.accent : theme.separator,
+                                    lineWidth: selectedPackId == pack.id ? 2 : 1))
                     }
                     .buttonStyle(.plain)
                     .disabled(busy != nil)
                 }
+            }
+            // Picking a pack no longer charges on the spot — the tiles choose,
+            // Apple's button buys. 4.9 again: the purchase tap is Apple's.
+            if let pack = plan.packs.first(where: { $0.id == selectedPackId }) {
+                WidgetApplePayButton(.buy) { buy(pack) }
+                    .disabled(busy != nil)
             }
             Text("A pack covers one card per grandparent per week. Cards never expire.")
                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)

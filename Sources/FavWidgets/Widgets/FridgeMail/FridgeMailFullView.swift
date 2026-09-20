@@ -17,6 +17,8 @@ struct FridgeMailFullView: View {
     /// Which button is mid-flight, so the rest stay tappable but that one
     /// can't be double-tapped.
     @State var busy: String?
+    /// Which pack the tiles have chosen; the Apple Pay button buys it.
+    @State var selectedPackId: String?
     @State var familyNameDraft = ""
 
     var body: some View {

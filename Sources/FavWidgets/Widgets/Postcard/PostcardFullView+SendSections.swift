@@ -37,13 +37,26 @@ extension PostcardFullView {
         return "Choose a connection and/or enter an email, or just share the card."
     }
 
+    /// Whether this Send will charge: the printed card is the only paid part.
+    var isPaidSend: Bool { mailOn && mailAvailable }
+
     func sendSection(_ theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            WidgetUI.primaryButton("Send postcard", color: context.accent) {
-                Task { await send() }
+            // A printed card is a purchase, so the Send that pays for one is
+            // Apple's button, with Apple's wording. Sending only digitally
+            // costs nothing and keeps the ordinary button.
+            if isPaidSend {
+                WidgetApplePayButton(.checkOut) {
+                    Task { await send() }
+                }
+                .disabled(!canSend)
+            } else {
+                WidgetUI.primaryButton("Send postcard", color: context.accent) {
+                    Task { await send() }
+                }
+                .disabled(!canSend)
+                .opacity(canSend ? 1 : 0.5)
             }
-            .disabled(!canSend)
-            .opacity(canSend ? 1 : 0.5)
             // Shown whenever Send is off, for ANY reason. It used to appear
             // only when the photo or the recipient was missing, so a bad email
             // or an unmailable address left a dead button explaining nothing.
