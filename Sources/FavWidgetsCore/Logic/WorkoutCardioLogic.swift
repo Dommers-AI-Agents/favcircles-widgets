@@ -173,7 +173,14 @@ public struct WorkoutShareSummary: Codable, Equatable, Sendable {
         return lines.joined(separator: "\n")
     }
 
-    private static func trim(_ value: Double) -> String {
+    private static func trim(_ value: Double) -> String { WorkoutNumber.trim(value) }
+}
+
+/// "135", "137.5": a weight written the way a person would write it, with
+/// no trailing zeros. One copy, shared by the share text, the routine
+/// summary and the set rows.
+public enum WorkoutNumber {
+    public static func trim(_ value: Double) -> String {
         let rounded = (value * 100).rounded() / 100
         return rounded == rounded.rounded() ? String(Int(rounded)) : rounded.formatted(.number.precision(.fractionLength(0...2)))
     }

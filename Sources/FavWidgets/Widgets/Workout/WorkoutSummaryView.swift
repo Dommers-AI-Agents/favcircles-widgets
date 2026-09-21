@@ -8,6 +8,8 @@ struct WorkoutSummaryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var posting = false
     @State private var posted = false
+    /// nil = not answered yet, true = the routine was updated, false = left alone.
+    @State private var routineAnswer: Bool?
 
     private var theme: WidgetTheme { context.theme }
     private var share: WorkoutShareSummary { summary.share }
@@ -56,6 +58,7 @@ struct WorkoutSummaryView: View {
                         }
                     }
                 }
+                if let update = summary.routineUpdate { routineCard(update) }
                 if !summary.newRecords.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         WidgetUI.header("New PRs", theme: theme)
@@ -90,6 +93,66 @@ struct WorkoutSummaryView: View {
             .padding(20)
         }
         .background(theme.background.ignoresSafeArea())
+    }
+
+    /// "You did it differently — keep the change?" Asked once, right after
+    /// the workout, because that is the only moment the person still knows
+    /// whether the change was the plan or a bad day.
+    @ViewBuilder
+    private func routineCard(_ update: RoutineUpdate) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: routineAnswer == true ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(routineAnswer == true ? theme.success : context.accent)
+                Text(routineAnswer == true ? "\(update.routine.name) updated" : "Update \(update.routine.name)?")
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+            }
+            if routineAnswer == nil {
+                Text(update.isNew
+                     ? "This workout came from a starter routine. Saving keeps it as your own, with today's numbers."
+                     : "Today didn't match the routine. Save today's numbers so next time starts here.")
+                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(Array(update.changes.enumerated()), id: \.offset) { _, line in
+                    Text(line).font(.system(size: 13, design: .rounded)).foregroundStyle(theme.label)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if routineAnswer == nil {
+                HStack(spacing: 10) {
+                    Button { acceptRoutine(update) } label: {
+                        Text(update.isNew ? "Save as my routine" : "Update routine")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                            .frame(maxWidth: .infinity).frame(height: 44)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent))
+                    }
+                    .buttonStyle(.plain)
+                    Button {
+                        routineAnswer = false
+                        context.track("workout_routine_update_declined")
+                    } label: {
+                        Text("Leave it")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                            .frame(maxWidth: .infinity).frame(height: 44)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    private func acceptRoutine(_ update: RoutineUpdate) {
+        settings.update { $0.routines = WorkoutSessionLogic.applying(update, to: $0.routines) }
+        routineAnswer = true
+        context.host.haptic(.success)
+        context.track("workout_routine_updated", ["new": update.isNew ? "1" : "0"])
     }
 
     private func shareOut() {

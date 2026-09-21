@@ -233,7 +233,9 @@ struct ActiveSessionView: View {
         let sets = setsByExercise[exerciseId] ?? []
         let name = settings.model.exercise(id: exerciseId)?.name ?? "Exercise"
         let best = settings.model.prsByExercise[exerciseId]
-        let targetReps = WorkoutSessionLogic.targetReps(for: exerciseId, in: session, routines: settings.model.routines + ExerciseCatalog.starterRoutines)
+        let item = WorkoutSessionLogic.routineItem(for: exerciseId, in: session,
+                                                   routines: settings.model.routines + ExerciseCatalog.starterRoutines)
+        let targets = WorkoutSessionLogic.targets(for: sets, routineReps: item?.targetReps, routineWeight: item?.targetWeight)
         HStack(alignment: .center, spacing: 10) {
             Button { photoTarget = PhotoTarget(id: exerciseId) } label: {
                 ExerciseThumb(url: settings.model.imageURL(for: exerciseId),
@@ -264,7 +266,7 @@ struct ActiveSessionView: View {
                 setId: set.id,
                 number: index + 1,
                 previousHint: best.map { WorkoutFormat.set($0.weight, $0.reps) },
-                targetReps: targetReps,
+                target: index < targets.count ? targets[index] : WorkoutSessionLogic.SetTarget(reps: nil, weight: nil),
                 onCompleted: startRest
             )
             .listRowSeparator(.hidden)
@@ -276,7 +278,7 @@ struct ActiveSessionView: View {
             }
         }
         Button {
-            let next = WorkoutSessionLogic.nextSet(for: exerciseId, in: session)
+            let next = WorkoutSessionLogic.nextSet(for: exerciseId)
             settings.update { model in
                 // Insert after the exercise's last row so blocks stay contiguous.
                 guard var sets = model.activeSession?.sets else { return }
@@ -345,13 +347,24 @@ struct ActiveSessionView: View {
             .sorted { $0.exercise < $1.exercise }
         let share = WorkoutShareSummary.make(session: result.session, newRecords: result.newRecords, unit: unit,
                                              weightKg: settings.model.profile.weightKg) { settings.model.exercise(id: $0)?.name ?? "Exercise" }
+        // Read against the routines as they were BEFORE the session was
+        // cleared, including the starters, so a starter routine can be
+        // saved as the person's own.
+        let update = WorkoutSessionLogic.routineUpdate(
+            for: result.session,
+            routines: settings.model.routines + ExerciseCatalog.starterRoutines,
+            name: { [model = settings.model] id in model.exercise(id: id)?.name ?? "Exercise" },
+            unit: unit
+        )
+        let isStarter = update.map { u in !settings.model.routines.contains { $0.id == u.routine.id } } ?? false
         onFinished(WorkoutSummary(
             name: result.session.name,
             duration: WorkoutSessionLogic.duration(of: result.session),
             completedSets: WorkoutSessionLogic.completedSetCount(result.session),
             unit: unit,
             newRecords: records,
-            share: share
+            share: share,
+            routineUpdate: update.map { RoutineUpdate(routine: $0.routine, isNew: isStarter, changes: $0.changes) }
         ))
     }
 

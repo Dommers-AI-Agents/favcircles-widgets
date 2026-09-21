@@ -36,7 +36,9 @@ struct WorkoutFullView: View {
             WorkoutSummaryView(context: context, settings: settings, summary: summary)
         }
         .background(context.theme.background.ignoresSafeArea())
-        .widgetInlineNavigationTitle("Workouts")
+        // A live workout is titled by what it is — the routine's name —
+        // rather than the widget's.
+        .widgetInlineNavigationTitle(showsSession ? (settings.model.activeSession?.name ?? "Workouts") : "Workouts")
     }
 }
 

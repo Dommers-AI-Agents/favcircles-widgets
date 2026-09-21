@@ -44,13 +44,52 @@ public enum WorkoutSessionLogic {
         return WorkoutSession(routineId: routine.id, name: routine.name, startedAt: startedAt, sets: sets)
     }
 
-    /// A blank set row for an exercise, copying weight/reps from the last
-    /// row of the same exercise so "Add set" repeats the previous set.
-    public static func nextSet(for exerciseId: String, in session: WorkoutSession) -> SetEntry {
-        if let last = session.sets.last(where: { $0.exerciseId == exerciseId }) {
-            return SetEntry(exerciseId: exerciseId, reps: last.reps, weight: last.weight)
+    /// A blank set row. It stays 0 × 0 on purpose: the values you would
+    /// repeat arrive as the row's placeholder (see `targets(for:)`) and are
+    /// written in when you tick it, so an untouched extra row is still
+    /// untouched and is dropped at the end.
+    public static func nextSet(for exerciseId: String) -> SetEntry {
+        SetEntry(exerciseId: exerciseId, reps: 0, weight: 0)
+    }
+
+    /// What a row should offer before anyone types in it.
+    public struct SetTarget: Equatable, Sendable {
+        public let reps: Int?
+        public let weight: Double?
+
+        public init(reps: Int?, weight: Double?) {
+            self.reps = reps
+            self.weight = weight
         }
-        return SetEntry(exerciseId: exerciseId, reps: 0, weight: 0)
+
+        public var isEmpty: Bool { reps == nil && weight == nil }
+    }
+
+    /// A target for each row of one exercise, in order.
+    ///
+    /// The values roll forward: every row offers what the last completed
+    /// working set of that exercise actually was, so changing the weight on
+    /// set two carries into sets three and four without retyping. Before
+    /// anything is ticked the routine's remembered values stand in. Warm-up
+    /// sets never set the working target.
+    public static func targets(for sets: [SetEntry], routineReps: Int? = nil, routineWeight: Double? = nil) -> [SetTarget] {
+        var reps = routineReps
+        var weight = routineWeight.flatMap { $0 > 0 ? $0 : nil }
+        var out: [SetTarget] = []
+        for set in sets {
+            out.append(SetTarget(reps: reps, weight: weight))
+            guard set.completedAt != nil, !set.isWarmup else { continue }
+            if set.reps > 0 { reps = set.reps }
+            if set.weight > 0 { weight = set.weight }
+        }
+        return out
+    }
+
+    /// The routine item behind an exercise in this session, if any.
+    public static func routineItem(for exerciseId: String, in session: WorkoutSession, routines: [Routine]) -> RoutineItem? {
+        guard let routineId = session.routineId,
+              let routine = routines.first(where: { $0.id == routineId }) else { return nil }
+        return routine.items.first { $0.exerciseId == exerciseId }
     }
 
     /// A row holds user data when it was ticked or has any number typed in
@@ -66,6 +105,67 @@ public enum WorkoutSessionLogic {
         guard let routineId = session.routineId,
               let routine = routines.first(where: { $0.id == routineId }) else { return nil }
         return routine.items.first { $0.exerciseId == exerciseId }?.targetReps
+    }
+
+    /// What the routine would become after this workout, or nil when the
+    /// session came from no routine, or matches the one it came from.
+    ///
+    /// Each exercise keeps the values of its FIRST completed working set:
+    /// straight sets record themselves exactly, and someone who ramps up
+    /// gets their opening set back next time rather than their heaviest.
+    /// Exercises added during the workout are appended; exercises that were
+    /// skipped are left alone, because not doing something once is not a
+    /// decision to remove it.
+    public static func routineUpdate(for session: WorkoutSession, routines: [Routine],
+                                     name: @escaping (String) -> String = { $0 },
+                                     unit: WeightUnit = .lb) -> RoutineUpdate? {
+        guard let routineId = session.routineId else { return nil }
+        guard let existing = routines.first(where: { $0.id == routineId }) else { return nil }
+
+        var items = existing.items
+        var changes: [String] = []
+        for exerciseId in orderedExerciseIds(in: session) {
+            let performed = session.sets.filter { $0.exerciseId == exerciseId && $0.completedAt != nil && !$0.isWarmup }
+            guard let first = performed.first else { continue }
+            let sets = performed.count
+            let reps = first.reps
+            let weight = first.weight > 0 ? first.weight : nil
+            let line = describe(sets: sets, reps: reps, weight: weight, unit: unit)
+            if let index = items.firstIndex(where: { $0.exerciseId == exerciseId }) {
+                let was = items[index]
+                let wasLine = describe(sets: was.targetSets, reps: was.targetReps, weight: was.targetWeight, unit: unit)
+                guard wasLine != line else { continue }
+                items[index].targetSets = sets
+                items[index].targetReps = reps
+                items[index].targetWeight = weight
+                changes.append("\(name(exerciseId)): \(wasLine) → \(line)")
+            } else {
+                items.append(RoutineItem(exerciseId: exerciseId, targetSets: sets, targetReps: reps, targetWeight: weight))
+                changes.append("\(name(exerciseId)): added, \(line)")
+            }
+        }
+        guard !changes.isEmpty else { return nil }
+        return RoutineUpdate(routine: Routine(id: existing.id, name: existing.name, items: items),
+                             isNew: false, changes: changes)
+    }
+
+    /// "3 × 10 at 135 lb", or "3 × 10" when there is no weight.
+    static func describe(sets: Int, reps: Int, weight: Double?, unit: WeightUnit) -> String {
+        let base = "\(sets) × \(reps)"
+        guard let weight, weight > 0 else { return base }
+        return "\(base) at \(WorkoutNumber.trim(weight)) \(unit.label)"
+    }
+
+    /// The routines list with an accepted update written in; a routine that
+    /// only existed in the starter list is added as the person's own.
+    public static func applying(_ update: RoutineUpdate, to routines: [Routine]) -> [Routine] {
+        var out = routines
+        if let index = out.firstIndex(where: { $0.id == update.routine.id }) {
+            out[index] = update.routine
+        } else {
+            out.append(update.routine)
+        }
+        return out
     }
 
     public static func completedSetCount(_ session: WorkoutSession) -> Int {

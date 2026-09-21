@@ -10,9 +10,10 @@ struct SetRowView: View {
     let setId: UUID
     let number: Int
     let previousHint: String?
-    /// From the routine, shown as the reps placeholder and used when a
-    /// row is ticked without typing reps.
-    let targetReps: Int?
+    /// What this row offers before anyone types: the last completed set of
+    /// this exercise, or the routine's remembered values. Shown as the
+    /// placeholders, and written in when the row is ticked untouched.
+    let target: WorkoutSessionLogic.SetTarget
     let onCompleted: () -> Void
 
     @State private var weightText = ""
@@ -35,14 +36,14 @@ struct SetRowView: View {
                 .frame(width: 64, alignment: .leading)
                 .lineLimit(1)
             HStack(spacing: 4) {
-                TextField("0", text: $weightText)
+                TextField(target.weight.map(WorkoutNumber.trim) ?? "0", text: $weightText)
                     .widgetDecimalKeyboard()
                     .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.center)
                     .frame(minWidth: 56)
                 Text(settings.model.unit.label).font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
             }
-            TextField(targetReps.map(String.init) ?? "reps", text: $repsText)
+            TextField(target.reps.map(String.init) ?? "reps", text: $repsText)
                 .widgetNumberKeyboard()
                 .textFieldStyle(.roundedBorder)
                 .multilineTextAlignment(.center)
@@ -68,8 +69,21 @@ struct SetRowView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(isDone ? "Completed" : "Complete set")
         }
-        .padding(.vertical, 2)
-        .opacity(isDone ? 0.75 : 1)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(isDone ? theme.success.opacity(0.16) : Color.clear)
+        )
+        .overlay(alignment: .leading) {
+            // A done set should read as done at a glance, from across the
+            // row — the tick alone is easy to miss mid-workout.
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(isDone ? theme.success : Color.clear)
+                .frame(width: 3)
+                .padding(.vertical, 4)
+        }
+        .animation(.easeInOut(duration: 0.18), value: isDone)
         .onAppear(perform: seed)
         .onChange(of: weightText) { text in
             guard let value = WorkoutFormat.parseDecimal(text) ?? (text.isEmpty ? 0 : nil) else { return }
@@ -94,14 +108,19 @@ struct SetRowView: View {
         }
     }
 
+    /// Ticking an untouched row commits what it was offering, so a repeat
+    /// workout is all ticks: the reps AND the weight, not just the reps.
     private func toggleDone() {
         let completing = !isDone
-        let fillReps = completing && (entry?.reps ?? 0) == 0 ? targetReps : nil
+        let fillReps = completing && (entry?.reps ?? 0) == 0 ? target.reps : nil
+        let fillWeight = completing && (entry?.weight ?? 0) == 0 ? target.weight : nil
         mutate {
             $0.completedAt = completing ? Date() : nil
             if let fillReps { $0.reps = fillReps }
+            if let fillWeight { $0.weight = fillWeight }
         }
         if let fillReps { repsText = String(fillReps) }
+        if let fillWeight { weightText = WorkoutFormat.decimalText(fillWeight) }
         if completing { onCompleted() }
     }
 }

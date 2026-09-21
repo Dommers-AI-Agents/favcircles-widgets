@@ -16,7 +16,8 @@ public struct WorkoutWidget: FavWidget {
         category: .fitness,
         storage: .monthly,
         // 2 (2026-09-19): body profile, cardio entries, exercise photos.
-        schemaVersion: 2
+        // 3 (2026-09-21): routines remember the weight (RoutineItem.targetWeight).
+        schemaVersion: 3
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

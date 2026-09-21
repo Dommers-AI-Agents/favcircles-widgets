@@ -43,12 +43,17 @@ public struct RoutineItem: Codable, Equatable, Identifiable, Sendable {
     public var exerciseId: String
     public var targetSets: Int
     public var targetReps: Int
+    /// What you lifted last time. Shown as the row's placeholder so a
+    /// repeat workout is all ticks and no typing. Absent on routines
+    /// written before the weight was remembered (0 is "no idea yet").
+    public var targetWeight: Double?
 
-    public init(id: UUID = UUID(), exerciseId: String, targetSets: Int = 3, targetReps: Int = 10) {
+    public init(id: UUID = UUID(), exerciseId: String, targetSets: Int = 3, targetReps: Int = 10, targetWeight: Double? = nil) {
         self.id = id
         self.exerciseId = exerciseId
         self.targetSets = targetSets
         self.targetReps = targetReps
+        self.targetWeight = targetWeight
     }
 }
 
@@ -147,6 +152,23 @@ public struct PersonalRecord: Codable, Equatable, Sendable {
     }
 }
 
+/// A routine and the workout that just diverged from it: what the routine
+/// would become if the person says yes.
+public struct RoutineUpdate: Equatable, Sendable {
+    public let routine: Routine
+    /// True when the routine came from the starter list and saying yes
+    /// saves the person their own copy for the first time.
+    public let isNew: Bool
+    /// One line per change, in the words the sheet shows.
+    public let changes: [String]
+
+    public init(routine: Routine, isNew: Bool, changes: [String]) {
+        self.routine = routine
+        self.isNew = isNew
+        self.changes = changes
+    }
+}
+
 /// What "Finish workout" hands back for the summary sheet.
 public struct WorkoutSummary: Identifiable {
     public let id = UUID()
@@ -158,14 +180,19 @@ public struct WorkoutSummary: Identifiable {
     /// Best sets, cardio and PR count: the summary sheet, the share text
     /// and the Inner Circle post all read from this.
     public let share: WorkoutShareSummary
+    /// Set when the workout differed from the routine it started from, so
+    /// the sheet can offer to keep the change.
+    public let routineUpdate: RoutineUpdate?
 
     public init(name: String, duration: TimeInterval, completedSets: Int, unit: WeightUnit,
-                newRecords: [(id: String, exercise: String, record: PersonalRecord)], share: WorkoutShareSummary) {
+                newRecords: [(id: String, exercise: String, record: PersonalRecord)], share: WorkoutShareSummary,
+                routineUpdate: RoutineUpdate? = nil) {
         self.name = name
         self.duration = duration
         self.completedSets = completedSets
         self.unit = unit
         self.newRecords = newRecords
         self.share = share
+        self.routineUpdate = routineUpdate
     }
 }
