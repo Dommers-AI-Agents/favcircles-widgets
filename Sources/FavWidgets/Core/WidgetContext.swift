@@ -83,6 +83,10 @@ public final class WidgetContext: ObservableObject {
     /// if this phone never recorded the send.
     public var launchPostcardOrderId: String?
 
+    /// A quote the host wants opened in the reel — the "quote of the day"
+    /// push carries its id. The quotes page reads and clears it on appear.
+    public var launchQuoteId: String?
+
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host
         self.theme = theme

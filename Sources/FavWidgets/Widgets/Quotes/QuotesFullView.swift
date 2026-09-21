@@ -7,12 +7,16 @@ struct QuotesFullView: View {
     let context: WidgetContext
     @ObservedObject var store: QuotesStore
     @State private var saving = false
+    /// Non-nil while the reel is up; the string is the quote to open on
+    /// (empty means "start wherever the server wants").
+    @State private var reelStart: String??
 
     var body: some View {
         let theme = context.theme
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if let quote = store.today { todayCard(quote, theme: theme) }
+                browseRow(theme: theme)
 
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle(isOn: Binding(
@@ -58,6 +62,21 @@ struct QuotesFullView: View {
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await store.loadIfNeeded(context: context) }
         .refreshable { await store.load(context: context) }
+        // The tapped "quote of the day" push. Read once and cleared, so
+        // coming back to this page later doesn't reopen the reel.
+        .task {
+            guard let launched = context.launchQuoteId else { return }
+            context.launchQuoteId = nil
+            reelStart = .some(launched)
+        }
+        .quoteReelCover(isPresented: Binding(
+            get: { reelStart != nil },
+            set: { if !$0 { reelStart = nil } }
+        )) {
+            QuotesReelView(context: context,
+                           startId: reelStart.flatMap { $0 },
+                           onClose: { reelStart = nil })
+        }
     }
 
     /// One row per time of day, each its own wheel; remove any but the last,
@@ -107,6 +126,24 @@ struct QuotesFullView: View {
         }
     }
 
+    /// Always available, because the reel is worth reaching on a day when
+    /// nothing has been sent yet — and on a phone that never enabled quotes.
+    private func browseRow(theme: WidgetTheme) -> some View {
+        Button { reelStart = .some(nil) } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "quote.bubble")
+                Text("Browse quotes").font(.system(size: 15, weight: .semibold))
+                Spacer()
+                Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold))
+            }
+            .foregroundStyle(context.accent)
+            .padding(14)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+        }
+        .buttonStyle(.plain)
+    }
+
     private func todayCard(_ quote: DailyQuote, theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             WidgetUI.header(quote.slot.map { "Latest · \(QuoteCopy.friendly($0))" } ?? "Latest", theme: theme)
@@ -121,6 +158,10 @@ struct QuotesFullView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent.opacity(0.10)))
+        .contentShape(Rectangle())
+        // Opens on the quote that actually went out. Sends recorded before
+        // the reel existed carry no id, and open wherever the server starts.
+        .onTapGesture { reelStart = .some(quote.id) }
     }
 
     private func topics(theme: WidgetTheme) -> some View {

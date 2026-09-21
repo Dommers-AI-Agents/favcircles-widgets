@@ -6,6 +6,17 @@ enum QuotesAPI {
         try WidgetJSON.decode(QuoteSettingsResponse.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/quotes/settings")))
     }
 
+    /// The reel: `start` first, then the quotes most like it. Unauthenticated
+    /// content, but it rides the widget API channel like everything else.
+    static func feed(context: WidgetContext, start: String?) async throws -> QuoteFeedResponse {
+        var path = "widgets/quotes/feed"
+        if let start, !start.isEmpty,
+           let escaped = start.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+            path += "?start=\(escaped)"
+        }
+        return try WidgetJSON.decode(QuoteFeedResponse.self, from: await context.host.request(WidgetAPIRequest(.get, path)))
+    }
+
     /// Only the fields being changed are sent; the server merges the rest.
     static func update(context: WidgetContext, enabled: Bool? = nil, categories: [String]? = nil,
                        times: [String]? = nil, email: Bool? = nil) async throws -> QuoteSettingsResponse {
