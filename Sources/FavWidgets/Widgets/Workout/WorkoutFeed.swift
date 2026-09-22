@@ -16,11 +16,37 @@ enum WorkoutFeedAPI {
 
     private struct FeedResponse: Decodable { let posts: [Post] }
 
-    static func share(context: WidgetContext, summary: WorkoutShareSummary) async throws {
+    private struct ShareBody: Encodable {
+        let summary: WorkoutShareSummary
+        let audienceListId: String?
+    }
+
+    /// `audienceListId` names one of the person's Inner Circle lists; nil
+    /// means anyone on any of them.
+    static func share(context: WidgetContext, summary: WorkoutShareSummary, audienceListId: String? = nil) async throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let body = try encoder.encode(["summary": summary])
+        let body = try encoder.encode(ShareBody(summary: summary, audienceListId: audienceListId))
         _ = try await context.host.request(WidgetAPIRequest(.post, "widgets/workouts/share", body: body))
+    }
+
+    /// One of the person's own named lists, as the audience menu shows it.
+    struct AudienceList: Decodable, Identifiable, Equatable {
+        let id: String
+        let name: String
+        let userIds: [String]
+        var count: Int { userIds.count }
+    }
+
+    private struct ListsEnvelope: Decodable {
+        struct Data: Decodable { let lists: [AudienceList]? }
+        let data: Data
+    }
+
+    /// The lists worth offering: the ones with someone on them.
+    static func audienceLists(context: WidgetContext) async throws -> [AudienceList] {
+        let envelope = try WidgetJSON.decode(ListsEnvelope.self, from: await context.host.request(WidgetAPIRequest(.get, "users/me/inner-circle/lists")))
+        return (envelope.data.lists ?? []).filter { !$0.userIds.isEmpty }
     }
 
     static func feed(context: WidgetContext) async throws -> [Post] {
@@ -43,6 +69,20 @@ final class WorkoutFeedStore: RemoteStore {
 
     func load(context: WidgetContext) async {
         await load { self.posts = try await WorkoutFeedAPI.feed(context: context) }
+    }
+}
+
+/// The person's Inner Circle lists, for choosing who a workout goes to.
+@MainActor
+final class WorkoutAudienceStore: RemoteStore {
+    @Published var lists: [WorkoutFeedAPI.AudienceList] = []
+
+    static func shared(_ context: WidgetContext) -> WorkoutAudienceStore {
+        context.transient("workouts.audience") { WorkoutAudienceStore() }
+    }
+
+    func loadIfStale(context: WidgetContext) async {
+        await loadIfNeeded(staleAfter: 300) { self.lists = try await WorkoutFeedAPI.audienceLists(context: context) }
     }
 }
 

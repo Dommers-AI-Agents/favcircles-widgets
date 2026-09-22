@@ -21,10 +21,13 @@ public struct WorkoutSettings: WidgetModel {
     /// Remembered from the finish sheet: post finished workouts to the
     /// Inner Circle feed.
     public var shareWithInnerCircle: Bool
+    /// Which named Inner Circle list the finished workout is posted to; nil
+    /// means anyone on any of the person's lists.
+    public var shareListId: String?
 
     public init(unit: WeightUnit = .lb, restTimerSeconds: Int = 90, autoRestTimer: Bool = true, customExercises: [Exercise] = [],
                 routines: [Routine] = [], prsByExercise: [String: PersonalRecord] = [:], activeSession: WorkoutSession? = nil,
-                profile: BodyProfile = BodyProfile(), exerciseImages: [String: String] = [:], shareWithInnerCircle: Bool = false) {
+                profile: BodyProfile = BodyProfile(), exerciseImages: [String: String] = [:], shareWithInnerCircle: Bool = false, shareListId: String? = nil) {
         self.unit = unit
         self.restTimerSeconds = restTimerSeconds
         self.autoRestTimer = autoRestTimer
@@ -35,11 +38,12 @@ public struct WorkoutSettings: WidgetModel {
         self.profile = profile
         self.exerciseImages = exerciseImages
         self.shareWithInnerCircle = shareWithInnerCircle
+        self.shareListId = shareListId
     }
 
     private enum CodingKeys: String, CodingKey {
         case unit, restTimerSeconds, autoRestTimer, customExercises, routines, prsByExercise, activeSession
-        case profile, exerciseImages, shareWithInnerCircle
+        case profile, exerciseImages, shareWithInnerCircle, shareListId
     }
 
     /// Documents written before a field existed decode with that field's
@@ -57,6 +61,7 @@ public struct WorkoutSettings: WidgetModel {
         profile = try c.decodeIfPresent(BodyProfile.self, forKey: .profile) ?? BodyProfile()
         exerciseImages = try c.decodeIfPresent([String: String].self, forKey: .exerciseImages) ?? [:]
         shareWithInnerCircle = try c.decodeIfPresent(Bool.self, forKey: .shareWithInnerCircle) ?? false
+        shareListId = try c.decodeIfPresent(String.self, forKey: .shareListId)
     }
 
     /// The photo for an exercise: the attached one, else the custom

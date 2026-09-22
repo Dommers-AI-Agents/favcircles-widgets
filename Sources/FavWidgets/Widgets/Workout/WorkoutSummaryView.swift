@@ -8,11 +8,26 @@ struct WorkoutSummaryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var posting = false
     @State private var posted = false
+    @ObservedObject private var audience: WorkoutAudienceStore
     /// nil = not answered yet, true = the routine was updated, false = left alone.
     @State private var routineAnswer: Bool?
 
+    init(context: WidgetContext, settings: WidgetStateController<WorkoutSettings>, summary: WorkoutSummary) {
+        self.context = context
+        self.settings = settings
+        self.summary = summary
+        self.audience = WorkoutAudienceStore.shared(context)
+    }
+
     private var theme: WidgetTheme { context.theme }
     private var share: WorkoutShareSummary { summary.share }
+
+    /// The list the post goes to, if it still exists; a deleted or emptied
+    /// list falls back to "anyone on my lists" rather than to nobody.
+    private var chosenList: WorkoutFeedAPI.AudienceList? {
+        guard let id = settings.model.shareListId else { return nil }
+        return audience.lists.first { $0.id == id }
+    }
 
     var body: some View {
         ScrollView {
@@ -72,10 +87,13 @@ struct WorkoutSummaryView: View {
                 Toggle(isOn: Binding(get: { settings.model.shareWithInnerCircle }, set: { on in settings.update { $0.shareWithInnerCircle = on } })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Post to my Inner Circle").font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label)
-                        Text(posted ? "Posted." : "The people on your Inner Circle list see it in their Workouts widget.").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                        Text(posted ? "Posted." : "They see it in their Workouts widget.").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     }
                 }
                 .tint(context.accent)
+                if settings.model.shareWithInnerCircle, !posted, !audience.lists.isEmpty {
+                    audiencePicker
+                }
                 HStack(spacing: 10) {
                     Button {
                         shareOut()
@@ -93,6 +111,7 @@ struct WorkoutSummaryView: View {
             .padding(20)
         }
         .background(theme.background.ignoresSafeArea())
+        .task { await audience.loadIfStale(context: context) }
     }
 
     /// "You did it differently — keep the change?" Asked once, right after
@@ -155,6 +174,35 @@ struct WorkoutSummaryView: View {
         context.track("workout_routine_updated", ["new": update.isNew ? "1" : "0"])
     }
 
+    /// Which list. One entry per named list with its size, plus "anyone on my
+    /// lists", which is what a post with no list has always meant.
+    private var audiencePicker: some View {
+        Menu {
+            Button {
+                settings.update { $0.shareListId = nil }
+            } label: {
+                Label("Anyone on my lists", systemImage: settings.model.shareListId == nil ? "checkmark" : "")
+            }
+            ForEach(audience.lists) { list in
+                Button {
+                    settings.update { $0.shareListId = list.id }
+                } label: {
+                    Label("\(list.name) · \(list.count == 1 ? "1 person" : "\(list.count) people")",
+                          systemImage: settings.model.shareListId == list.id ? "checkmark" : "")
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Text("To:").font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                Text(chosenList?.name ?? "Anyone on my lists").font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                Spacer()
+            }
+            .padding(.horizontal, 12).frame(height: 40)
+            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
+        }
+    }
+
     private func shareOut() {
         var items: [WidgetShareItem] = [.text(share.shareText(calendar: context.calendar))]
         if let jpeg = WorkoutShareCard.jpeg(summary: share, accent: context.accent) { items.append(.imageJPEG(jpeg)) }
@@ -168,7 +216,7 @@ struct WorkoutSummaryView: View {
         Task {
             defer { posting = false }
             do {
-                try await WorkoutFeedAPI.share(context: context, summary: share)
+                try await WorkoutFeedAPI.share(context: context, summary: share, audienceListId: chosenList?.id)
                 posted = true
                 context.track("workout_posted_inner_circle")
                 dismiss()
