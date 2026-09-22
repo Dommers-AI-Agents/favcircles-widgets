@@ -51,3 +51,39 @@ struct CareWatcherTests {
         #expect(old.isEmpty)
     }
 }
+
+
+// MARK: - Questions
+
+@Suite("Care questions")
+struct CareQuestionTests {
+    private func plan(questions: [String], defaults: [String] = ["How are you feeling today?", "Did you sleep well?"]) throws -> CarePlan {
+        let object: [String: Any] = [
+            "planId": "p", "role": "owner", "ownerId": "o", "ownerName": "Wes", "parentId": "s", "parentName": "Sal",
+            "status": "active", "times": ["08:30"], "watchers": [],
+            "questions": questions.enumerated().map { ["id": "q\($0.offset)", "text": $0.element] },
+            "usesDefaultQuestions": questions.isEmpty, "defaultQuestions": defaults
+        ]
+        let data = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(CarePlan.self, from: data)
+    }
+
+    /// Wes added one question for Sal and the eight defaults vanished —
+    /// the first custom question used to REPLACE the rotation.
+    @Test func theFirstOwnQuestionJoinsTheDefaultsInsteadOfReplacingThem() throws {
+        let p = try plan(questions: [])
+        #expect(CareCopy.questionsAfterAdding("Did you swim today?", to: p)
+                == ["How are you feeling today?", "Did you sleep well?", "Did you swim today?"])
+    }
+
+    @Test func laterQuestionsAppendToTheOwnList() throws {
+        let p = try plan(questions: ["Did you swim today?"])
+        #expect(CareCopy.questionsAfterAdding(" Any pain? ", to: p) == ["Did you swim today?", "Any pain?"])
+    }
+
+    @Test func blankOrDuplicateChangesNothing() throws {
+        let p = try plan(questions: ["Did you swim today?"])
+        #expect(CareCopy.questionsAfterAdding("   ", to: p) == ["Did you swim today?"])
+        #expect(CareCopy.questionsAfterAdding("Did you swim today?", to: p) == ["Did you swim today?"])
+    }
+}

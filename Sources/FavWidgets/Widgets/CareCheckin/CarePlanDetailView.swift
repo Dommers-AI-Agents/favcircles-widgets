@@ -126,7 +126,7 @@ struct CarePlanDetailView: View {
                     .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
                     .disabled(newQuestion.trimmingCharacters(in: .whitespaces).isEmpty || busy)
             }
-            Text(plan.usesDefaultQuestions ? "Add one of your own and only yours will be used, in order." : "Asked in this order, then around again.")
+            Text(plan.usesDefaultQuestions ? "Add your own — these stay in the rotation until you remove them." : "Asked in this order, then around again.")
                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
         }
     }
@@ -169,11 +169,10 @@ struct CarePlanDetailView: View {
     }
 
     private func addQuestion(_ plan: CarePlan) {
-        let q = newQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return }
-        let base = plan.usesDefaultQuestions ? [] : plan.questions.map(\.text)
+        let questions = CareCopy.questionsAfterAdding(newQuestion, to: plan)
+        guard questions.count > (plan.usesDefaultQuestions ? plan.defaultQuestions : plan.questions.map(\.text)).count else { return }
         newQuestion = ""
-        setQuestions(plan, base + [q])
+        setQuestions(plan, questions)
     }
 
     private func perform(_ op: @escaping () async throws -> Void) {

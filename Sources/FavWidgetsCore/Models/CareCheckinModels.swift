@@ -255,6 +255,17 @@ public struct CarePlans: Decodable, Equatable, Sendable {
 
 public enum CareCopy {
     public static let defaultTimes = ["08:30", "13:00", "19:00"]
+
+    /// The list to send when the owner adds a question. On a plan still on
+    /// the rotating defaults, the defaults come along as the owner's own
+    /// (each now removable) and the new one joins the rotation — adding a
+    /// question must never make the other questions disappear.
+    public static func questionsAfterAdding(_ text: String, to plan: CarePlan) -> [String] {
+        let base = plan.usesDefaultQuestions ? plan.defaultQuestions : plan.questions.map(\.text)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !base.contains(trimmed) else { return base }
+        return base + [trimmed]
+    }
     public static let timeChoices: [String] = stride(from: 6, through: 22, by: 1).flatMap { h in ["00", "30"].map { String(format: "%02d:%@", h, $0) } }
 
     /// "08:30" → "8:30 AM" in the viewer's locale style.
