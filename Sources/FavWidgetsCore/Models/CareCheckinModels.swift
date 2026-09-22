@@ -137,6 +137,8 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public var times: [String]
     public var timezone: String?
     public var createdAt: Date?
+    /// When the invitation push last went out (the first time = createdAt).
+    public var lastInvitedAt: Date?
     public var acceptedAt: Date?
     public var lastAskedAt: Date?
     public var lastAnsweredAt: Date?
@@ -160,9 +162,9 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
 
     public init(planId: String, role: String, ownerId: String, ownerName: String, parentId: String, parentName: String,
                 status: String, questions: [CareQuestion] = [], usesDefaultQuestions: Bool = true, defaultQuestions: [String] = [],
-                times: [String] = ["08:30", "13:00", "19:00"], timezone: String? = nil, createdAt: Date? = nil, acceptedAt: Date? = nil,
-                lastAskedAt: Date? = nil, lastAnsweredAt: Date? = nil, openAsk: CareAsk? = nil, lastAnswer: CareAsk? = nil,
-                watchers: [CareWatcher] = []) {
+                times: [String] = ["08:30", "13:00", "19:00"], timezone: String? = nil, createdAt: Date? = nil, lastInvitedAt: Date? = nil,
+                acceptedAt: Date? = nil, lastAskedAt: Date? = nil, lastAnsweredAt: Date? = nil, openAsk: CareAsk? = nil,
+                lastAnswer: CareAsk? = nil, watchers: [CareWatcher] = []) {
         self.planId = planId
         self.role = role
         self.ownerId = ownerId
@@ -176,6 +178,7 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         self.times = times
         self.timezone = timezone
         self.createdAt = createdAt
+        self.lastInvitedAt = lastInvitedAt ?? createdAt
         self.acceptedAt = acceptedAt
         self.lastAskedAt = lastAskedAt
         self.lastAnsweredAt = lastAnsweredAt
@@ -186,7 +189,7 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case planId, role, ownerId, ownerName, parentId, parentName, status, questions
-        case usesDefaultQuestions, defaultQuestions, times, timezone, createdAt, acceptedAt
+        case usesDefaultQuestions, defaultQuestions, times, timezone, createdAt, lastInvitedAt, acceptedAt
         case lastAskedAt, lastAnsweredAt, openAsk, lastAnswer, watchers
     }
 
@@ -208,6 +211,7 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         times = try c.decodeIfPresent([String].self, forKey: .times) ?? ["08:30", "13:00", "19:00"]
         timezone = try c.decodeIfPresent(String.self, forKey: .timezone)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
+        lastInvitedAt = try c.decodeIfPresent(Date.self, forKey: .lastInvitedAt) ?? createdAt
         acceptedAt = try c.decodeIfPresent(Date.self, forKey: .acceptedAt)
         lastAskedAt = try c.decodeIfPresent(Date.self, forKey: .lastAskedAt)
         lastAnsweredAt = try c.decodeIfPresent(Date.self, forKey: .lastAnsweredAt)
@@ -316,6 +320,20 @@ public enum CareCopy {
     }
 
     /// The status chip on a plan row.
+    /// Under "Waiting for Mom to accept": when the invitation last went out,
+    /// so a child knows whether a nudge is overdue or just sent.
+    public static func invitedLine(_ plan: CarePlan, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard let at = plan.lastInvitedAt else { return "They'll see the invitation in their Circles app. Nothing is asked until they say yes." }
+        return "Invitation sent \(relative(at, now: now, calendar: calendar)). They'll see it in their Circles app; nothing is asked until they say yes."
+    }
+
+    /// What the child is told after "Send the invitation again".
+    public static func resendResult(_ plan: CarePlan, delivered: Bool) -> String {
+        delivered
+            ? "Sent to \(plan.parentName) again."
+            : "\(plan.parentName)'s phone isn't getting notifications right now. The invitation is still waiting in their How Are You? widget."
+    }
+
     public static func statusChip(_ plan: CarePlan) -> String {
         switch plan.status {
         case "invited": return "Invited"

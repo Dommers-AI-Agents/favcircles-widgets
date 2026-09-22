@@ -124,3 +124,35 @@ struct CareModelTests {
         #expect(CareCopy.timeChoices.first == "06:00" && CareCopy.timeChoices.last == "22:30")
     }
 }
+
+@Suite("Care invitation resend")
+struct CareInviteResendTests {
+    private let cal = Calendar(identifier: .gregorian)
+
+    @Test func lastInvitedAtFallsBackToCreatedAtForOlderServers() throws {
+        let json = """
+        {"planId":"p1","role":"owner","ownerId":"c1","parentName":"Dad","status":"invited","createdAt":"2026-09-19T23:41:28.388Z"}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let plan = try decoder.decode(CarePlan.self, from: Data(json.utf8))
+        #expect(plan.lastInvitedAt == plan.createdAt)
+    }
+
+    @Test func invitedLineSaysWhenItWentOut() {
+        let sent = Date(timeIntervalSince1970: 1_800_000_000)
+        let plan = CarePlan(planId: "p1", role: "owner", ownerId: "c1", ownerName: "Wes", parentId: "d1", parentName: "Dad",
+                            status: "invited", lastInvitedAt: sent)
+        let line = CareCopy.invitedLine(plan, now: sent.addingTimeInterval(3 * 60), calendar: cal)
+        #expect(line.hasPrefix("Invitation sent "))
+        #expect(line.hasSuffix("nothing is asked until they say yes."))
+        let bare = CarePlan(planId: "p1", role: "owner", ownerId: "c1", ownerName: "Wes", parentId: "d1", parentName: "Dad", status: "invited")
+        #expect(CareCopy.invitedLine(bare, calendar: cal).hasPrefix("They'll see the invitation"))
+    }
+
+    @Test func resendResultTellsTheTruthAboutDelivery() {
+        let plan = CarePlan(planId: "p1", role: "owner", ownerId: "c1", ownerName: "Wes", parentId: "d1", parentName: "Dad", status: "invited")
+        #expect(CareCopy.resendResult(plan, delivered: true) == "Sent to Dad again.")
+        #expect(CareCopy.resendResult(plan, delivered: false).hasPrefix("Dad's phone isn't getting notifications"))
+    }
+}

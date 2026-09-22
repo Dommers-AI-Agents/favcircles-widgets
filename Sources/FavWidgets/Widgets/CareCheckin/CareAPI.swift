@@ -27,6 +27,14 @@ enum CareAPI {
         _ = try await context.host.request(WidgetAPIRequest(.delete, "widgets/care/plans/\(planId)"))
     }
 
+    /// The invitation push again. `delivered` is the server's word on whether
+    /// the parent's phone got it; the plan itself is unchanged.
+    static func resendInvite(context: WidgetContext, planId: String) async throws -> (plan: CarePlan, delivered: Bool) {
+        struct Response: Decodable { let plan: CarePlan; let delivered: Bool }
+        let response: Response = try await context.api(.post, "widgets/care/plans/\(planId)/invite")
+        return (response.plan, response.delivered)
+    }
+
     static func respond(context: WidgetContext, planId: String, accept: Bool) async throws -> CarePlan {
         try await plan(context, .post, "widgets/care/plans/\(planId)/respond", body: ["accept": accept, "timezone": TimeZone.current.identifier])
     }

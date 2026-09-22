@@ -49,8 +49,16 @@ struct CarePlanDetailView: View {
             Text(CareCopy.ownerLine(plan, calendar: context.calendar))
                 .font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
             if plan.isInvited {
-                Text("They'll see the invitation in their Circles app. Nothing is asked until they say yes.")
+                Text(CareCopy.invitedLine(plan, calendar: context.calendar))
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+                Button("Send the invitation again") {
+                    perform {
+                        let sent = try await CareAPI.resendInvite(context: context, planId: plan.planId)
+                        store.apply(sent.plan)
+                        context.host.presentAlert(WidgetAlert(title: "How Are You?", message: CareCopy.resendResult(sent.plan, delivered: sent.delivered)))
+                    }
+                }
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent).disabled(busy)
             } else if plan.isActive || plan.isPaused {
                 Button(plan.isPaused ? "Resume questions" : "Pause questions") {
                     perform { store.apply(try await CareAPI.updatePlan(context: context, planId: plan.planId, status: plan.isPaused ? "active" : "paused")) }
