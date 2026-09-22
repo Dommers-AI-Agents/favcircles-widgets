@@ -81,6 +81,17 @@ struct WidgetStateControllerTests {
         #expect(c.syncState == .idle && store.document(id: "water")?.version == 1)
     }
 
+    @Test func schemaTooOldIsToldPlainly() async {
+        let store = InMemoryWidgetDataStore()
+        let c = makeController(store: store, debounce: .seconds(30))
+        await c.loadIfNeeded()
+        c.update { $0.goalCups = 9 }
+        store.nextSaveError = .schemaTooOld
+        await c.flush()
+        #expect(c.syncState == .error("Update FavCircles to keep syncing this widget"))
+        #expect(c.model.goalCups == 9)
+    }
+
     @Test func oversizedPayloadNeverDropsData() async {
         let store = InMemoryWidgetDataStore()
         let c = makeController(store: store, debounce: .seconds(30))
@@ -124,5 +135,33 @@ struct CachedStoreTests {
         cached.clear()
         #expect(cached.cached(ids: ["water"]).isEmpty)
         try? FileManager.default.removeItem(at: dir)
+    }
+
+    /// Five cups logged on a plane, app killed, relaunched at the gate: the
+    /// cups are still there and go out with the first save that succeeds.
+    @Test @MainActor func aRefusedSaveSurvivesARelaunch() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("favwidgets-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let inner = InMemoryWidgetDataStore()
+        let cached = CachedWidgetDataStore(wrapping: inner, directory: dir)
+
+        let first = WidgetStateController<WaterLog>(documentId: "water", schemaVersion: 1, store: cached, debounce: .seconds(30))
+        await first.loadIfNeeded()
+        first.update { $0.goalCups = 11 }
+        inner.nextSaveError = .network("offline")
+        await first.flush()
+        #expect(first.syncState == .error("offline"))
+        #expect(cached.pendingIds(among: ["water", "habits"]) == ["water"])
+        #expect(inner.document(id: "water") == nil)
+
+        // New process: a fresh controller over the same disk cache.
+        let second = WidgetStateController<WaterLog>(documentId: "water", schemaVersion: 1, store: cached, debounce: .seconds(30))
+        await second.loadIfNeeded()
+        #expect(second.model.goalCups == 11)
+        await second.flush()
+        #expect(second.syncState == .idle)
+        let stored = try #require(inner.document(id: "water"))
+        #expect(try WidgetDocumentCodec.decode(WaterLog.self, from: stored.payload).goalCups == 11)
+        #expect(cached.pendingIds(among: ["water"]).isEmpty)
     }
 }

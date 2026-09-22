@@ -7,7 +7,11 @@ import Foundation
 /// `cached(ids:)` is the synchronous fast path the tab uses to paint before
 /// the network answers. Every successful read or write refreshes the cache,
 /// and a conflict caches the server's copy.
-public final class CachedWidgetDataStore: WidgetDataStore, @unchecked Sendable {
+///
+/// A save the network refused (offline, server down) is kept on disk marked
+/// pending, so the edit survives the process; `WidgetStateController` finds
+/// it through `PendingEditStore` on its next load and retries the save.
+public final class CachedWidgetDataStore: WidgetDataStore, PendingEditStore, @unchecked Sendable {
     private let inner: WidgetDataStore
     private let directory: URL
     private let fileManager = FileManager.default
@@ -18,6 +22,9 @@ public final class CachedWidgetDataStore: WidgetDataStore, @unchecked Sendable {
         var payload: Data
         var schemaVersion: Int
         var updatedAt: Date?
+        /// The network never accepted this copy; optional so envelopes
+        /// written before the flag existed still decode.
+        var pending: Bool?
     }
 
     public init(wrapping inner: WidgetDataStore, directory: URL) {
@@ -59,7 +66,24 @@ public final class CachedWidgetDataStore: WidgetDataStore, @unchecked Sendable {
         } catch WidgetDataStoreError.conflict(let server) {
             if let server { write(server, id: id) }
             throw WidgetDataStoreError.conflict(server: server)
+        } catch {
+            // Keep the refused edit; a relaunch retries it.
+            write(document, id: id, pending: true)
+            throw error
         }
+    }
+
+    // MARK: - PendingEditStore
+
+    public func pendingDocument(id: String) -> WidgetDocument? {
+        queue.sync {
+            guard let envelope = readEnvelope(id: id), envelope.pending == true else { return nil }
+            return document(from: envelope)
+        }
+    }
+
+    public func pendingIds(among ids: [String]) -> [String] {
+        ids.filter { pendingDocument(id: $0) != nil }
     }
 
     // MARK: - Cache access
@@ -85,18 +109,25 @@ public final class CachedWidgetDataStore: WidgetDataStore, @unchecked Sendable {
     }
 
     private func read(id: String) -> WidgetDocument? {
-        queue.sync {
-            guard let data = try? Data(contentsOf: fileURL(id)),
-                  let envelope = try? JSONDecoder().decode(Envelope.self, from: data) else { return nil }
-            return WidgetDocument(version: envelope.version, payload: envelope.payload,
-                                  schemaVersion: envelope.schemaVersion, updatedAt: envelope.updatedAt)
-        }
+        queue.sync { readEnvelope(id: id).map(document(from:)) }
     }
 
-    private func write(_ document: WidgetDocument, id: String) {
+    /// Call on `queue`.
+    private func readEnvelope(id: String) -> Envelope? {
+        guard let data = try? Data(contentsOf: fileURL(id)) else { return nil }
+        return try? JSONDecoder().decode(Envelope.self, from: data)
+    }
+
+    private func document(from envelope: Envelope) -> WidgetDocument {
+        WidgetDocument(version: envelope.version, payload: envelope.payload,
+                       schemaVersion: envelope.schemaVersion, updatedAt: envelope.updatedAt)
+    }
+
+    private func write(_ document: WidgetDocument, id: String, pending: Bool = false) {
         queue.sync {
             let envelope = Envelope(version: document.version, payload: document.payload,
-                                    schemaVersion: document.schemaVersion, updatedAt: document.updatedAt)
+                                    schemaVersion: document.schemaVersion, updatedAt: document.updatedAt,
+                                    pending: pending)
             guard let data = try? JSONEncoder().encode(envelope) else { return }
             try? data.write(to: fileURL(id), options: [.atomic])
         }

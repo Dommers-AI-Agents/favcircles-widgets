@@ -55,7 +55,19 @@ public final class WidgetStateController<Model: WidgetModel>: ObservableObject {
     /// Loads once. Safe to call from every appearance.
     public func loadIfNeeded() async {
         guard !hasLoaded else { return }
+        restorePendingEdit()
         await reload()
+    }
+
+    /// An edit the network refused last time (kept by a `PendingEditStore`)
+    /// becomes the local model again, dirty, so the save is retried; the
+    /// server copy that `reload` fetches is merged under it as usual.
+    public func restorePendingEdit() {
+        guard !isDirty, let pending = (store as? PendingEditStore)?.pendingDocument(id: documentId) else { return }
+        adopt(pending)
+        isDirty = true
+        retriedAfterConflict = false
+        scheduleSave()
     }
 
     /// Refetches from the store. A local unsaved edit is never overwritten:
@@ -203,6 +215,7 @@ public final class WidgetStateController<Model: WidgetModel>: ObservableObject {
             case .decoding(let message): return message
             case .notFound: return "Not found"
             case .conflict: return "Updated on another device"
+            case .schemaTooOld: return "Update FavCircles to keep syncing this widget"
             }
         }
         return "Couldn't sync"

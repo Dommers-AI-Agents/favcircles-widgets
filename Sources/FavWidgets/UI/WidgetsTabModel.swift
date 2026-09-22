@@ -67,6 +67,11 @@ public final class WidgetsTabModel: ObservableObject {
         let ids = WidgetShardPlanner.hotIds(for: descriptors, now: Date(), calendar: calendar)
         if let cached = host.dataStore as? CachedWidgetDataStore {
             adopt(cached.cached(ids: ids))
+            // Edits refused while offline last time go out again now.
+            let pending = cached.pendingIds(among: ids)
+            for controller in cache.all where pending.contains(controller.documentId) {
+                controller.restorePendingEdit()
+            }
         }
         do {
             let documents = try await host.dataStore.load(ids: ids)

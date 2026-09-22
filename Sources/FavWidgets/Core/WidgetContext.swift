@@ -34,6 +34,7 @@ public protocol WidgetSyncing: AnyObject {
     func flush() async
     func reload() async
     func adopt(_ document: WidgetDocument?)
+    func restorePendingEdit()
 }
 
 extension WidgetStateController: WidgetSyncing {}

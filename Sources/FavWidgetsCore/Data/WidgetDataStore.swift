@@ -26,6 +26,15 @@ public enum WidgetDataStoreError: Error, Equatable {
     case payloadTooLarge(bytes: Int)
     case network(String)
     case decoding(String)
+    /// The server refused the document because this build's schema is
+    /// older than what is stored; only an app update can sync it.
+    case schemaTooOld
+}
+
+/// A store that keeps an edit the network refused, so the controller can
+/// pick it up again after a relaunch instead of losing it with the process.
+public protocol PendingEditStore: AnyObject {
+    func pendingDocument(id: String) -> WidgetDocument?
 }
 
 /// The persistence contract the app implements (backend-synced) and the
