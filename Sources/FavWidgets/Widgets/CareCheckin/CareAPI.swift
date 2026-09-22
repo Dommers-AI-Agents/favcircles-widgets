@@ -92,8 +92,11 @@ final class CareStore: RemoteStore {
         context.transient("care.store") { CareStore() }
     }
 
+    /// Refetches after a minute. The plan changes on OTHER people's phones —
+    /// a parent accepting, a sibling joining — so a store that loaded once
+    /// per launch showed "Waiting for Mom to accept" for days after she had.
     func loadIfNeeded(context: WidgetContext) async {
-        await loadIfNeeded { self.plans = try await CareAPI.plans(context: context) }
+        await loadIfNeeded(staleAfter: 60) { self.plans = try await CareAPI.plans(context: context) }
     }
 
     func load(context: WidgetContext) async {
