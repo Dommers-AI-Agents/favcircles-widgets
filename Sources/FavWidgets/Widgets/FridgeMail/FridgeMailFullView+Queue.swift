@@ -99,7 +99,7 @@ extension FridgeMailFullView {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(card.childName.isEmpty ? (card.recipientName ?? "Card") : "\(card.childName) → \(card.recipientName ?? "Grandma")")
                                 .font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).lineLimit(1)
-                            Text(FridgeMailCopy.cardStatus(card.status, recipientName: card.recipientName))
+                            Text(FridgeMailCopy.cardStatus(card.status, recipientName: card.recipientName, printerHold: card.printerHold == true))
                                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(2)
                             Text(card.createdAt.formatted(date: .abbreviated, time: .omitted))
                                 .font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)

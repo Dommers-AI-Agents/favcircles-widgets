@@ -182,12 +182,15 @@ public struct FridgeMailCard: Decodable, Equatable, Identifiable, Sendable {
     public var imageUrl: String?
     public var expectedDeliveryDate: String?
     public var createdAt: Date
+    /// The printer is holding the card; the server pulls this from Lob.
+    public var printerHold: Bool?
 
     public var id: String { cardId }
     public var imageURL: URL? { imageUrl.flatMap(URL.init(string:)) }
 
     public init(cardId: String, status: PostcardMailStatus, recipientId: String? = nil, recipientName: String? = nil,
-                childName: String = "", note: String = "", imageUrl: String? = nil, expectedDeliveryDate: String? = nil, createdAt: Date) {
+                childName: String = "", note: String = "", imageUrl: String? = nil, expectedDeliveryDate: String? = nil,
+                createdAt: Date, printerHold: Bool? = nil) {
         self.cardId = cardId
         self.status = status
         self.recipientId = recipientId
@@ -197,6 +200,7 @@ public struct FridgeMailCard: Decodable, Equatable, Identifiable, Sendable {
         self.imageUrl = imageUrl
         self.expectedDeliveryDate = expectedDeliveryDate
         self.createdAt = createdAt
+        self.printerHold = printerHold
     }
 }
 
@@ -278,11 +282,11 @@ public enum FridgeMailCopy {
     }
 
     /// The Sent row's status. Prepaid cards never mention charges.
-    public static func cardStatus(_ status: PostcardMailStatus, recipientName: String?) -> String {
+    public static func cardStatus(_ status: PostcardMailStatus, recipientName: String?, printerHold: Bool = false) -> String {
         let who = (recipientName ?? "").isEmpty ? "Grandma" : recipientName!
         switch status {
         case .created, .authorized, .submitting: return "Printing for \(who)"
-        case .submitted: return "Printed and mailed to \(who) · typically arrives in 4 to 6 business days"
+        case .submitted: return printerHold ? "Held at the printer · we're sorting it out" : "At the printer for \(who) · mails within a day, then 4 to 6 business days"
         case .inTransit: return "In the mail to \(who) · typically arrives in 4 to 6 business days"
         case .delivered: return "Delivered to \(who)"
         case .canceled: return "Canceled"

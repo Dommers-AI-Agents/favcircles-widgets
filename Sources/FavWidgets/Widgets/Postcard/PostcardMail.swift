@@ -67,6 +67,7 @@ enum PostcardMail {
         let imageUrl: String?
         let message: String?
         let createdAt: Date?
+        let printerHold: Bool?
 
         var asRecordOrder: PostcardMailOrder {
             PostcardMailOrder(
@@ -78,7 +79,8 @@ enum PostcardMail {
                 cancelableUntil: cancelableUntil,
                 imageUrl: imageUrl,
                 message: message,
-                createdAt: createdAt
+                createdAt: createdAt,
+                printerHold: printerHold
             )
         }
     }

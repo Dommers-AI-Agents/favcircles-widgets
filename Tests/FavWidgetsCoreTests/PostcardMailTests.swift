@@ -88,10 +88,20 @@ struct PostcardMailOrderDisplayTests {
     }
 
     @Test func aMailedCardShowsWhenItArrives() {
-        // Lob's date is an outer bound; the row states the typical window instead
-        #expect(order(.submitted, delivery: "2026-09-20").displayStatus.contains("typically arrives in 4 to 6 business days"))
+        // "Submitted" is the printer taking the job, not the card going out —
+        // Wes read "printed and mailed" on cards Lob was still holding.
+        #expect(order(.submitted, delivery: "2026-09-20").displayStatus.hasPrefix("At the printer"))
+        #expect(order(.submitted, delivery: "2026-09-20").displayStatus.contains("4 to 6 business days"))
         #expect(!order(.submitted, delivery: "2026-09-20").displayStatus.contains("Sep 20"))
         #expect(order(.inTransit, delivery: nil).displayStatus.hasPrefix("In the mail"))
+    }
+
+    @Test func aPrinterHoldIsSaidOutLoud() {
+        var held = order(.submitted, delivery: nil)
+        held.printerHold = true
+        #expect(held.displayStatus.hasPrefix("Held at the printer"))
+        #expect(FridgeMailCopy.cardStatus(.submitted, recipientName: "Grandma", printerHold: true).hasPrefix("Held at the printer"))
+        #expect(FridgeMailCopy.cardStatus(.submitted, recipientName: "Grandma").hasPrefix("At the printer"))
     }
 
     @Test func anUnparseableDateIsOmittedRatherThanEchoed() {

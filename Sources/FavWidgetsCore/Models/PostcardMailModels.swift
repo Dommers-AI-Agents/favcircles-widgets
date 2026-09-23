@@ -178,10 +178,13 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
     public var imageUrl: String?
     public var message: String?
     public var createdAt: Date?
+    /// The printer is holding the card (our account, not the customer's
+    /// problem). Pulled from Lob by the server; absent on older records.
+    public var printerHold: Bool?
 
     public init(orderId: String, status: PostcardMailStatus, priceCents: Int, recipientName: String,
                 expectedDeliveryDate: String? = nil, cancelableUntil: Date? = nil,
-                imageUrl: String? = nil, message: String? = nil, createdAt: Date? = nil) {
+                imageUrl: String? = nil, message: String? = nil, createdAt: Date? = nil, printerHold: Bool? = nil) {
         self.orderId = orderId
         self.status = status
         self.priceCents = priceCents
@@ -191,6 +194,7 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
         self.imageUrl = imageUrl
         self.message = message
         self.createdAt = createdAt
+        self.printerHold = printerHold
     }
 
     /// The history row's id for this order, shared by the send path and the
@@ -206,11 +210,13 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
             return "Waiting for payment"
         case .authorized, .submitting:
             return "Mailing \(recipientName) · not charged until it prints"
-        // Lob's expected date is its outer bound (production + 5–7 business
-        // days); the honest, readable line is the typical window (Wes,
-        // 2026-09-18).
+        // "Submitted" means the printer took the job, not that it went out:
+        // Wes read "printed and mailed" on cards Lob was still holding
+        // (2026-09-23). The mailed line waits for Lob's own tracking.
         case .submitted:
-            return "Printed and mailed to \(recipientName) · typically arrives in 4 to 6 business days"
+            return printerHold == true
+                ? "Held at the printer · we're sorting it out, \(recipientName)'s card will go"
+                : "At the printer for \(recipientName) · mails within a day, then 4 to 6 business days"
         case .inTransit:
             return "In the mail to \(recipientName) · typically arrives in 4 to 6 business days"
         case .delivered:
