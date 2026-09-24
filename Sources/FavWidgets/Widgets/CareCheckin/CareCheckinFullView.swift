@@ -42,16 +42,20 @@ struct CareCheckinFullView: View {
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await store.loadIfNeeded(context: context) }
         .refreshable { await store.load(context: context) }
-        .sheet(isPresented: $showPicker) { CareInvitePicker(context: context, store: store) }
-        .sheet(item: $detailPlan) { plan in CarePlanDetailView(context: context, store: store, planId: plan.planId) }
         // Right after "check on Mom": the questionnaire that decides which
-        // questions she gets, before the invitation is even answered.
+        // questions she gets, before the invitation is even answered. Opened
+        // from the picker's onDismiss — a sheet presented while another is
+        // still going away is dropped by SwiftUI.
+        .sheet(isPresented: $showPicker, onDismiss: offerProfileIfJustCreated) { CareInvitePicker(context: context, store: store) }
+        .sheet(item: $detailPlan) { plan in CarePlanDetailView(context: context, store: store, planId: plan.planId) }
         .sheet(item: $profilePlan) { plan in CareProfileSheet(context: context, store: store, plan: plan) }
-        .onReceive(store.$profilePromptPlanId) { planId in
-            guard let planId, let plan = store.plans?.asOwner.first(where: { $0.planId == planId }) else { return }
-            store.profilePromptPlanId = nil
-            profilePlan = plan
-        }
+    }
+
+    private func offerProfileIfJustCreated() {
+        guard let planId = store.profilePromptPlanId else { return }
+        store.profilePromptPlanId = nil
+        guard let plan = store.plans?.asOwner.first(where: { $0.planId == planId }) else { return }
+        profilePlan = plan
     }
 
     // MARK: - Explainer
