@@ -11,15 +11,23 @@ enum CareAPI {
         try WidgetJSON.decode(CarePlans.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/care/plans")))
     }
 
-    static func createPlan(context: WidgetContext, parentId: String, times: [String], questions: [String]) async throws -> CarePlan {
-        try await plan(context, .post, "widgets/care/plans", body: ["parentId": parentId, "times": times, "questions": questions])
+    static func createPlan(context: WidgetContext, parentId: String, times: [String], questions: [String], profile: [String: Bool]? = nil) async throws -> CarePlan {
+        var body: [String: Any] = ["parentId": parentId, "times": times, "questions": questions]
+        if let profile { body["profile"] = profile }
+        return try await plan(context, .post, "widgets/care/plans", body: body)
     }
 
-    static func updatePlan(context: WidgetContext, planId: String, times: [String]? = nil, questions: [String]? = nil, status: String? = nil) async throws -> CarePlan {
+    /// Owner-only edits. `questions` are the owner's own (with kinds);
+    /// `profile` the care questionnaire; `mutedQuestionIds` the bank
+    /// questions switched off. Each is sent only when given.
+    static func updatePlan(context: WidgetContext, planId: String, times: [String]? = nil, questions: [CareQuestion]? = nil,
+                           status: String? = nil, profile: [String: Bool]? = nil, mutedQuestionIds: [String]? = nil) async throws -> CarePlan {
         var body: [String: Any] = [:]
         if let times { body["times"] = times }
-        if let questions { body["questions"] = questions }
+        if let questions { body["questions"] = questions.map(\.payload) }
         if let status { body["status"] = status }
+        if let profile { body["profile"] = profile }
+        if let mutedQuestionIds { body["mutedQuestionIds"] = mutedQuestionIds }
         return try await plan(context, .put, "widgets/care/plans/\(planId)", body: body)
     }
 
@@ -68,10 +76,10 @@ enum CareAPI {
         try WidgetJSON.decode(AsksResponse.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/care/asks?planId=\(planId)&limit=60"))).asks
     }
 
-    static func answer(context: WidgetContext, askId: String, answer: CareAnswer, note: String) async throws -> CareAsk {
+    static func answer(context: WidgetContext, askId: String, payload: CareAnswerPayload, note: String) async throws -> CareAsk {
         let data = try await context.host.request(WidgetAPIRequest(
             .post, "widgets/care/asks/\(askId)/answer",
-            body: try JSONSerialization.data(withJSONObject: ["answer": answer.rawValue, "note": note])))
+            body: try JSONSerialization.data(withJSONObject: payload.body(note: note))))
         return try WidgetJSON.decode(AskResponse.self, from: data).ask
     }
 
@@ -87,6 +95,8 @@ enum CareAPI {
 @MainActor
 final class CareStore: RemoteStore {
     @Published var plans: CarePlans?
+    /// A plan just created whose care questionnaire should be offered now.
+    @Published var profilePromptPlanId: String?
 
     static func shared(_ context: WidgetContext) -> CareStore {
         context.transient("care.store") { CareStore() }

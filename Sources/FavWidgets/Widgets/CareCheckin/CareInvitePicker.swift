@@ -94,6 +94,8 @@ struct CareInvitePicker: View {
                 context.track("care_plan_created")
                 context.host.haptic(.success)
                 dismiss()
+                // The full view picks this up and opens the "About Mom" questionnaire.
+                store.profilePromptPlanId = plan.planId
             } catch let api as WidgetAPIError where api.code == "plan_exists" {
                 // Someone in the family already set this up. A second plan
                 // would ask the parent twice on two schedules, so offer to

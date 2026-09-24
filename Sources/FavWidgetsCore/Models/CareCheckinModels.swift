@@ -25,17 +25,112 @@ public enum CareAnswer: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// What kind of answer a question takes. The kind decides the buttons on the
+/// Lock Screen and the control in the widget; the server sends one push type
+/// per kind. A kind this build doesn't know decodes as `.unknown` and is
+/// answered in the widget with the mood buttons — never a blank screen.
+public enum CareQuestionKind: String, Codable, CaseIterable, Sendable {
+    /// Doing great 👍 / Okay / Not so good
+    case mood
+    /// Yes / Not yet / No — "did you … today?"
+    case done
+    /// Yes / No — a state, not a task
+    case yesno
+    /// 0–10 with a low and a high label
+    case scale
+    /// A few typed words
+    case text
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = CareQuestionKind(rawValue: raw) ?? .unknown
+    }
+
+    /// The choice keys and labels for the choice kinds, in button order.
+    public var choices: [(key: String, label: String)] {
+        switch self {
+        case .mood, .unknown: return CareAnswer.allCases.map { ($0.rawValue, $0.label) }
+        case .done: return [("yes", "Yes"), ("not_yet", "Not yet"), ("no", "No")]
+        case .yesno: return [("yes", "Yes"), ("no", "No")]
+        case .scale, .text: return []
+        }
+    }
+
+    /// One word for the owner's rotation list.
+    public var label: String {
+        switch self {
+        case .mood, .unknown: return "Mood"
+        case .done: return "Yes / not yet / no"
+        case .yesno: return "Yes / no"
+        case .scale: return "0 to 10"
+        case .text: return "In their words"
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .mood, .unknown: return "face.smiling"
+        case .done: return "checkmark.circle"
+        case .yesno: return "questionmark.circle"
+        case .scale: return "slider.horizontal.3"
+        case .text: return "text.bubble"
+        }
+    }
+
+    /// The kinds an owner can give a question of their own.
+    public static let pickable: [CareQuestionKind] = [.yesno, .done, .scale, .text, .mood]
+}
+
+/// What the parent sends back. Built by the widget, posted by CareAPI.
+public enum CareAnswerPayload: Equatable, Sendable {
+    case choice(String)
+    case scale(Int)
+    case text(String)
+
+    /// The request body: a choice goes as `answer`, a number or words as `value`.
+    public func body(note: String) -> [String: Any] {
+        switch self {
+        case .choice(let key): return ["answer": key, "note": note]
+        case .scale(let n): return ["value": n, "note": note]
+        case .text(let words): return ["value": words, "note": note]
+        }
+    }
+
+    /// The analytics word for the answer.
+    public var trackingValue: String {
+        switch self {
+        case .choice(let key): return key
+        case .scale(let n): return String(n)
+        case .text: return "text"
+        }
+    }
+}
+
 public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     public var askId: String
     public var planId: String
     public var questionText: String
+    public var kind: CareQuestionKind
+    /// Scale questions: the one-word name ("Pain") and the end labels.
+    public var short: String?
+    public var low: String?
+    public var high: String?
     public var slot: String
     public var dateKey: String
     public var askedAt: Date
     public var dueBy: Date?
     public var status: String
+    /// The mood answer, for the original three-button questions.
     public var answer: CareAnswer?
+    /// The raw answer as a string for every kind: a choice key, "7", or the words.
+    public var answerValue: String?
+    /// The number, for 0–10 questions.
+    public var answerScore: Int?
+    /// Always the words to show.
     public var answerText: String?
+    /// The server flagged this answer as one the family should notice.
+    public var alert: Bool
     public var note: String
     public var answeredAt: Date?
     public var pushDelivered: Bool
@@ -43,27 +138,38 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     public var id: String { askId }
     public var isOpen: Bool { status == "open" }
     public var isMissed: Bool { status == "missed" }
+    public var isAnswered: Bool { status == "answered" }
 
-    public init(askId: String, planId: String, questionText: String, slot: String = "08:30", dateKey: String = "", askedAt: Date,
-                dueBy: Date? = nil, status: String = "open", answer: CareAnswer? = nil, answerText: String? = nil,
+    public init(askId: String, planId: String, questionText: String, kind: CareQuestionKind = .mood, short: String? = nil,
+                low: String? = nil, high: String? = nil, slot: String = "08:30", dateKey: String = "", askedAt: Date,
+                dueBy: Date? = nil, status: String = "open", answer: CareAnswer? = nil, answerValue: String? = nil,
+                answerScore: Int? = nil, answerText: String? = nil, alert: Bool = false,
                 note: String = "", answeredAt: Date? = nil, pushDelivered: Bool = true) {
         self.askId = askId
         self.planId = planId
         self.questionText = questionText
+        self.kind = kind
+        self.short = short
+        self.low = low
+        self.high = high
         self.slot = slot
         self.dateKey = dateKey
         self.askedAt = askedAt
         self.dueBy = dueBy
         self.status = status
         self.answer = answer
+        self.answerValue = answerValue ?? answer?.rawValue
+        self.answerScore = answerScore
         self.answerText = answerText
+        self.alert = alert
         self.note = note
         self.answeredAt = answeredAt
         self.pushDelivered = pushDelivered
     }
 
     private enum CodingKeys: String, CodingKey {
-        case askId, planId, questionText, slot, dateKey, askedAt, dueBy, status, answer, answerText, note, answeredAt, pushDelivered
+        case askId, planId, questionText, kind, short, low, high, slot, dateKey, askedAt, dueBy, status
+        case answer, answerValue, answerScore, answerText, alert, note, answeredAt, pushDelivered
     }
 
     public init(from decoder: Decoder) throws {
@@ -71,6 +177,11 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
         askId = try c.decode(String.self, forKey: .askId)
         planId = try c.decode(String.self, forKey: .planId)
         questionText = try c.decodeIfPresent(String.self, forKey: .questionText) ?? ""
+        // A server that predates kinds sent only mood questions.
+        kind = try c.decodeIfPresent(CareQuestionKind.self, forKey: .kind) ?? .mood
+        short = try c.decodeIfPresent(String.self, forKey: .short)
+        low = try c.decodeIfPresent(String.self, forKey: .low)
+        high = try c.decodeIfPresent(String.self, forKey: .high)
         slot = try c.decodeIfPresent(String.self, forKey: .slot) ?? ""
         dateKey = try c.decodeIfPresent(String.self, forKey: .dateKey) ?? ""
         askedAt = try c.decode(Date.self, forKey: .askedAt)
@@ -78,7 +189,10 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
         status = try c.decodeIfPresent(String.self, forKey: .status) ?? "open"
         // An answer value this build doesn't know decodes as nil, never as a crash.
         answer = (try? c.decodeIfPresent(String.self, forKey: .answer)).flatMap { $0 }.flatMap(CareAnswer.init(rawValue:))
+        answerValue = try c.decodeIfPresent(String.self, forKey: .answerValue) ?? answer?.rawValue
+        answerScore = try c.decodeIfPresent(Int.self, forKey: .answerScore)
         answerText = try c.decodeIfPresent(String.self, forKey: .answerText)
+        alert = try c.decodeIfPresent(Bool.self, forKey: .alert) ?? false
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
         answeredAt = try c.decodeIfPresent(Date.self, forKey: .answeredAt)
         pushDelivered = try c.decodeIfPresent(Bool.self, forKey: .pushDelivered) ?? true
@@ -88,10 +202,83 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
 public struct CareQuestion: Decodable, Equatable, Identifiable, Sendable {
     public var id: String
     public var text: String
+    public var kind: CareQuestionKind
+    public var short: String?
+    public var low: String?
+    public var high: String?
+    /// "bank" (comes with the profile) or "custom" (the owner wrote it).
+    public var source: String
+    /// A bank question the owner switched off.
+    public var muted: Bool
+    /// "Daily", "Every 3 days", "Weekly · Fridays".
+    public var cadence: String
+    /// The profile flag that put it in rotation, if any.
+    public var requires: String?
 
-    public init(id: String, text: String) {
+    public var isCustom: Bool { source == "custom" }
+
+    public init(id: String, text: String, kind: CareQuestionKind = .mood, short: String? = nil, low: String? = nil, high: String? = nil,
+                source: String = "custom", muted: Bool = false, cadence: String = "Daily", requires: String? = nil) {
         self.id = id
         self.text = text
+        self.kind = kind
+        self.short = short
+        self.low = low
+        self.high = high
+        self.source = source
+        self.muted = muted
+        self.cadence = cadence
+        self.requires = requires
+    }
+
+    enum CodingKeys: String, CodingKey { case id, text, kind, short, low, high, source, muted, cadence, requires }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        kind = try c.decodeIfPresent(CareQuestionKind.self, forKey: .kind) ?? .mood
+        short = try c.decodeIfPresent(String.self, forKey: .short)
+        low = try c.decodeIfPresent(String.self, forKey: .low)
+        high = try c.decodeIfPresent(String.self, forKey: .high)
+        source = try c.decodeIfPresent(String.self, forKey: .source) ?? "custom"
+        muted = try c.decodeIfPresent(Bool.self, forKey: .muted) ?? false
+        cadence = try c.decodeIfPresent(String.self, forKey: .cadence) ?? "Daily"
+        requires = try c.decodeIfPresent(String.self, forKey: .requires)
+    }
+
+    /// The wire shape when the owner saves their own questions.
+    public var payload: [String: Any] {
+        var out: [String: Any] = ["id": id, "text": text, "kind": kind == .unknown ? "yesno" : kind.rawValue]
+        if let short { out["short"] = short }
+        if let low { out["low"] = low }
+        if let high { out["high"] = high }
+        return out
+    }
+}
+
+/// One yes/no on the care questionnaire the owner fills in about the parent.
+/// The server owns the list; the widget only shows it.
+public struct CareProfileField: Decodable, Equatable, Identifiable, Sendable {
+    public var key: String
+    public var question: String
+    public var hint: String
+
+    public var id: String { key }
+
+    public init(key: String, question: String, hint: String = "") {
+        self.key = key
+        self.question = question
+        self.hint = hint
+    }
+
+    enum CodingKeys: String, CodingKey { case key, question, hint }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        key = try c.decode(String.self, forKey: .key)
+        question = try c.decodeIfPresent(String.self, forKey: .question) ?? key
+        hint = try c.decodeIfPresent(String.self, forKey: .hint) ?? ""
     }
 }
 
@@ -133,6 +320,15 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public var questions: [CareQuestion]
     public var usesDefaultQuestions: Bool
     public var defaultQuestions: [String]
+    /// The owner's answers about the parent (nil = questionnaire not done yet).
+    public var profile: [String: Bool]?
+    /// The questionnaire, as the server defines it.
+    public var profileFields: [CareProfileField]
+    public var mutedQuestionIds: [String]
+    /// Everything that can be asked, given the profile: bank plus the owner's own.
+    public var rotation: [CareQuestion]
+    /// The parent's app can answer more than the three mood buttons.
+    public var parentCanAnswerRich: Bool
     /// "HH:mm" in the parent's zone.
     public var times: [String]
     public var timezone: String?
@@ -159,9 +355,14 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public var isPaused: Bool { status == "paused" }
     /// The other person, from the viewer's side.
     public var otherName: String { isOwner ? parentName : ownerName }
+    public var hasProfile: Bool { profile != nil }
+    /// The questions that will actually go out (not muted).
+    public var activeRotation: [CareQuestion] { rotation.filter { !$0.muted } }
 
     public init(planId: String, role: String, ownerId: String, ownerName: String, parentId: String, parentName: String,
                 status: String, questions: [CareQuestion] = [], usesDefaultQuestions: Bool = true, defaultQuestions: [String] = [],
+                profile: [String: Bool]? = nil, profileFields: [CareProfileField] = [], mutedQuestionIds: [String] = [],
+                rotation: [CareQuestion] = [], parentCanAnswerRich: Bool = false,
                 times: [String] = ["08:30", "13:00", "19:00"], timezone: String? = nil, createdAt: Date? = nil, lastInvitedAt: Date? = nil,
                 acceptedAt: Date? = nil, lastAskedAt: Date? = nil, lastAnsweredAt: Date? = nil, openAsk: CareAsk? = nil,
                 lastAnswer: CareAsk? = nil, watchers: [CareWatcher] = []) {
@@ -175,6 +376,11 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         self.questions = questions
         self.usesDefaultQuestions = usesDefaultQuestions
         self.defaultQuestions = defaultQuestions
+        self.profile = profile
+        self.profileFields = profileFields
+        self.mutedQuestionIds = mutedQuestionIds
+        self.rotation = rotation
+        self.parentCanAnswerRich = parentCanAnswerRich
         self.times = times
         self.timezone = timezone
         self.createdAt = createdAt
@@ -191,6 +397,7 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         case planId, role, ownerId, ownerName, parentId, parentName, status, questions
         case usesDefaultQuestions, defaultQuestions, times, timezone, createdAt, lastInvitedAt, acceptedAt
         case lastAskedAt, lastAnsweredAt, openAsk, lastAnswer, watchers
+        case profile, profileFields, mutedQuestionIds, rotation, parentCanAnswerRich
     }
 
     // Hand-written so a field the server has not shipped yet is a default
@@ -208,6 +415,11 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         questions = try c.decodeIfPresent([CareQuestion].self, forKey: .questions) ?? []
         usesDefaultQuestions = try c.decodeIfPresent(Bool.self, forKey: .usesDefaultQuestions) ?? true
         defaultQuestions = try c.decodeIfPresent([String].self, forKey: .defaultQuestions) ?? []
+        profile = try c.decodeIfPresent([String: Bool].self, forKey: .profile)
+        profileFields = try c.decodeIfPresent([CareProfileField].self, forKey: .profileFields) ?? []
+        mutedQuestionIds = try c.decodeIfPresent([String].self, forKey: .mutedQuestionIds) ?? []
+        rotation = try c.decodeIfPresent([CareQuestion].self, forKey: .rotation) ?? []
+        parentCanAnswerRich = try c.decodeIfPresent(Bool.self, forKey: .parentCanAnswerRich) ?? false
         times = try c.decodeIfPresent([String].self, forKey: .times) ?? ["08:30", "13:00", "19:00"]
         timezone = try c.decodeIfPresent(String.self, forKey: .timezone)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt)
@@ -255,6 +467,83 @@ public struct CarePlans: Decodable, Equatable, Sendable {
 
 public enum CareCopy {
     public static let defaultTimes = ["08:30", "13:00", "19:00"]
+
+    /// The glyph next to an answer in the history.
+    public static func answerSymbol(_ ask: CareAsk) -> String {
+        if ask.isMissed { return "moon.zzz" }
+        guard ask.isAnswered else { return "clock" }
+        if ask.alert { return "exclamationmark.triangle.fill" }
+        switch ask.kind {
+        case .mood, .unknown: return ask.answer?.symbolName ?? "hand.raised.fill"
+        case .done, .yesno: return ask.answerValue == "yes" ? "checkmark.circle.fill" : (ask.answerValue == "not_yet" ? "clock.badge.questionmark" : "xmark.circle")
+        case .scale: return "slider.horizontal.3"
+        case .text: return "text.bubble.fill"
+        }
+    }
+
+    /// One 0–10 question's recent readings: the last value and a 7-day average.
+    public struct ScaleTrend: Equatable, Sendable {
+        public var short: String
+        public var latest: Int
+        public var latestAt: Date
+        public var average: Double
+        public var count: Int
+        public var lowLabel: String
+        public var highLabel: String
+        public var alerts: Int
+        public var averageText: String { String(format: "%.1f", average) }
+    }
+
+    /// Trends per scale question over the last `days` days, most recent first,
+    /// from a history newest-first. Pure, so the "This week" block is tested.
+    public static func scaleTrends(_ history: [CareAsk], now: Date = Date(), days: Int = 7) -> [ScaleTrend] {
+        let since = now.addingTimeInterval(-Double(days) * 86400)
+        var byShort: [String: [CareAsk]] = [:]
+        var order: [String] = []
+        for ask in history where ask.kind == .scale && ask.isAnswered {
+            guard let at = ask.answeredAt, at >= since, ask.answerScore != nil else { continue }
+            let key = ask.short ?? ask.questionText
+            if byShort[key] == nil { order.append(key) }
+            byShort[key, default: []].append(ask)
+        }
+        return order.compactMap { key in
+            guard let asks = byShort[key], let first = asks.first, let latest = first.answerScore, let at = first.answeredAt else { return nil }
+            let scores = asks.compactMap(\.answerScore)
+            return ScaleTrend(short: key, latest: latest, latestAt: at, average: Double(scores.reduce(0, +)) / Double(scores.count),
+                              count: scores.count, lowLabel: first.low ?? "0", highLabel: first.high ?? "10", alerts: asks.filter(\.alert).count)
+        }
+    }
+
+    /// The answers the family was told to notice, most recent first, within `days`.
+    public static func recentAlerts(_ history: [CareAsk], now: Date = Date(), days: Int = 7) -> [CareAsk] {
+        let since = now.addingTimeInterval(-Double(days) * 86400)
+        return history.filter { $0.alert && ($0.answeredAt ?? .distantPast) >= since }
+    }
+
+    /// "5 of 6 answered this week", counting asks that reached their phone.
+    public static func answerRate(_ history: [CareAsk], now: Date = Date(), days: Int = 7) -> (answered: Int, asked: Int) {
+        let since = now.addingTimeInterval(-Double(days) * 86400)
+        let inWindow = history.filter { $0.askedAt >= since && $0.pushDelivered && !$0.isOpen }
+        return (inWindow.filter(\.isAnswered).count, inWindow.count)
+    }
+
+    /// The profile as a line: "Lives alone · takes medication · PT".
+    public static func profileSummary(_ plan: CarePlan) -> String {
+        guard let profile = plan.profile else { return "" }
+        let words: [(String, String)] = [
+            ("livesAlone", "lives alone"), ("takesMeds", "takes medication"), ("hasPT", "in physical therapy"),
+            ("chronicPain", "ongoing pain"), ("sleepConcern", "sleep is a worry"), ("fallRisk", "fall risk"),
+            ("checksBloodSugar", "checks blood sugar"), ("checksBloodPressure", "checks blood pressure"), ("needsRides", "needs rides")
+        ]
+        let on = words.filter { profile[$0.0] == true }.map(\.1)
+        return on.isEmpty ? "Nothing special noted — the everyday questions only." : on.joined(separator: " · ").prefix(1).uppercased() + on.joined(separator: " · ").dropFirst()
+    }
+
+    /// What the owner is told when the parent's app can't take the new kinds yet.
+    public static func needsUpdateLine(_ plan: CarePlan) -> String? {
+        guard plan.isActive || plan.isPaused, !plan.parentCanAnswerRich else { return nil }
+        return "\(plan.parentName)'s Circles app needs an update before the yes/no and 0–10 questions can reach their Lock Screen. Until then they get the simple \"how are you?\" questions."
+    }
 
     /// The list to send when the owner adds a question. On a plan still on
     /// the rotating defaults, the defaults come along as the owner's own

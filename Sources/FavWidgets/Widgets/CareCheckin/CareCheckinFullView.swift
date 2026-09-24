@@ -11,6 +11,7 @@ struct CareCheckinFullView: View {
     @State private var note = ""
     @State private var showPicker = false
     @State private var detailPlan: CarePlan?
+    @State private var profilePlan: CarePlan?
 
     var body: some View {
         let theme = context.theme
@@ -43,6 +44,14 @@ struct CareCheckinFullView: View {
         .refreshable { await store.load(context: context) }
         .sheet(isPresented: $showPicker) { CareInvitePicker(context: context, store: store) }
         .sheet(item: $detailPlan) { plan in CarePlanDetailView(context: context, store: store, planId: plan.planId) }
+        // Right after "check on Mom": the questionnaire that decides which
+        // questions she gets, before the invitation is even answered.
+        .sheet(item: $profilePlan) { plan in CareProfileSheet(context: context, store: store, plan: plan) }
+        .onReceive(store.$profilePromptPlanId) { planId in
+            guard let planId, let plan = store.plans?.asOwner.first(where: { $0.planId == planId }) else { return }
+            store.profilePromptPlanId = nil
+            profilePlan = plan
+        }
     }
 
     // MARK: - Explainer
@@ -149,25 +158,10 @@ struct CareCheckinFullView: View {
                     .font(.system(size: 22, weight: .semibold)).foregroundStyle(theme.label)
                     .fixedSize(horizontal: false, vertical: true)
                 Text("Asked at \(CareCopy.friendlyTime(ask.slot))").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
-                VStack(spacing: 8) {
-                    ForEach(CareAnswer.allCases, id: \.self) { answer in
-                        Button {
-                            answerAsk(ask, answer: answer, plan: plan)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: answer.symbolName).font(.system(size: 18, weight: .semibold))
-                                Text(answer.label).font(.system(size: 18, weight: .semibold))
-                                Spacer()
-                            }
-                            .foregroundStyle(answer == .great ? .white : theme.label)
-                            .padding(.horizontal, 16)
-                            .frame(height: 56)
-                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(answer == .great ? context.accent : theme.tertiaryBackground))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(busy != nil)
-                    }
+                CareAnswerControls(context: context, ask: ask, disabled: busy != nil) { payload in
+                    answerAsk(ask, payload: payload, plan: plan)
                 }
+                .id(ask.askId)
                 TextField("Add a note (optional)", text: $note)
                     .font(.system(size: 15))
                     .padding(.horizontal, 12).frame(height: 44)
@@ -260,11 +254,11 @@ struct CareCheckinFullView: View {
         }
     }
 
-    private func answerAsk(_ ask: CareAsk, answer: CareAnswer, plan: CarePlan) {
+    private func answerAsk(_ ask: CareAsk, payload: CareAnswerPayload, plan: CarePlan) {
         let text = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        context.track("care_answer", ["answer": answer.rawValue])
+        context.track("care_answer", ["kind": ask.kind.rawValue, "answer": payload.trackingValue])
         run("answer") {
-            let answered = try await CareAPI.answer(context: context, askId: ask.askId, answer: answer, note: text)
+            let answered = try await CareAPI.answer(context: context, askId: ask.askId, payload: payload, note: text)
             note = ""
             var updated = plan
             updated.openAsk = nil
