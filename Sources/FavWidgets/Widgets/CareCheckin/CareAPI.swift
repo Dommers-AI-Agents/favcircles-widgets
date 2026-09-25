@@ -47,10 +47,11 @@ enum CareAPI {
         try await plan(context, .post, "widgets/care/plans/\(planId)/respond", body: ["accept": accept, "timezone": TimeZone.current.identifier])
     }
 
-    // MARK: - Siblings
+    // MARK: - Family
     //
-    // A sibling asks to join, or the owner invites one; either way the PARENT
-    // answers. `watcherId` omitted means "me".
+    // `watcherId` omitted = "me" asking to join (the PARENT answers). With a
+    // `watcherId`, the owner invites that person (THEY answer; the parent is
+    // told who joined and can remove anyone).
 
     static func requestToJoin(context: WidgetContext, planId: String, watcherId: String? = nil) async throws -> CarePlan {
         var body: [String: Any] = [:]
@@ -66,6 +67,13 @@ enum CareAPI {
 
     static func respondToWatcher(context: WidgetContext, planId: String, watcherId: String, accept: Bool) async throws -> CarePlan {
         try await plan(context, .post, "widgets/care/plans/\(planId)/watchers/\(watcherId)/respond", body: ["accept": accept])
+    }
+
+    /// The family invitation push again; `delivered` is the server's word.
+    static func resendWatcherInvite(context: WidgetContext, planId: String, watcherId: String) async throws -> (plan: CarePlan, delivered: Bool) {
+        struct Response: Decodable { let plan: CarePlan; let delivered: Bool }
+        let response: Response = try await context.api(.post, "widgets/care/plans/\(planId)/watchers/\(watcherId)/invite")
+        return (response.plan, response.delivered)
     }
 
     static func removeWatcher(context: WidgetContext, planId: String, watcherId: String) async throws -> CarePlan {
@@ -113,13 +121,20 @@ final class CareStore: RemoteStore {
         await load { self.plans = try await CareAPI.plans(context: context) }
     }
 
-    /// Slots an updated plan into whichever list it belongs to.
+    /// Slots an updated plan into the list its role says, and out of any
+    /// other: accepting an invitation moves a plan from pending to watched.
     func apply(_ plan: CarePlan) {
         var current = plans ?? CarePlans()
-        if plan.isOwner {
-            if let i = current.asOwner.firstIndex(where: { $0.planId == plan.planId }) { current.asOwner[i] = plan } else { current.asOwner.insert(plan, at: 0) }
-        } else {
-            if let i = current.asParent.firstIndex(where: { $0.planId == plan.planId }) { current.asParent[i] = plan } else { current.asParent.insert(plan, at: 0) }
+        current.asOwner.removeAll { $0.planId == plan.planId }
+        current.asParent.removeAll { $0.planId == plan.planId }
+        current.asWatcher.removeAll { $0.planId == plan.planId }
+        current.asPending.removeAll { $0.planId == plan.planId }
+        switch plan.role {
+        case "owner": current.asOwner.insert(plan, at: 0)
+        case "parent": current.asParent.insert(plan, at: 0)
+        case "watcher": current.asWatcher.insert(plan, at: 0)
+        case "pending_watcher": current.asPending.insert(plan, at: 0)
+        default: break // "none": the viewer left it
         }
         plans = current
         markLoaded()
@@ -128,6 +143,8 @@ final class CareStore: RemoteStore {
     func remove(planId: String) {
         plans?.asOwner.removeAll { $0.planId == planId }
         plans?.asParent.removeAll { $0.planId == planId }
+        plans?.asWatcher.removeAll { $0.planId == planId }
+        plans?.asPending.removeAll { $0.planId == planId }
         histories.removeValue(forKey: planId)
     }
 

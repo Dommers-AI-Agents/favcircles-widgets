@@ -15,8 +15,11 @@ struct CarePlanDetailView: View {
     @State private var busy = false
     @State private var showProfile = false
     @State private var showAllRotation = false
+    @State private var showFamilyPicker = false
 
-    private var plan: CarePlan? { store.plans?.asOwner.first { $0.planId == planId } }
+    /// Owned or watched — a family member opens the same screen, read-only.
+    private var plan: CarePlan? { store.plans?.following.first { $0.planId == planId } }
+    private var me: String { context.host.currentUserId ?? "" }
 
     var body: some View {
         let theme = context.theme
@@ -26,19 +29,31 @@ struct CarePlanDetailView: View {
                     VStack(alignment: .leading, spacing: 22) {
                         statusBlock(plan)
                         if let line = CareCopy.needsUpdateLine(plan) { notice(line, symbol: "arrow.down.circle") }
-                        profileBlock(plan)
+                        familyBlock(plan)
+                        if plan.isOwner || plan.hasProfile { profileBlock(plan) }
                         weekBlock(plan)
                         timesBlock(plan)
                         rotationBlock(plan)
                         historyBlock(plan)
-                        Button("Stop checking on \(plan.parentName)") {
-                            perform {
-                                try await CareAPI.endPlan(context: context, planId: plan.planId)
-                                store.remove(planId: plan.planId)
-                                dismiss()
+                        if plan.isOwner {
+                            Button("Stop checking on \(plan.parentName)") {
+                                perform {
+                                    try await CareAPI.endPlan(context: context, planId: plan.planId)
+                                    store.remove(planId: plan.planId)
+                                    dismiss()
+                                }
                             }
+                            .font(.system(size: 13)).foregroundStyle(theme.danger)
+                        } else {
+                            Button("Leave these check-ins") {
+                                perform {
+                                    _ = try await CareAPI.removeWatcher(context: context, planId: plan.planId, watcherId: me)
+                                    store.remove(planId: plan.planId)
+                                    dismiss()
+                                }
+                            }
+                            .font(.system(size: 13)).foregroundStyle(theme.danger)
                         }
-                        .font(.system(size: 13)).foregroundStyle(theme.danger)
                     }
                     .padding(16)
                 }
@@ -50,6 +65,9 @@ struct CarePlanDetailView: View {
             .sheet(isPresented: $showProfile) {
                 if let plan { CareProfileSheet(context: context, store: store, plan: plan) }
             }
+            .sheet(isPresented: $showFamilyPicker) {
+                if let plan { CareFamilyPicker(context: context, store: store, plan: plan) }
+            }
         }
     }
 
@@ -60,7 +78,10 @@ struct CarePlanDetailView: View {
         return VStack(alignment: .leading, spacing: 8) {
             Text(CareCopy.ownerLine(plan, calendar: context.calendar))
                 .font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
-            if plan.isInvited {
+            if !plan.isOwner {
+                Text("\(plan.ownerName) set this up. You see the answers; they choose the times and questions.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            } else if plan.isInvited {
                 Text(CareCopy.invitedLine(plan, calendar: context.calendar))
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
                 Button("Send the invitation again") {
@@ -80,6 +101,72 @@ struct CarePlanDetailView: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    // MARK: - Family
+
+    /// Who takes part: the owner, every family member in or waiting, and —
+    /// for the owner — the way to invite another and to take one off.
+    private func familyBlock(_ plan: CarePlan) -> some View {
+        let theme = context.theme
+        return VStack(alignment: .leading, spacing: 10) {
+            WidgetUI.header("Family on this check-in", theme: theme)
+            familyRow(name: plan.ownerName + (plan.isOwner ? " (you)" : ""), line: "Set this up · sees the answers") { EmptyView() }
+            ForEach(plan.watchers) { w in
+                familyRow(name: w.name + (w.userId == me ? " (you)" : ""), line: CareCopy.watcherLine(w, parentName: plan.parentName)) {
+                    if plan.isOwner {
+                        HStack(spacing: 12) {
+                            if w.isPending && w.isInvitedByOwner {
+                                Button("Send again") { resendFamilyInvite(plan, w) }
+                                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(context.accent)
+                            }
+                            Button { perform { store.apply(try await CareAPI.removeWatcher(context: context, planId: plan.planId, watcherId: w.userId)) } } label: {
+                                Image(systemName: "minus.circle").foregroundStyle(theme.secondaryLabel)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            if plan.isOwner {
+                Button { showFamilyPicker = true } label: {
+                    Label("Invite a family member", systemImage: "person.badge.plus")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                }
+                .disabled(busy)
+                Text("They accept for themselves; \(plan.parentName) is told who joined and can take anyone off.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func familyRow<Trailing: View>(name: String, line: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        let theme = context.theme
+        return HStack(spacing: 10) {
+            ZStack {
+                Circle().fill(context.accent.opacity(0.15))
+                Text(String(name.prefix(1)).uppercased()).font(.system(size: 13, weight: .bold)).foregroundStyle(context.accent)
+            }
+            .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.system(size: 14, weight: .medium)).foregroundStyle(theme.label).lineLimit(1)
+                Text(line).font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
+            }
+            Spacer()
+            trailing()
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(theme.secondaryBackground))
+        .disabled(busy)
+    }
+
+    private func resendFamilyInvite(_ plan: CarePlan, _ watcher: CareWatcher) {
+        perform {
+            let sent = try await CareAPI.resendWatcherInvite(context: context, planId: plan.planId, watcherId: watcher.userId)
+            store.apply(sent.plan)
+            context.host.presentAlert(WidgetAlert(title: "How Are You?",
+                                                  message: CareCopy.familyInviteResult(watcher.name, parentName: plan.parentName, delivered: sent.delivered)))
+        }
     }
 
     private func notice(_ text: String, symbol: String) -> some View {
@@ -103,8 +190,10 @@ struct CarePlanDetailView: View {
             if plan.hasProfile {
                 Text(CareCopy.profileSummary(plan))
                     .font(.system(size: 14)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
-                Button("Update") { showProfile = true }
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                if plan.isOwner {
+                    Button("Update") { showProfile = true }
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                }
             } else {
                 Text("A few yes/no answers — lives alone, takes medication, in PT — and the questions fit \(plan.parentName) instead of everyone.")
                     .font(.system(size: 14)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
@@ -178,7 +267,7 @@ struct CarePlanDetailView: View {
             FlowChips(items: plan.times) { time in
                 HStack(spacing: 4) {
                     Text(CareCopy.friendlyTime(time)).font(.system(size: 13, weight: .semibold))
-                    if plan.times.count > 1 {
+                    if plan.isOwner && plan.times.count > 1 {
                         Button { setTimes(plan, plan.times.filter { $0 != time }) } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
                             .buttonStyle(.plain)
                     }
@@ -187,7 +276,7 @@ struct CarePlanDetailView: View {
                 .padding(.horizontal, 10).padding(.vertical, 6)
                 .background(Capsule().fill(context.accent))
             }
-            if plan.times.count < 5 {
+            if plan.isOwner && plan.times.count < 5 {
                 Menu {
                     ForEach(CareCopy.timeChoices.filter { !plan.times.contains($0) }, id: \.self) { t in
                         Button(CareCopy.friendlyTime(t)) { setTimes(plan, (plan.times + [t]).sorted()) }
@@ -216,6 +305,13 @@ struct CarePlanDetailView: View {
                 Button("Show all \(all.count)") { showAllRotation = true }
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(context.accent)
             }
+            if plan.isOwner { rotationEditor(plan) }
+        }
+    }
+
+    private func rotationEditor(_ plan: CarePlan) -> some View {
+        let theme = context.theme
+        return Group {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 8) {
                     TextField("Write your own question", text: $newQuestion)
@@ -247,7 +343,9 @@ struct CarePlanDetailView: View {
                     .font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
             }
             Spacer()
-            if q.isCustom {
+            if !plan.isOwner {
+                EmptyView()
+            } else if q.isCustom {
                 Button { setQuestions(plan, plan.questions.filter { $0.id != q.id }) } label: {
                     Image(systemName: "minus.circle").foregroundStyle(theme.secondaryLabel)
                 }

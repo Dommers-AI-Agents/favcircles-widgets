@@ -48,7 +48,51 @@ struct CareWatcherTests {
         // An older server sends neither key.
         let old = try JSONDecoder().decode(CarePlans.self, from: Data(#"{"asOwner":[],"asParent":[]}"#.utf8))
         #expect(old.asWatcher.isEmpty)
+        #expect(old.asPending.isEmpty)
         #expect(old.isEmpty)
+    }
+
+    /// Two ways onto a check-in: an invitation from the owner (mine to answer)
+    /// and a request of my own (the parent's). Both sit in `asPending` until
+    /// someone says yes; the widget must tell them apart.
+    @Test func anInvitationIsMineToAnswerAndARequestIsTheParents() throws {
+        let json = """
+        {"asOwner":[],"asParent":[],"asWatcher":[],
+         "asPending":[
+           {"planId":"p1","role":"pending_watcher","ownerId":"c1","ownerName":"Wes","parentId":"m1","parentName":"Mom","status":"active",
+            "watchers":[{"userId":"c2","name":"Kate","status":"invited","invitedBy":"c1","invitedAt":"2026-09-25T12:00:00.000Z"}]},
+           {"planId":"p2","role":"pending_watcher","ownerId":"c3","ownerName":"Sam","parentId":"d1","parentName":"Dad","status":"active",
+            "watchers":[{"userId":"c2","name":"Kate","status":"invited","invitedBy":"self"}]}]}
+        """
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let plans = try decoder.decode(CarePlans.self, from: Data(json.utf8))
+        #expect(plans.asPending.count == 2)
+        #expect(!plans.isEmpty)
+        #expect(plans.familyInvitations(for: "c2").map(\.planId) == ["p1"])
+        #expect(plans.waitingOnParent(for: "c2").map(\.planId) == ["p2"])
+        // Nothing of it is "followed" — no answers come with a pending plan.
+        #expect(plans.following.isEmpty)
+        let invite = try #require(plans.asPending[0].watcherEntry(for: "c2"))
+        #expect(invite.isInvitedByOwner)
+        #expect(invite.invitedAt != nil)
+        #expect(CareCopy.watcherLine(invite, parentName: "Mom") == "Invited · waiting on them")
+        let request = try #require(plans.asPending[1].watcherEntry(for: "c2"))
+        #expect(!request.isInvitedByOwner)
+        #expect(CareCopy.watcherLine(request, parentName: "Dad") == "Asked to join · waiting on Dad")
+        #expect(CareCopy.watcherLine(CareWatcher(userId: "x", name: "Sam", status: "active"), parentName: "Dad") == "Sees the answers")
+    }
+
+    /// The parent's approval card must not show an invitation the owner sent —
+    /// that one is the invited person's to answer.
+    @Test func theParentOnlyApprovesRequestsNotInvitations() throws {
+        let plan = CarePlan(planId: "p", role: "parent", ownerId: "c1", ownerName: "Wes", parentId: "m1", parentName: "Mom", status: "active",
+                            watchers: [CareWatcher(userId: "c2", name: "Kate", status: "invited", invitedBy: "c1"),
+                                       CareWatcher(userId: "c3", name: "Sam", status: "invited", invitedBy: "self"),
+                                       CareWatcher(userId: "c4", name: "Ann", status: "active", invitedBy: "c1")])
+        #expect(plan.requestsForParent.map(\.name) == ["Sam"])
+        #expect(plan.pendingWatchers.map(\.name) == ["Kate", "Sam"])
+        #expect(plan.activeWatchers.map(\.name) == ["Ann"])
     }
 }
 

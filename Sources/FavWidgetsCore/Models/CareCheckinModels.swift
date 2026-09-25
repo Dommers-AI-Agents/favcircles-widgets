@@ -282,26 +282,31 @@ public struct CareProfileField: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// A sibling on someone else's check-in. One child sets the arrangement up and
-/// the rest join it, so the parent is asked once rather than once per child.
-/// The parent decides who is on this list — agreeing to one person seeing how
-/// you are is not agreeing to four.
+/// A family member on someone else's check-in. One child sets the arrangement
+/// up and the rest join it, so the parent is asked once rather than once per
+/// child. Two ways in: they ASK (the parent decides) or the owner INVITES them
+/// (they decide, and the parent is told who joined and can remove anyone).
 public struct CareWatcher: Decodable, Equatable, Identifiable, Sendable {
     public var userId: String
     public var name: String
-    /// "invited" (waiting on the parent) or "active".
+    /// "invited" (waiting on someone's yes) or "active".
     public var status: String
+    /// "self" when they asked; the owner's id when the owner invited them.
     public var invitedBy: String?
+    public var invitedAt: Date?
     public var acceptedAt: Date?
 
     public var id: String { userId }
     public var isPending: Bool { status == "invited" }
+    /// The owner sent this one an invitation (so THEY answer it, not the parent).
+    public var isInvitedByOwner: Bool { !(invitedBy == nil || invitedBy == "self") }
 
-    public init(userId: String, name: String, status: String, invitedBy: String? = nil, acceptedAt: Date? = nil) {
+    public init(userId: String, name: String, status: String, invitedBy: String? = nil, invitedAt: Date? = nil, acceptedAt: Date? = nil) {
         self.userId = userId
         self.name = name
         self.status = status
         self.invitedBy = invitedBy
+        self.invitedAt = invitedAt
         self.acceptedAt = acceptedAt
     }
 }
@@ -347,8 +352,14 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     /// Reads the answers but never changes the schedule.
     public var isWatcher: Bool { role == "watcher" }
     public var isParent: Bool { role == "parent" }
-    /// Siblings waiting on this parent to say yes.
+    /// Invited by the owner, or asking to join, and not yet in.
+    public var isPendingWatcher: Bool { role == "pending_watcher" }
+    /// Family waiting on a yes — the parent's (they asked) or their own (invited).
     public var pendingWatchers: [CareWatcher] { watchers.filter(\.isPending) }
+    /// Requests the PARENT still has to answer.
+    public var requestsForParent: [CareWatcher] { pendingWatchers.filter { !$0.isInvitedByOwner } }
+    /// This viewer's own row on the plan, if they are on it.
+    public func watcherEntry(for userId: String) -> CareWatcher? { watchers.first { $0.userId == userId } }
     public var activeWatchers: [CareWatcher] { watchers.filter { $0.status == "active" } }
     public var isInvited: Bool { status == "invited" }
     public var isActive: Bool { status == "active" }
@@ -433,33 +444,47 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// Both halves of the widget's world in one read.
+/// Every side of the widget's world in one read.
 public struct CarePlans: Decodable, Equatable, Sendable {
     public var asOwner: [CarePlan]
     public var asParent: [CarePlan]
     /// Plans someone else set up that this person was let in on.
     public var asWatcher: [CarePlan]
+    /// Plans this person was invited to, or asked to join, and is not yet on.
+    /// The arrangement only — the server sends no answers for these.
+    public var asPending: [CarePlan]
 
-    public init(asOwner: [CarePlan] = [], asParent: [CarePlan] = [], asWatcher: [CarePlan] = []) {
+    public init(asOwner: [CarePlan] = [], asParent: [CarePlan] = [], asWatcher: [CarePlan] = [], asPending: [CarePlan] = []) {
         self.asOwner = asOwner
         self.asParent = asParent
         self.asWatcher = asWatcher
+        self.asPending = asPending
     }
 
-    enum CodingKeys: String, CodingKey { case asOwner, asParent, asWatcher }
+    enum CodingKeys: String, CodingKey { case asOwner, asParent, asWatcher, asPending }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         asOwner = try c.decodeIfPresent([CarePlan].self, forKey: .asOwner) ?? []
         asParent = try c.decodeIfPresent([CarePlan].self, forKey: .asParent) ?? []
         asWatcher = try c.decodeIfPresent([CarePlan].self, forKey: .asWatcher) ?? []
+        asPending = try c.decodeIfPresent([CarePlan].self, forKey: .asPending) ?? []
     }
 
-    public var isEmpty: Bool { asOwner.isEmpty && asParent.isEmpty && asWatcher.isEmpty }
+    public var isEmpty: Bool { asOwner.isEmpty && asParent.isEmpty && asWatcher.isEmpty && asPending.isEmpty }
     /// Everything this person follows, however they came to it.
     public var following: [CarePlan] { asOwner + asWatcher }
     /// Invitations waiting on this person, then open questions for them.
     public var invitations: [CarePlan] { asParent.filter(\.isInvited) }
+    /// "Take part in checking on Mom" — invitations from an owner that THIS
+    /// person answers.
+    public func familyInvitations(for userId: String) -> [CarePlan] {
+        asPending.filter { $0.watcherEntry(for: userId)?.isInvitedByOwner == true }
+    }
+    /// Requests this person made that the parent has not answered yet.
+    public func waitingOnParent(for userId: String) -> [CarePlan] {
+        asPending.filter { $0.watcherEntry(for: userId).map { !$0.isInvitedByOwner } == true }
+    }
     public var openAsks: [(plan: CarePlan, ask: CareAsk)] {
         asParent.compactMap { plan in plan.openAsk.map { (plan, $0) } }
     }
@@ -632,6 +657,19 @@ public enum CareCopy {
         delivered
             ? "Sent to \(plan.parentName) again."
             : "\(plan.parentName)'s phone isn't getting notifications right now. The invitation is still waiting in their How Are You? widget."
+    }
+
+    /// One line per family member on the plan's family list.
+    public static func watcherLine(_ watcher: CareWatcher, parentName: String) -> String {
+        if !watcher.isPending { return "Sees the answers" }
+        return watcher.isInvitedByOwner ? "Invited · waiting on them" : "Asked to join · waiting on \(parentName)"
+    }
+
+    /// After the owner sends (or re-sends) a family invitation.
+    public static func familyInviteResult(_ name: String, parentName: String, delivered: Bool) -> String {
+        delivered
+            ? "\(name) has the invitation. They decide; \(parentName) will be told once they join."
+            : "\(name)'s phone didn't get the invitation right now. It's waiting in their widget, and you can send it again in a few minutes."
     }
 
     public static func statusChip(_ plan: CarePlan) -> String {

@@ -20,10 +20,13 @@ struct CareCheckinFullView: View {
                 if let plans = store.plans {
                     if plans.isEmpty { explainer }
                     ForEach(plans.invitations) { invitation(plan: $0) }
-                    // Siblings waiting on this parent to let them in.
-                    ForEach(plans.asParent.flatMap { plan in plan.pendingWatchers.map { (plan, $0) } }, id: \.1.id) {
+                    // "Wes invited you to take part in checking on Mom" — mine to answer.
+                    ForEach(plans.familyInvitations(for: me)) { familyInvitation(plan: $0) }
+                    // Family asking this parent to let them in.
+                    ForEach(plans.asParent.flatMap { plan in plan.requestsForParent.map { (plan, $0) } }, id: \.1.id) {
                         watcherRequest(plan: $0.0, watcher: $0.1)
                     }
+                    ForEach(plans.waitingOnParent(for: me)) { waitingRow(plan: $0) }
                     ForEach(plans.asParent.filter { !$0.isInvited && $0.status != "declined" }) { askedSection(plan: $0) }
                     ownedSection(plans.following)
                 } else if let error = store.loadError {
@@ -50,6 +53,8 @@ struct CareCheckinFullView: View {
         .sheet(item: $detailPlan) { plan in CarePlanDetailView(context: context, store: store, planId: plan.planId) }
         .sheet(item: $profilePlan) { plan in CareProfileSheet(context: context, store: store, plan: plan) }
     }
+
+    private var me: String { context.host.currentUserId ?? "" }
 
     private func offerProfileIfJustCreated() {
         guard let planId = store.profilePromptPlanId else { return }
@@ -98,9 +103,62 @@ struct CareCheckinFullView: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
     }
 
-    /// The parent decides who joins. Agreeing to one child seeing how you are
-    /// is not agreeing to the whole family, so this is asked each time rather
-    /// than left to whoever set the check-in up.
+    /// An invitation from the owner to take part — the invited person answers.
+    private func familyInvitation(plan: CarePlan) -> some View {
+        let theme = context.theme
+        return VStack(alignment: .leading, spacing: 10) {
+            WidgetUI.header("Invitation", theme: theme)
+            Text("\(plan.ownerName) invited you to take part in checking in on \(plan.parentName)")
+                .font(.system(size: 17, weight: .semibold)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
+            Text("\(plan.parentName) gets a short question at \(CareCopy.timesLine(plan.times)). You'd see the answers and hear about it when one goes unanswered. \(plan.parentName) will know you've joined, and can take anyone off.")
+                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                WidgetUI.primaryButton(busy == "f-yes-\(plan.planId)" ? "…" : "Count me in", color: context.accent) {
+                    run("f-yes-\(plan.planId)") {
+                        try await CareAPI.respondToWatcher(context: context, planId: plan.planId, watcherId: me, accept: true)
+                    }
+                }
+                Button("No thanks") {
+                    run("f-no-\(plan.planId)") {
+                        try await CareAPI.respondToWatcher(context: context, planId: plan.planId, watcherId: me, accept: false)
+                    }
+                }
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                .frame(width: 100)
+            }
+            .disabled(busy != nil)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// A request of mine the parent has not answered yet.
+    private func waitingRow(plan: CarePlan) -> some View {
+        let theme = context.theme
+        return HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "hourglass").font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("You asked to join \(plan.parentName)'s check-ins").font(.system(size: 14, weight: .medium)).foregroundStyle(theme.label)
+                Text("\(plan.parentName) decides who sees their answers. You'll hear once they do.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button("Withdraw") {
+                run("leave-\(plan.planId)") {
+                    _ = try await CareAPI.removeWatcher(context: context, planId: plan.planId, watcherId: me)
+                    store.remove(planId: plan.planId)
+                    return nil
+                }
+            }
+            .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// The parent decides who joins on their own request. Agreeing to one child
+    /// seeing how you are is not agreeing to the whole family, so this is asked
+    /// each time rather than left to whoever set the check-in up.
     private func watcherRequest(plan: CarePlan, watcher: CareWatcher) -> some View {
         let theme = context.theme
         return VStack(alignment: .leading, spacing: 10) {
@@ -141,7 +199,7 @@ struct CareCheckinFullView: View {
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                 }
                 ForEach(plan.pendingWatchers) { w in
-                    Text("\(w.name) asked to join — waiting on \(plan.parentName)")
+                    Text("\(w.name) · \(CareCopy.watcherLine(w, parentName: plan.parentName).lowercased())")
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                 }
                 if plan.isWatcher {
@@ -178,6 +236,7 @@ struct CareCheckinFullView: View {
                         .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                 }
             }
+            whoSeesMyAnswers(plan: plan)
             Button("Stop these check-ins") {
                 run("end-\(plan.planId)") {
                     try await CareAPI.endPlan(context: context, planId: plan.planId)
@@ -189,6 +248,29 @@ struct CareCheckinFullView: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// The parent's view of the family on their check-in: who sees the
+    /// answers, and a way to take anyone off (the owner may invite; the
+    /// parent always has the last word).
+    @ViewBuilder
+    private func whoSeesMyAnswers(plan: CarePlan) -> some View {
+        let theme = context.theme
+        VStack(alignment: .leading, spacing: 6) {
+            Text(plan.activeWatchers.isEmpty
+                 ? "\(plan.ownerName) sees your answers."
+                 : "\(plan.ownerName) and " + plan.activeWatchers.map(\.name).joined(separator: ", ") + " see your answers.")
+                .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            ForEach(plan.activeWatchers) { w in
+                HStack(spacing: 8) {
+                    Text(w.name).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    Button("Remove") {
+                        run("rm-\(w.userId)") { try await CareAPI.removeWatcher(context: context, planId: plan.planId, watcherId: w.userId) }
+                    }
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.danger)
+                }
+            }
+        }
     }
 
     // MARK: - Owner side
