@@ -30,6 +30,13 @@ public struct FavWidgetDescriptor: Identifiable, Hashable, Codable, Sendable {
     /// Bump when the Codable model changes shape; stamped on every save so
     /// a future migration knows what it is reading.
     public let schemaVersion: Int
+    /// The line after "<title> on FavCircles — " in the share sheet, when the
+    /// card's subtitle isn't the right pitch for someone who doesn't have the
+    /// app. Absent, the subtitle is used.
+    public let shareBlurb: String?
+
+    /// What the share message says about the widget.
+    public var shareText: String { shareBlurb ?? subtitle }
 
     public init(
         id: String,
@@ -40,7 +47,8 @@ public struct FavWidgetDescriptor: Identifiable, Hashable, Codable, Sendable {
         category: FavWidgetCategory,
         storage: FavWidgetStorage = .single,
         defaultEnabled: Bool = true,
-        schemaVersion: Int = 1
+        schemaVersion: Int = 1,
+        shareBlurb: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -51,6 +59,7 @@ public struct FavWidgetDescriptor: Identifiable, Hashable, Codable, Sendable {
         self.storage = storage
         self.defaultEnabled = defaultEnabled
         self.schemaVersion = schemaVersion
+        self.shareBlurb = shareBlurb
     }
 
     /// Backend document-key rule (mirrors `WIDGET_ID_RE` server-side).

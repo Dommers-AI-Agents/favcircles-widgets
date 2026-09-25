@@ -13,7 +13,8 @@ public struct HeartbeatWidget: FavWidget {
         symbolName: "heart.fill",
         accentHex: "#F43F5E",
         category: .health,
-        storage: .monthly
+        storage: .monthly,
+        shareBlurb: "measure your heart rate directly from your phone camera."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
