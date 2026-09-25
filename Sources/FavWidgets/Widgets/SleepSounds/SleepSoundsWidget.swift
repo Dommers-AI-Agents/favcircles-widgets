@@ -17,7 +17,8 @@ public struct SleepSoundsWidget: FavWidget {
         symbolName: "moon.zzz.fill",
         accentHex: "#5B6CFF",
         category: .health,
-        storage: .monthly
+        storage: .monthly,
+        shareBlurb: "Mix rain, ocean and fire into a sleep sound that fades out on its own."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

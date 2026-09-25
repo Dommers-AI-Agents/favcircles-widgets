@@ -15,7 +15,8 @@ public struct CareCheckinWidget: FavWidget {
         symbolName: "heart.text.square.fill",
         accentHex: "#E0567F",
         category: .social,
-        storage: .single
+        storage: .single,
+        shareBlurb: "Check on Mom or Dad a few times a day — they answer with one tap from their Lock Screen."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

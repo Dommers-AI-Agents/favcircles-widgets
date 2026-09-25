@@ -14,7 +14,8 @@ public struct PostcardWidget: FavWidget {
         symbolName: "envelope.open.fill",
         accentHex: "#E53E3E",
         category: .social,
-        storage: .monthly
+        storage: .monthly,
+        shareBlurb: "Send a real postcard from a trip photo, printed and mailed for you."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

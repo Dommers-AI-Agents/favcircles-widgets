@@ -15,7 +15,8 @@ public struct WaterWidget: FavWidget {
         category: .health,
         storage: .single,
         // 2 (2026-09-19): reminder settings in the document.
-        schemaVersion: WaterLog.schemaVersion
+        schemaVersion: WaterLog.schemaVersion,
+        shareBlurb: "Track your water through the day and get a nudge when you fall behind."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

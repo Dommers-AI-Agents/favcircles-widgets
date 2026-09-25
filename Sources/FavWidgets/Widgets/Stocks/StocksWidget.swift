@@ -20,7 +20,8 @@ public struct StocksWidget: FavWidget {
         // `entries`. Bump on every shape change:
         // the server refuses a save from a lower schema so an older build can't
         // overwrite lists it can't see.
-        schemaVersion: 3
+        schemaVersion: 3,
+        shareBlurb: "Follow your stocks, indexes, rates and crypto at a glance."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

@@ -15,7 +15,8 @@ public struct FridgeMailWidget: FavWidget {
         symbolName: "paintpalette.fill",
         accentHex: "#D97706",
         category: .social,
-        storage: .single
+        storage: .single,
+        shareBlurb: "Your kids' drawings, printed and mailed to Grandma every week."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

@@ -13,7 +13,8 @@ public struct BillSplitWidget: FavWidget {
         symbolName: "receipt.fill",
         accentHex: "#4FD1C5",
         category: .money,
-        storage: .single
+        storage: .single,
+        shareBlurb: "Split the check and the tip with friends in seconds."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

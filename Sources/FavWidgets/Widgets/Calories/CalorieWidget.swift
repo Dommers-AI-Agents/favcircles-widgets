@@ -14,7 +14,8 @@ public struct CalorieWidget: FavWidget {
         symbolName: "flame.fill",
         accentHex: "#FF8500",
         category: .health,
-        storage: .monthly
+        storage: .monthly,
+        shareBlurb: "Log meals and macros in a couple of taps."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

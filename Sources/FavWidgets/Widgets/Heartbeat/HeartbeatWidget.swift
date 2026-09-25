@@ -14,7 +14,7 @@ public struct HeartbeatWidget: FavWidget {
         accentHex: "#F43F5E",
         category: .health,
         storage: .monthly,
-        shareBlurb: "measure your heart rate directly from your phone camera."
+        shareBlurb: "Measure your heart rate directly from your phone camera."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

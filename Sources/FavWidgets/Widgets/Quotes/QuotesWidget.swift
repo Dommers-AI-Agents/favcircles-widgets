@@ -16,7 +16,8 @@ public struct QuotesWidget: FavWidget {
         symbolName: "quote.opening",
         accentHex: "#7C6BD6",
         category: .social,
-        storage: .single
+        storage: .single,
+        shareBlurb: "A good line a few times a day, on the topics you pick."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

@@ -14,7 +14,8 @@ public struct NextBarWidget: FavWidget {
         symbolName: "wineglass.fill",
         accentHex: "#9F7AEA",
         category: .social,
-        storage: .single
+        storage: .single,
+        shareBlurb: "Your next bar, picked from the places your friends actually go."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {

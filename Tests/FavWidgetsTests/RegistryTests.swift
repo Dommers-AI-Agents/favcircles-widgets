@@ -15,6 +15,19 @@ struct RegistryTests {
         #expect(!ids.contains(WidgetPreferences.documentId))
     }
 
+    /// The share sheet shows the pitch alone above a link that already names
+    /// the widget, so every widget needs one, written as a full sentence
+    /// to someone who doesn't have the app.
+    @Test func everyWidgetHasAShareSentence() {
+        for d in FavWidgetRegistry.descriptors {
+            let pitch = d.shareText
+            #expect(d.shareBlurb != nil, "\(d.id) shares its card subtitle")
+            #expect(pitch.first?.isUppercase == true, "\(d.id): \(pitch)")
+            #expect(pitch.last.map { ".!?".contains($0) } == true, "\(d.id): \(pitch)")
+            #expect(!pitch.hasPrefix(d.title + " on FavCircles"), "\(d.id) repeats the link's own title: \(pitch)")
+        }
+    }
+
     @Test func everyWidgetBuildsItsViews() {
         let host = MockWidgetHost()
         let model = WidgetsTabModel(host: host)

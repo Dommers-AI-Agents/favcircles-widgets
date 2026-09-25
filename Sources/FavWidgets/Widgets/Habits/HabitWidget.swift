@@ -13,7 +13,8 @@ public struct HabitWidget: FavWidget {
         symbolName: "checkmark.circle.fill",
         accentHex: "#38A169",
         category: .health,
-        storage: .single
+        storage: .single,
+        shareBlurb: "Keep daily habits with one-tap check-ins and streaks."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
