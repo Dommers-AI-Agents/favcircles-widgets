@@ -82,16 +82,28 @@ public struct HeartbeatMonth: WidgetModel {
 /// Pulse from a stream of brightness samples (the mean red of each camera
 /// frame). Pure: feed samples with timestamps, ask for an estimate.
 ///
-/// Method: detrend against a one-second moving average (removes the slow
-/// drift as the finger warms and the exposure settles), smooth lightly,
-/// then autocorrelate the last window and pick the strongest lag between
-/// 40 and 200 bpm. The normalized peak doubles as the confidence.
+/// Method (2026-09-28 rewrite, after a 135 bpm pulse read 50):
+/// 1. Resample the last window onto an even grid using the frames' own
+///    timestamps. The camera drops frames; assuming a fixed 30 fps skewed
+///    every answer.
+/// 2. Detrend, then take the first difference. A heartbeat has a sharp
+///    upstroke, so its slope is strong. The slow swell from breathing and a
+///    moving hand is smooth, so differencing shrinks it. That swell sits at
+///    40–60 "bpm", and the old autocorrelation locked onto it.
+/// 3. Score each candidate rate by its spectral power plus that of its 2nd
+///    and 3rd harmonics. A pulse is not a sine wave and has harmonics.
+///    Breathing is nearly a sine and has almost none.
+/// Confidence is the share of the signal's energy that sits on the chosen
+/// rate and its harmonics.
 public struct HeartRateEstimator: Sendable {
     public struct Estimate: Equatable, Sendable {
         public let bpm: Int
         public let confidence: Double
     }
 
+    /// Harmonics counted per candidate rate. Six raised noise's scores more
+    /// than a resting pulse's.
+    static let harmonics = 4.0
     public let sampleRate: Double
     public let windowSeconds: Double
     public let minBPM: Double
@@ -120,6 +132,8 @@ public struct HeartRateEstimator: Sendable {
     }
 
     public mutating func add(value: Double, at time: Double) {
+        // Out-of-order or repeated timestamps would break the resampling.
+        if let last = times.last, time <= last { return }
         times.append(time)
         values.append(value)
         // Keep a little more than the window so the detrend has context.
@@ -136,39 +150,116 @@ public struct HeartRateEstimator: Sendable {
     }
 
     public func estimate() -> Estimate? {
-        guard isReady, values.count >= Int(sampleRate * 4) else { return nil }
-        let signal = HeartRateEstimator.smooth(HeartRateEstimator.detrend(values, sampleRate: sampleRate), radius: 2)
-        let n = signal.count
-        let energy = signal.reduce(0) { $0 + $1 * $1 }
-        guard energy > 0 else { return nil }
-        let minLag = Int((60 / maxBPM) * sampleRate)
-        let maxLag = min(n / 2, Int((60 / minBPM) * sampleRate))
-        guard maxLag > minLag else { return nil }
-        var bestLag = 0
+        guard isReady else { return nil }
+        let uniform = HeartRateEstimator.resample(times: times, values: values, rate: sampleRate, seconds: windowSeconds)
+        guard uniform.count >= Int(sampleRate * 4) else { return nil }
+        let detrended = HeartRateEstimator.detrend(uniform, sampleRate: sampleRate)
+        var slope = [Double](repeating: 0, count: detrended.count - 1)
+        for i in 0..<slope.count { slope[i] = detrended[i + 1] - detrended[i] }
+        let mean = slope.reduce(0, +) / Double(slope.count)
+        let n = slope.count
+        // Hann window keeps one strong line from smearing across the band.
+        let windowed = (0..<n).map { i in
+            (slope[i] - mean) * (0.5 - 0.5 * cos(2 * Double.pi * Double(i) / Double(n - 1)))
+        }
+
+        // Power on a 0.5 bpm grid, from the lowest candidate up to 3× the
+        // highest (for harmonics), stopping short of Nyquist.
+        let step = 0.5
+        let nyquistBPM = sampleRate / 2 * 60 * 0.95
+        let lowBPM = minBPM * 0.75
+        let topBPM = min(maxBPM * HeartRateEstimator.harmonics, nyquistBPM)
+        let count = Int(((topBPM - lowBPM) / step).rounded(.down)) + 1
+        var power = [Double](repeating: 0, count: count)
+        for k in 0..<count {
+            power[k] = HeartRateEstimator.goertzel(windowed, hz: (lowBPM + Double(k) * step) / 60, rate: sampleRate)
+        }
+        let total = power.reduce(0, +)
+        guard total > 0 else { return nil }
+        func p(_ bpm: Double) -> Double {
+            let k = Int(((bpm - lowBPM) / step).rounded())
+            return k >= 0 && k < count ? power[k] : 0
+        }
+        func score(_ bpm: Double) -> Double {
+            (1...Int(HeartRateEstimator.harmonics)).reduce(0) { $0 + p(Double($1) * bpm) }
+        }
+
+        var bestBPM = minBPM
         var best = -Double.infinity
-        for lag in minLag...maxLag {
-            var sum = 0.0
-            for i in lag..<n { sum += signal[i] * signal[i - lag] }
-            let r = sum / energy
-            if r > best { best = r; bestLag = lag }
+        var bpm = minBPM
+        while bpm <= maxBPM {
+            let s = score(bpm)
+            if s > best { best = s; bestBPM = bpm }
+            bpm += step
         }
-        guard bestLag > 0 else { return nil }
-        // Refine the peak with its neighbours for sub-sample lag.
-        var lag = Double(bestLag)
-        if bestLag > minLag && bestLag < maxLag {
-            let rm = autocorr(signal, lag: bestLag - 1, energy: energy)
-            let rp = autocorr(signal, lag: bestLag + 1, energy: energy)
-            let denom = rm - 2 * best + rp
-            if abs(denom) > 1e-9 { lag += 0.5 * (rm - rp) / denom }
+        // A sharp pulse has strong upper harmonics, so a rate at 2× or 3×
+        // the real one can collect nearly as much. When a third or half of
+        // the winner scores almost as well, the lower one is the heartbeat.
+        for divisor in [3.0, 2.0] {
+            let lower = ((bestBPM / divisor) / step).rounded() * step
+            guard lower >= minBPM else { continue }
+            let lowerScore = score(lower)
+            // ...and only when the lower rate's own beat is really there.
+            if lowerScore >= 0.65 * best && p(lower) >= 0.1 * p(bestBPM) {
+                bestBPM = lower
+                best = lowerScore
+                break
+            }
         }
-        let bpm = 60 * sampleRate / lag
-        return Estimate(bpm: Int(bpm.rounded()), confidence: max(0, min(1, best)))
+        // Parabolic refine between grid points.
+        var refined = bestBPM
+        if bestBPM > minBPM && bestBPM < maxBPM {
+            let sm = score(bestBPM - step), sp = score(bestBPM + step)
+            let denom = sm - 2 * best + sp
+            if abs(denom) > 1e-12 { refined += step * 0.5 * (sm - sp) / denom }
+        }
+        if !refined.isFinite || abs(refined - bestBPM) > step { refined = bestBPM }
+
+        // Share of all energy within a few bpm of the rate and its harmonics
+        // (the band widens with the harmonic, as beat-to-beat wobble does).
+        var onPeak = 0.0
+        for h in (1...Int(HeartRateEstimator.harmonics)).map(Double.init) {
+            let width = 4 * h
+            var b = h * bestBPM - width
+            while b <= h * bestBPM + width { onPeak += p(b); b += step }
+        }
+        let confidence = max(0, min(1, onPeak / total * 1.2))
+        return Estimate(bpm: Int(refined.rounded()), confidence: confidence)
     }
 
-    private func autocorr(_ s: [Double], lag: Int, energy: Double) -> Double {
-        var sum = 0.0
-        for i in lag..<s.count { sum += s[i] * s[i - lag] }
-        return sum / energy
+    /// Power of one frequency (Goertzel), normalized by length.
+    static func goertzel(_ x: [Double], hz: Double, rate: Double) -> Double {
+        let w = 2 * Double.pi * hz / rate
+        let coeff = 2 * cos(w)
+        var s1 = 0.0, s2 = 0.0
+        for v in x {
+            let s0 = v + coeff * s1 - s2
+            s2 = s1
+            s1 = s0
+        }
+        let power = s1 * s1 + s2 * s2 - coeff * s1 * s2
+        return max(0, power) / Double(x.count)
+    }
+
+    /// The last `seconds` of samples on an even grid at `rate`, by linear
+    /// interpolation between the real frame times.
+    static func resample(times: [Double], values: [Double], rate: Double, seconds: Double) -> [Double] {
+        guard let first = times.first, let last = times.last, last > first else { return [] }
+        let start = max(first, last - seconds)
+        let dt = 1 / rate
+        var out: [Double] = []
+        out.reserveCapacity(Int(seconds * rate) + 1)
+        var j = max(0, (times.firstIndex { $0 >= start } ?? 1) - 1)
+        var t = start
+        while t <= last {
+            while j + 1 < times.count - 1 && times[j + 1] < t { j += 1 }
+            let t0 = times[j], t1 = times[min(j + 1, times.count - 1)]
+            let v0 = values[j], v1 = values[min(j + 1, values.count - 1)]
+            let f = t1 > t0 ? min(1, max(0, (t - t0) / (t1 - t0))) : 0
+            out.append(v0 + (v1 - v0) * f)
+            t += dt
+        }
+        return out
     }
 
     static func detrend(_ x: [Double], sampleRate: Double) -> [Double] {
@@ -183,16 +274,22 @@ public struct HeartRateEstimator: Sendable {
         return out
     }
 
-    static func smooth(_ x: [Double], radius: Int) -> [Double] {
-        guard radius > 0 else { return x }
-        var out = [Double](repeating: 0, count: x.count)
-        for i in 0..<x.count {
-            let lo = max(0, i - radius), hi = min(x.count - 1, i + radius)
-            var sum = 0.0
-            for j in lo...hi { sum += x[j] }
-            out[i] = sum / Double(hi - lo + 1)
-        }
-        return out
+    /// The middle of the recent estimates. The median ignores the odd wild
+    /// one that a mean would drag the answer toward.
+    public static func median(_ history: [Int]) -> Int? {
+        guard !history.isEmpty else { return nil }
+        let sorted = history.sorted()
+        let mid = sorted.count / 2
+        return sorted.count % 2 == 1 ? sorted[mid] : Int((Double(sorted[mid - 1] + sorted[mid]) / 2).rounded())
+    }
+
+    /// Whether most recent estimates agree with their median, within
+    /// `tolerance` bpm. Noise wanders; a real pulse keeps landing in the
+    /// same place. A reading without that agreement isn't worth showing.
+    public static func hasConsensus(_ history: [Int], tolerance: Int = 5) -> Bool {
+        guard let mid = median(history) else { return false }
+        let agreeing = history.filter { abs($0 - mid) <= tolerance }.count
+        return agreeing * 2 > history.count
     }
 
     /// A reading is steady when the last few estimates agree with each other.
@@ -209,6 +306,65 @@ public struct HeartRateEstimator: Sendable {
     /// strongly red frame. Anything else is the room.
     public static func isFingerCovering(meanRed: Double, meanGreen: Double, meanBlue: Double) -> Bool {
         meanRed > 90 && meanRed > meanGreen * 1.6 && meanRed > meanBlue * 1.6
+    }
+}
+
+/// The measuring loop, kept pure so tests run exactly what ships. Estimates
+/// every few frames for the live confidence, but records one into the
+/// history only every half second. Back-to-back 8 s windows share almost
+/// all their data, so recording each one made even noise look like it
+/// agreed with itself.
+public struct PulseTracker: Sendable {
+    public static let acceptConfidence = 0.2
+    public static let steadyConfidence = 0.35
+    public static let historySize = 12
+    /// Frames between estimates (the live redraw) and between recorded ones.
+    public static let estimateEvery = 3
+    public static let recordEvery = 15
+
+    public private(set) var estimator: HeartRateEstimator
+    public private(set) var history: [Int] = []
+    public private(set) var confidence: Double = 0
+    private var frames = 0
+
+    public init(estimator: HeartRateEstimator = HeartRateEstimator(sampleRate: 30, windowSeconds: 8)) {
+        self.estimator = estimator
+    }
+
+    public mutating func reset() {
+        estimator.reset()
+        history = []
+        confidence = 0
+        frames = 0
+    }
+
+    /// Returns true when a fresh estimate was made (time to redraw).
+    @discardableResult
+    public mutating func add(value: Double, at time: Double) -> Bool {
+        estimator.add(value: value, at: time)
+        frames += 1
+        guard frames % PulseTracker.estimateEvery == 0 else { return false }
+        guard let estimate = estimator.estimate() else { return true }
+        confidence = estimate.confidence
+        if frames % PulseTracker.recordEvery == 0 && estimate.confidence > PulseTracker.acceptConfidence {
+            history.append(estimate.bpm)
+            if history.count > PulseTracker.historySize { history.removeFirst() }
+        }
+        return true
+    }
+
+    /// The live number: the middle of the recorded estimates.
+    public var bpm: Int? { HeartRateEstimator.median(history) }
+
+    /// Six recorded estimates (three seconds) within ±3 bpm.
+    public var isSteady: Bool {
+        confidence >= PulseTracker.steadyConfidence && HeartRateEstimator.isSteady(history)
+    }
+
+    /// The number worth saving, or nil when the estimates never agreed.
+    public var result: Int? {
+        guard history.count >= 4, HeartRateEstimator.hasConsensus(history) else { return nil }
+        return bpm
     }
 }
 

@@ -26,6 +26,72 @@ struct HeartbeatTests {
         #expect(estimate!.confidence > 0.5)
     }
 
+    /// A fingertip signal as the camera really sees it: a sharp systolic
+    /// upstroke and a dicrotic bump each beat, a little beat-to-beat wobble,
+    /// a breathing / hand-movement swell, sensor noise, and dropped frames
+    /// with their real timestamps. 20 s, the longest a measurement runs.
+    private static func fingertip(bpm: Double, swellHz: Double, swellAmp: Double, pulseAmp: Double = 1.5,
+                                  noise: Double = 0.5, dropRate: Double = 0, seed: UInt64) -> [(time: Double, red: Double)] {
+        var state = seed
+        func random() -> Double {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return Double(state >> 11) / Double(1 << 53)
+        }
+        func beat(_ phase: Double) -> Double {
+            let p = phase - floor(phase)
+            return -(exp(-pow((p - 0.15) / 0.07, 2)) + 0.35 * exp(-pow((p - 0.45) / 0.08, 2)))
+        }
+        var samples: [(time: Double, red: Double)] = []
+        var phase = 0.0
+        var t = 0.0
+        while t < 20 {
+            phase += bpm / 60 * (1 + 0.03 * sin(2 * .pi * swellHz * t)) / 30
+            t += 1.0 / 30
+            if random() < dropRate { continue }
+            samples.append((t, 200 + swellAmp * sin(2 * .pi * swellHz * t) + pulseAmp * beat(phase) + (random() - 0.5) * 2 * noise))
+        }
+        return samples
+    }
+
+    /// Runs the tracker the way CameraPulseMonitor does: stop once steady
+    /// after 8 s, or at 20 s, and keep the result only if it has consensus.
+    private static func measure(_ samples: [(time: Double, red: Double)]) -> Int? {
+        var tracker = PulseTracker()
+        guard let start = samples.first?.time else { return nil }
+        for sample in samples {
+            tracker.add(value: sample.red, at: sample.time)
+            if sample.time - start >= 8 && tracker.isSteady { break }
+        }
+        return tracker.result
+    }
+
+    /// Wes 2026-09-28: a 135 bpm pulse read 50. Heavy breathing (or a hand
+    /// moving with it) near 0.8 Hz swamped the old autocorrelation.
+    @Test(arguments: [
+        (135.0, 0.8, 3.0, 0.0),   // the reported case: fast, heavy breathing
+        (135.0, 0.5, 4.0, 0.0),   // slower, deeper breaths
+        (135.0, 0.4, 1.0, 0.25),  // a quarter of the frames dropped
+        (170.0, 0.7, 3.0, 0.1),   // hard exercise
+        (70.0, 0.25, 1.0, 0.05),  // resting
+        (55.0, 0.25, 1.0, 0.05)   // an athlete resting
+    ])
+    func readsARealisticFingertip(bpm: Double, swellHz: Double, swellAmp: Double, dropRate: Double) {
+        for seed in UInt64(1)...5 {
+            let result = Self.measure(Self.fingertip(bpm: bpm, swellHz: swellHz, swellAmp: swellAmp, dropRate: dropRate, seed: seed))
+            #expect(result != nil, "no reading for \(bpm), seed \(seed)")
+            #expect(abs(Double(result ?? 0) - bpm) <= 3, "got \(result ?? 0) for \(bpm), seed \(seed)")
+        }
+    }
+
+    @Test func medianAndConsensus() {
+        #expect(HeartRateEstimator.median([]) == nil)
+        #expect(HeartRateEstimator.median([50, 135, 136, 134]) == 135)
+        #expect(HeartRateEstimator.median([70, 72, 150]) == 72)
+        #expect(HeartRateEstimator.hasConsensus([135, 136, 134, 50, 137]))
+        #expect(!HeartRateEstimator.hasConsensus([163, 120, 187, 90, 150, 60]))
+        #expect(!HeartRateEstimator.hasConsensus([]))
+    }
+
     @Test func needsAFewSecondsBeforeItAnswers() {
         var estimator = HeartRateEstimator(sampleRate: 30, windowSeconds: 8)
         Self.feed(&estimator, bpm: 70, seconds: 3)

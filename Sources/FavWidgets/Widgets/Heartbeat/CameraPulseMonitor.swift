@@ -36,11 +36,9 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     let measureSeconds: Double = 20
     /// Shortest: the estimator needs a full window plus a few agreeing reads.
     let minSeconds: Double = 8
-    private var estimator = HeartRateEstimator(sampleRate: 30, windowSeconds: 8)
+    private var tracker = PulseTracker()
     private var fingerSince: Double?
     private var startTime: Double?
-    private var frameCount = 0
-    private var bpmHistory: [Int] = []
     /// Frames since the exposure lock in which red was pinned at the top.
     private var saturatedFrames = 0
     private var saturationRetries = 0
@@ -72,17 +70,15 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
         confidence = 0
         progress = 0
         waveform = []
-        bpmHistory = []
         fingerSince = nil
         startTime = nil
-        frameCount = 0
         saturatedFrames = 0
         saturationRetries = 0
         torchLevel = 0.3
         framesSeen = 0
         diagnostic = ""
         frameRGB = [0, 0, 0]
-        estimator.reset()
+        tracker.reset()
         #if os(iOS)
         AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
             Task { @MainActor in
@@ -232,10 +228,9 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
             if phase == .measuring {
                 // Finger lifted: start over, but keep the session warm.
                 phase = .waitingForFinger
-                estimator.reset()
+                tracker.reset()
                 fingerSince = nil
                 startTime = nil
-                bpmHistory = []
                 progress = 0
                 bpm = nil
                 #if os(iOS)
@@ -264,7 +259,7 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
                 fingerSince = time
                 if phase == .measuring {
                     phase = .waitingForFinger
-                    estimator.reset(); startTime = nil; bpmHistory = []; progress = 0; bpm = nil
+                    tracker.reset(); startTime = nil; progress = 0; bpm = nil
                 }
                 return
             }
@@ -277,25 +272,19 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
         if phase == .waitingForFinger {
             phase = .measuring
             startTime = time
-            estimator.reset()
+            tracker.reset()
         }
-        estimator.add(value: red, at: time)
-        frameCount += 1
+        let redraw = tracker.add(value: red, at: time)
         guard let startTime else { return }
         progress = min(1, (time - startTime) / measureSeconds)
-        if frameCount % 3 == 0 {
-            waveform = Array(estimator.waveform.suffix(150))
-            if let estimate = estimator.estimate() {
-                confidence = estimate.confidence
-                if estimate.confidence > 0.3 {
-                    bpmHistory.append(estimate.bpm)
-                    if bpmHistory.count > 12 { bpmHistory.removeFirst() }
-                    bpm = Int((Double(bpmHistory.reduce(0, +)) / Double(bpmHistory.count)).rounded())
-                }
-            }
+        if redraw {
+            waveform = Array(tracker.estimator.waveform.suffix(150))
+            confidence = tracker.confidence
+            // Median of estimates half a second apart: one wild one can't drag it.
+            bpm = tracker.bpm
         }
         // Done when the number has settled, or at the cap either way.
-        let steady = time - startTime >= minSeconds && confidence >= 0.5 && HeartRateEstimator.isSteady(bpmHistory)
+        let steady = time - startTime >= minSeconds && tracker.isSteady
         if steady || time - startTime >= measureSeconds {
             finish()
         }
@@ -313,7 +302,9 @@ final class CameraPulseMonitor: NSObject, ObservableObject {
     }
 
     private func finish() {
-        guard let bpm, bpmHistory.count >= 4 else {
+        // Noise wanders; a real pulse keeps landing in the same place. Without
+        // that agreement, a number would be a guess.
+        guard let bpm = tracker.result else {
             phase = .failed("Couldn't find a steady pulse. Rest your fingertip lightly over the rear camera lens, don't press hard, and keep still.")
             stop()
             return
