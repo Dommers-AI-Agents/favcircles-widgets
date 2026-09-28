@@ -185,10 +185,10 @@ struct QuotesReelView: View {
         isLoading = false
     }
 
+    /// A tappable link card rather than plain text; see `QuoteShareLink`.
     private func share(_ quote: QuoteReelItem) {
-        let line = quote.attribution.map { "\(quote.text)\n\($0)" } ?? quote.text
         context.track("quote_shared", ["quote_id": quote.id])
-        context.host.share([.text(line)])
+        context.host.share(QuoteShareLink.items(for: quote))
     }
 }
 
