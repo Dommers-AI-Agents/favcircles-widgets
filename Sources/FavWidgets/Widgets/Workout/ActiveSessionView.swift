@@ -76,7 +76,12 @@ struct ActiveSessionView: View {
         }
         .sheet(isPresented: $showPicker) {
             ExercisePickerView(context: context, settings: settings) { exercise in
-                settings.update { $0.activeSession?.sets.append(SetEntry(exerciseId: exercise.id, reps: 0, weight: 0)) }
+                let history = context.recentWorkouts()
+                // As many rows as last time (up to 6), each with last time's
+                // numbers; one blank row for an exercise never done before
+                let last = WorkoutSessionLogic.lastSets(for: exercise.id, in: history)
+                let rows = WorkoutSessionLogic.prefilledSets(for: exercise.id, count: last.isEmpty ? 1 : min(last.count, 6), last: last)
+                settings.update { $0.activeSession?.sets.append(contentsOf: rows) }
             }
         }
         .sheet(isPresented: $showReorder) {
@@ -236,6 +241,7 @@ struct ActiveSessionView: View {
         let item = WorkoutSessionLogic.routineItem(for: exerciseId, in: session,
                                                    routines: settings.model.routines + ExerciseCatalog.starterRoutines)
         let targets = WorkoutSessionLogic.targets(for: sets, routineReps: item?.targetReps, routineWeight: item?.targetWeight)
+        let lastTime = WorkoutSessionLogic.lastSets(for: exerciseId, in: context.recentWorkouts())
         HStack(alignment: .center, spacing: 10) {
             Button { photoTarget = PhotoTarget(id: exerciseId) } label: {
                 ExerciseThumb(url: settings.model.imageURL(for: exerciseId),
@@ -265,7 +271,8 @@ struct ActiveSessionView: View {
                 settings: settings,
                 setId: set.id,
                 number: index + 1,
-                previousHint: best.map { WorkoutFormat.set($0.weight, $0.reps) },
+                // Last time's same set, like the paper log's "last week" column
+                previousHint: (index < lastTime.count ? lastTime[index] : lastTime.last).map { WorkoutFormat.set($0.weight, $0.reps) },
                 target: index < targets.count ? targets[index] : WorkoutSessionLogic.SetTarget(reps: nil, weight: nil),
                 onCompleted: startRest
             )
@@ -278,7 +285,7 @@ struct ActiveSessionView: View {
             }
         }
         Button {
-            let next = WorkoutSessionLogic.nextSet(for: exerciseId)
+            let next = WorkoutSessionLogic.nextSet(for: exerciseId, in: session, history: context.recentWorkouts())
             settings.update { model in
                 // Insert after the exercise's last row so blocks stay contiguous.
                 guard var sets = model.activeSession?.sets else { return }
@@ -332,10 +339,25 @@ struct ActiveSessionView: View {
             model.sessions.append(result.session)
             model.sessions.sort { $0.startedAt < $1.startedAt }
         }
+        // Read against the routines as they were BEFORE this write, including
+        // the starters, so a starter routine can be saved as the person's own.
+        let update = WorkoutSessionLogic.routineUpdate(
+            for: result.session,
+            routines: settings.model.routines + ExerciseCatalog.starterRoutines,
+            name: { [model = settings.model] id in model.exercise(id: id)?.name ?? "Exercise" },
+            unit: unit
+        )
+        let isStarter = update.map { u in !settings.model.routines.contains { $0.id == u.routine.id } } ?? false
+        // Your own routine keeps what you did — exercises you added, today's
+        // numbers — in the same write that ends the workout. The summary
+        // offers Undo. A starter routine still asks before becoming yours.
+        let autoApply = update != nil && !isStarter
         settings.update { model in
             model.prsByExercise = WorkoutSessionLogic.applying(result.newRecords, to: model.prsByExercise)
+            if autoApply, let update { model.routines = WorkoutSessionLogic.applying(update, to: model.routines) }
             model.activeSession = nil
         }
+        if autoApply { context.track("workout_routine_updated", ["new": "0", "auto": "1"]) }
         restEndsAt = nil
         context.host.haptic(.success)
         context.track("workout_finished", [
@@ -347,16 +369,6 @@ struct ActiveSessionView: View {
             .sorted { $0.exercise < $1.exercise }
         let share = WorkoutShareSummary.make(session: result.session, newRecords: result.newRecords, unit: unit,
                                              weightKg: settings.model.profile.weightKg) { settings.model.exercise(id: $0)?.name ?? "Exercise" }
-        // Read against the routines as they were BEFORE the session was
-        // cleared, including the starters, so a starter routine can be
-        // saved as the person's own.
-        let update = WorkoutSessionLogic.routineUpdate(
-            for: result.session,
-            routines: settings.model.routines + ExerciseCatalog.starterRoutines,
-            name: { [model = settings.model] id in model.exercise(id: id)?.name ?? "Exercise" },
-            unit: unit
-        )
-        let isStarter = update.map { u in !settings.model.routines.contains { $0.id == u.routine.id } } ?? false
         onFinished(WorkoutSummary(
             name: result.session.name,
             duration: WorkoutSessionLogic.duration(of: result.session),
@@ -364,7 +376,10 @@ struct ActiveSessionView: View {
             unit: unit,
             newRecords: records,
             share: share,
-            routineUpdate: update.map { RoutineUpdate(routine: $0.routine, isNew: isStarter, changes: $0.changes) }
+            routineUpdate: update.map {
+                RoutineUpdate(routine: $0.routine, isNew: isStarter, changes: $0.changes,
+                              previous: isStarter ? nil : $0.previous, applied: autoApply)
+            }
         ))
     }
 

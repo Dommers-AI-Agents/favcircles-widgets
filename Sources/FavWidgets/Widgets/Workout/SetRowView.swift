@@ -85,13 +85,25 @@ struct SetRowView: View {
         }
         .animation(.easeInOut(duration: 0.18), value: isDone)
         .onAppear(perform: seed)
+        // Only a real change counts as typing: seeding the fields with the
+        // prefilled numbers must not clear the prefilled mark.
         .onChange(of: weightText) { text in
-            guard let value = WorkoutFormat.parseDecimal(text) ?? (text.isEmpty ? 0 : nil) else { return }
-            mutate { $0.weight = value }
+            guard let value = WorkoutFormat.parseDecimal(text) ?? (text.isEmpty ? 0 : nil),
+                  value != entry?.weight else { return }
+            mutate { $0.weight = value; $0.isPrefilled = nil }
         }
         .onChange(of: repsText) { text in
-            guard let value = WorkoutFormat.parseInt(text) ?? (text.isEmpty ? 0 : nil) else { return }
-            mutate { $0.reps = value }
+            guard let value = WorkoutFormat.parseInt(text) ?? (text.isEmpty ? 0 : nil),
+                  value != entry?.reps else { return }
+            mutate { $0.reps = value; $0.isPrefilled = nil }
+        }
+        // A set above was ticked with new numbers and rolled them into this
+        // untouched row: show them.
+        .onChange(of: entry?.weight) { value in
+            if entry?.isPrefilled == true, let value { weightText = WorkoutFormat.decimalText(value) }
+        }
+        .onChange(of: entry?.reps) { value in
+            if entry?.isPrefilled == true, let value { repsText = value == 0 ? "" : String(value) }
         }
     }
 
@@ -114,10 +126,19 @@ struct SetRowView: View {
         let completing = !isDone
         let fillReps = completing && (entry?.reps ?? 0) == 0 ? target.reps : nil
         let fillWeight = completing && (entry?.weight ?? 0) == 0 ? target.weight : nil
-        mutate {
-            $0.completedAt = completing ? Date() : nil
-            if let fillReps { $0.reps = fillReps }
-            if let fillWeight { $0.weight = fillWeight }
+        settings.update { model in
+            guard var sets = model.activeSession?.sets,
+                  let index = sets.firstIndex(where: { $0.id == setId }) else { return }
+            // Ticked exactly as last time: the rows below keep their own
+            // last-time numbers (a pyramid stays a pyramid). Changed first:
+            // the change carries down.
+            let changed = sets[index].isPrefilled != true
+            sets[index].completedAt = completing ? Date() : nil
+            if let fillReps { sets[index].reps = fillReps }
+            if let fillWeight { sets[index].weight = fillWeight }
+            // Ticked means done as shown: it's the person's set now
+            if completing { sets[index].isPrefilled = nil }
+            model.activeSession?.sets = completing && changed ? WorkoutSessionLogic.rollingForward(from: setId, in: sets) : sets
         }
         if let fillReps { repsText = String(fillReps) }
         if let fillWeight { weightText = WorkoutFormat.decimalText(fillWeight) }

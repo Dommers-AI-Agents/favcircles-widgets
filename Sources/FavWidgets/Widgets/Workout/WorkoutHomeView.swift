@@ -182,7 +182,7 @@ struct WorkoutHomeView: View {
 
     private func start(_ routine: Routine?) {
         guard !hasActive else { return }
-        let session = routine.map { WorkoutSessionLogic.session(from: $0) } ?? WorkoutSession(name: "Workout")
+        let session = routine.map { WorkoutSessionLogic.session(from: $0, history: context.recentWorkouts()) } ?? WorkoutSession(name: "Workout")
         settings.update { $0.activeSession = session }
         context.host.haptic(.light)
         context.track("workout_started", ["routine": routine == nil ? "empty" : (usesStarters ? "starter" : "own")])

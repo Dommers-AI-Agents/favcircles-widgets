@@ -18,7 +18,8 @@ public struct WorkoutWidget: FavWidget {
         // 2 (2026-09-19): body profile, cardio entries, exercise photos.
         // 3 (2026-09-21): routines remember the weight (RoutineItem.targetWeight).
         // 4 (2026-09-22): which Inner Circle list a workout is posted to (shareListId).
-        schemaVersion: 4,
+        // 5 (2026-09-29): set rows prefilled from last time (SetEntry.isPrefilled).
+        schemaVersion: 5,
         shareBlurb: "Log sets, reps and PRs, and see your progress over time."
     )
 
@@ -33,6 +34,18 @@ public struct WorkoutWidget: FavWidget {
 
     public func makeFullView(context: WidgetContext) -> AnyView {
         AnyView(WorkoutFullView(context: context, settings: context.state(WorkoutSettings.self)))
+    }
+}
+
+// MARK: - History for prefill
+
+extension WidgetContext {
+    /// Finished workouts from this month and last, as loaded so far — what
+    /// new set rows are prefilled from. Never awaited: before the months
+    /// load, rows fall back to the routine's remembered numbers.
+    func recentWorkouts() -> [WorkoutSession] {
+        month(WorkoutMonth.self, currentMonth).model.sessions
+            + month(WorkoutMonth.self, currentMonth.previous).model.sessions
     }
 }
 

@@ -31,25 +31,73 @@ public enum WorkoutSessionLogic {
         return remaining.flatMap { id in session.sets.filter { $0.exerciseId == id } }
     }
 
-    /// A session prefilled from a routine: every item becomes `targetSets`
-    /// empty rows (0 × 0). The UI shows the routine's target reps as the
-    /// placeholder and fills them in when a row is ticked untouched.
-    public static func session(from routine: Routine, startedAt: Date = Date()) -> WorkoutSession {
+    /// A session built from a routine: every item becomes `targetSets` rows,
+    /// each filled with what that set was the last time the exercise was
+    /// done (`history`), else the routine's remembered values. Filled rows
+    /// are marked prefilled, so any that are never ticked are dropped at
+    /// the end.
+    public static func session(from routine: Routine, history: [WorkoutSession] = [], startedAt: Date = Date()) -> WorkoutSession {
         var sets: [SetEntry] = []
         for item in routine.items {
-            for _ in 0..<max(1, item.targetSets) {
-                sets.append(SetEntry(exerciseId: item.exerciseId, reps: 0, weight: 0))
-            }
+            sets += prefilledSets(for: item.exerciseId, count: max(1, item.targetSets),
+                                  last: lastSets(for: item.exerciseId, in: history), routineItem: item)
         }
         return WorkoutSession(routineId: routine.id, name: routine.name, startedAt: startedAt, sets: sets)
     }
 
-    /// A blank set row. It stays 0 × 0 on purpose: the values you would
-    /// repeat arrive as the row's placeholder (see `targets(for:)`) and are
-    /// written in when you tick it, so an untouched extra row is still
-    /// untouched and is dropped at the end.
-    public static func nextSet(for exerciseId: String) -> SetEntry {
-        SetEntry(exerciseId: exerciseId, reps: 0, weight: 0)
+    /// The completed working sets of the newest finished session that did
+    /// this exercise, in order. Empty when it has never been done.
+    public static func lastSets(for exerciseId: String, in history: [WorkoutSession]) -> [SetEntry] {
+        let newestFirst = history.filter { !$0.isActive }.sorted { $0.startedAt > $1.startedAt }
+        for session in newestFirst {
+            let done = session.sets.filter { $0.exerciseId == exerciseId && $0.completedAt != nil && !$0.isWarmup }
+            if !done.isEmpty { return done }
+        }
+        return []
+    }
+
+    /// `count` rows for one exercise. Row i takes last time's set i (or last
+    /// time's final set when there are more rows now); with no history the
+    /// routine's target reps and weight stand in; with neither the row is
+    /// blank (0 × 0, not prefilled).
+    public static func prefilledSets(for exerciseId: String, count: Int, last: [SetEntry], routineItem: RoutineItem? = nil) -> [SetEntry] {
+        (0..<max(1, count)).map { index in
+            let source = index < last.count ? last[index] : last.last
+            let reps = source?.reps ?? routineItem?.targetReps ?? 0
+            let weight = source?.weight ?? routineItem?.targetWeight ?? 0
+            let filled = reps > 0 || weight > 0
+            return SetEntry(exerciseId: exerciseId, reps: reps, weight: weight, isPrefilled: filled ? true : nil)
+        }
+    }
+
+    /// One more row for an exercise already in the session: a copy of its
+    /// last row's numbers (prefilled), or last time's values when the block
+    /// is empty.
+    public static func nextSet(for exerciseId: String, in session: WorkoutSession, history: [WorkoutSession] = []) -> SetEntry {
+        if let previous = session.sets.last(where: { $0.exerciseId == exerciseId && !$0.isWarmup }),
+           previous.reps > 0 || previous.weight > 0 {
+            return SetEntry(exerciseId: exerciseId, reps: previous.reps, weight: previous.weight, isPrefilled: true)
+        }
+        let already = session.sets.filter { $0.exerciseId == exerciseId }.count
+        let last = lastSets(for: exerciseId, in: history)
+        return prefilledSets(for: exerciseId, count: already + 1, last: last)[already]
+    }
+
+    /// After a set is ticked with different numbers, the rows below it in
+    /// the same exercise that are still exactly as prefilled take the new
+    /// numbers — changing the weight on set two carries into three and four.
+    /// Rows the person typed in are left alone.
+    public static func rollingForward(from setId: UUID, in sets: [SetEntry]) -> [SetEntry] {
+        guard let index = sets.firstIndex(where: { $0.id == setId }) else { return sets }
+        let done = sets[index]
+        guard done.completedAt != nil, !done.isWarmup, done.reps > 0 || done.weight > 0 else { return sets }
+        var out = sets
+        for i in out.indices where i > index && out[i].exerciseId == done.exerciseId
+            && out[i].isPrefilled == true && out[i].completedAt == nil && !out[i].isWarmup {
+            out[i].reps = done.reps
+            out[i].weight = done.weight
+        }
+        return out
     }
 
     /// What a row should offer before anyone types in it.
@@ -93,10 +141,12 @@ public enum WorkoutSessionLogic {
     }
 
     /// A row holds user data when it was ticked or has any number typed in
-    /// (weight or reps — bodyweight sets have no weight). Untouched
-    /// placeholders (0 × 0, never completed) hold none.
+    /// (weight or reps — bodyweight sets have no weight). Untouched rows —
+    /// blank, or still showing last time's prefilled numbers — hold none.
     public static func holdsUserData(_ set: SetEntry) -> Bool {
-        set.completedAt != nil || set.weight > 0 || set.reps > 0
+        if set.completedAt != nil { return true }
+        if set.isPrefilled == true { return false }
+        return set.weight > 0 || set.reps > 0
     }
 
     /// The routine's target reps for an exercise in this session, if it
@@ -146,7 +196,7 @@ public enum WorkoutSessionLogic {
         }
         guard !changes.isEmpty else { return nil }
         return RoutineUpdate(routine: Routine(id: existing.id, name: existing.name, items: items),
-                             isNew: false, changes: changes)
+                             isNew: false, changes: changes, previous: existing)
     }
 
     /// "3 × 10 at 135 lb", or "3 × 10" when there is no weight.
@@ -194,7 +244,11 @@ public enum WorkoutSessionLogic {
     public static func finish(_ session: WorkoutSession, existingRecords: [String: PersonalRecord], at endedAt: Date = Date()) -> FinishResult {
         var finished = session
         finished.endedAt = endedAt
-        finished.sets = session.sets.filter(holdsUserData)
+        finished.sets = session.sets.filter(holdsUserData).map { set in
+            var kept = set
+            kept.isPrefilled = nil
+            return kept
+        }
         finished.cardio = session.cardio.filter(\.holdsUserData).map { entry in
             var e = entry
             if e.completedAt == nil { e.completedAt = endedAt }

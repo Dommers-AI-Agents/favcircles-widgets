@@ -114,23 +114,27 @@ struct WorkoutSummaryView: View {
         .task { await audience.loadIfStale(context: context) }
     }
 
-    /// "You did it differently — keep the change?" Asked once, right after
-    /// the workout, because that is the only moment the person still knows
-    /// whether the change was the plan or a bad day.
+    /// What this workout changed in its routine. Your own routine has
+    /// already been updated (exercises you added stay in it) and offers
+    /// Undo; a starter routine asks before becoming yours.
     @ViewBuilder
     private func routineCard(_ update: RoutineUpdate) -> some View {
+        let saved = update.applied ? routineAnswer != false : routineAnswer == true
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: routineAnswer == true ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+                Image(systemName: saved ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(routineAnswer == true ? theme.success : context.accent)
-                Text(routineAnswer == true ? "\(update.routine.name) updated" : "Update \(update.routine.name)?")
+                    .foregroundStyle(saved ? theme.success : context.accent)
+                Text(saved ? "\(update.routine.name) updated"
+                     : update.applied ? "\(update.routine.name) left as it was" : "Save \(update.routine.name)?")
                     .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
             }
-            if routineAnswer == nil {
-                Text(update.isNew
-                     ? "This workout came from a starter routine. Saving keeps it as your own, with today's numbers."
-                     : "Today didn't match the routine. Save today's numbers so next time starts here.")
+            if !update.applied && routineAnswer == nil {
+                Text("This workout came from a starter routine. Saving keeps it as your own, with today's exercises and numbers.")
+                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if update.applied && saved {
+                Text("Next time starts with today's exercises and numbers.")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -140,10 +144,20 @@ struct WorkoutSummaryView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if routineAnswer == nil {
+            if update.applied {
+                if routineAnswer != false, let previous = update.previous {
+                    Button { undoRoutine(previous) } label: {
+                        Text("Undo")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                            .frame(maxWidth: .infinity).frame(height: 44)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else if routineAnswer == nil {
                 HStack(spacing: 10) {
                     Button { acceptRoutine(update) } label: {
-                        Text(update.isNew ? "Save as my routine" : "Update routine")
+                        Text("Save as my routine")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).frame(height: 44)
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent))
@@ -153,7 +167,7 @@ struct WorkoutSummaryView: View {
                         routineAnswer = false
                         context.track("workout_routine_update_declined")
                     } label: {
-                        Text("Leave it")
+                        Text("Not now")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
                             .frame(maxWidth: .infinity).frame(height: 44)
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
@@ -165,6 +179,18 @@ struct WorkoutSummaryView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// Puts the routine back exactly as it was before this workout
+    private func undoRoutine(_ previous: Routine) {
+        settings.update { model in
+            if let index = model.routines.firstIndex(where: { $0.id == previous.id }) {
+                model.routines[index] = previous
+            }
+        }
+        routineAnswer = false
+        context.host.haptic(.light)
+        context.track("workout_routine_update_undone")
     }
 
     private func acceptRoutine(_ update: RoutineUpdate) {

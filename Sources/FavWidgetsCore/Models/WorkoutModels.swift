@@ -76,14 +76,20 @@ public struct SetEntry: Codable, Equatable, Identifiable, Sendable {
     public var weight: Double
     public var isWarmup: Bool
     public var completedAt: Date?
+    /// The weight and reps were filled in from last time, not typed. A
+    /// prefilled row that is never ticked holds no user data and is dropped
+    /// when the workout finishes. Typing in the row clears it. (schema 5)
+    public var isPrefilled: Bool?
 
-    public init(id: UUID = UUID(), exerciseId: String, reps: Int, weight: Double, isWarmup: Bool = false, completedAt: Date? = nil) {
+    public init(id: UUID = UUID(), exerciseId: String, reps: Int, weight: Double, isWarmup: Bool = false,
+                completedAt: Date? = nil, isPrefilled: Bool? = nil) {
         self.id = id
         self.exerciseId = exerciseId
         self.reps = reps
         self.weight = weight
         self.isWarmup = isWarmup
         self.completedAt = completedAt
+        self.isPrefilled = isPrefilled
     }
 }
 
@@ -127,7 +133,7 @@ public struct WorkoutSession: Codable, Equatable, Identifiable, Sendable {
     public var isActive: Bool { endedAt == nil }
 
     public var cardioMinutes: Int { cardio.filter(\.holdsUserData).reduce(0) { $0 + $1.minutes } }
-    public var exerciseCount: Int { Set(sets.filter { $0.completedAt != nil || $0.weight > 0 || $0.reps > 0 }.map(\.exerciseId)).count }
+    public var exerciseCount: Int { Set(sets.filter(WorkoutSessionLogic.holdsUserData).map(\.exerciseId)).count }
 
     public var totalVolume: Double {
         sets.filter { !$0.isWarmup }.reduce(0) { $0 + $1.weight * Double($1.reps) }
@@ -161,11 +167,19 @@ public struct RoutineUpdate: Equatable, Sendable {
     public let isNew: Bool
     /// One line per change, in the words the sheet shows.
     public let changes: [String]
+    /// The routine as it was before this workout, for Undo. Nil for a
+    /// starter routine the person hasn't saved yet.
+    public let previous: Routine?
+    /// Already written to the routines (an own routine updates itself when
+    /// the workout finishes; a starter still asks).
+    public let applied: Bool
 
-    public init(routine: Routine, isNew: Bool, changes: [String]) {
+    public init(routine: Routine, isNew: Bool, changes: [String], previous: Routine? = nil, applied: Bool = false) {
         self.routine = routine
         self.isNew = isNew
         self.changes = changes
+        self.previous = previous
+        self.applied = applied
     }
 }
 
