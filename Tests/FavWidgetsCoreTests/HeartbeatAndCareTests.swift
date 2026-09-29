@@ -220,5 +220,8 @@ struct CareInviteResendTests {
         let plan = CarePlan(planId: "p1", role: "owner", ownerId: "c1", ownerName: "Wes", parentId: "d1", parentName: "Dad", status: "invited")
         #expect(CareCopy.resendResult(plan, delivered: true) == "Sent to Dad again.")
         #expect(CareCopy.resendResult(plan, delivered: false).hasPrefix("Dad's phone isn't getting notifications"))
+        #expect(CareCopy.resendResult(plan, delivered: false, emailed: true).contains("so we emailed the invitation too"))
+        #expect(CareCopy.resendResult(plan, delivered: true, emailed: true) == "Sent to Dad again, as a notification and an email.")
+        #expect(CareCopy.familyInviteResult("Kate", parentName: "Dad", delivered: false, emailed: true).contains("emailed the invitation"))
     }
 }

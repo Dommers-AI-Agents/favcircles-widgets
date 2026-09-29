@@ -652,11 +652,16 @@ public enum CareCopy {
         return "Invitation sent \(relative(at, now: now, calendar: calendar)). They'll see it in their Circles app; nothing is asked until they say yes."
     }
 
-    /// What the child is told after "Send the invitation again".
-    public static func resendResult(_ plan: CarePlan, delivered: Bool) -> String {
-        delivered
-            ? "Sent to \(plan.parentName) again."
-            : "\(plan.parentName)'s phone isn't getting notifications right now. The invitation is still waiting in their How Are You? widget."
+    /// What the child is told after "Send the invitation again". `emailed`:
+    /// the server emails every invitation as well (servers before 2026-09-29
+    /// never say so, and read as false).
+    public static func resendResult(_ plan: CarePlan, delivered: Bool, emailed: Bool = false) -> String {
+        switch (delivered, emailed) {
+        case (true, true): return "Sent to \(plan.parentName) again, as a notification and an email."
+        case (true, false): return "Sent to \(plan.parentName) again."
+        case (false, true): return "\(plan.parentName)'s phone isn't getting notifications right now, so we emailed the invitation too. It's also waiting in their How Are You? widget."
+        case (false, false): return "\(plan.parentName)'s phone isn't getting notifications right now. The invitation is still waiting in their How Are You? widget."
+        }
     }
 
     /// One line per family member on the plan's family list.
@@ -666,10 +671,13 @@ public enum CareCopy {
     }
 
     /// After the owner sends (or re-sends) a family invitation.
-    public static func familyInviteResult(_ name: String, parentName: String, delivered: Bool) -> String {
-        delivered
-            ? "\(name) has the invitation. They decide; \(parentName) will be told once they join."
-            : "\(name)'s phone didn't get the invitation right now. It's waiting in their widget, and you can send it again in a few minutes."
+    public static func familyInviteResult(_ name: String, parentName: String, delivered: Bool, emailed: Bool = false) -> String {
+        switch (delivered, emailed) {
+        case (true, true): return "\(name) has the invitation, as a notification and an email. They decide; \(parentName) will be told once they join."
+        case (true, false): return "\(name) has the invitation. They decide; \(parentName) will be told once they join."
+        case (false, true): return "\(name)'s phone didn't get the notification, so we emailed the invitation too. It's also waiting in their widget."
+        case (false, false): return "\(name)'s phone didn't get the invitation right now. It's waiting in their widget, and you can send it again in a few minutes."
+        }
     }
 
     public static func statusChip(_ plan: CarePlan) -> String {

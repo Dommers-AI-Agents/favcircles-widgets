@@ -88,7 +88,7 @@ struct CarePlanDetailView: View {
                     perform {
                         let sent = try await CareAPI.resendInvite(context: context, planId: plan.planId)
                         store.apply(sent.plan)
-                        context.host.presentAlert(WidgetAlert(title: "How Are You?", message: CareCopy.resendResult(sent.plan, delivered: sent.delivered)))
+                        context.host.presentAlert(WidgetAlert(title: "How Are You?", message: CareCopy.resendResult(sent.plan, delivered: sent.delivered, emailed: sent.emailed)))
                     }
                 }
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent).disabled(busy)
@@ -165,7 +165,7 @@ struct CarePlanDetailView: View {
             let sent = try await CareAPI.resendWatcherInvite(context: context, planId: plan.planId, watcherId: watcher.userId)
             store.apply(sent.plan)
             context.host.presentAlert(WidgetAlert(title: "How Are You?",
-                                                  message: CareCopy.familyInviteResult(watcher.name, parentName: plan.parentName, delivered: sent.delivered)))
+                                                  message: CareCopy.familyInviteResult(watcher.name, parentName: plan.parentName, delivered: sent.delivered, emailed: sent.emailed)))
         }
     }
 

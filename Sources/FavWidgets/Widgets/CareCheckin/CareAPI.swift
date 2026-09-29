@@ -37,10 +37,10 @@ enum CareAPI {
 
     /// The invitation push again. `delivered` is the server's word on whether
     /// the parent's phone got it; the plan itself is unchanged.
-    static func resendInvite(context: WidgetContext, planId: String) async throws -> (plan: CarePlan, delivered: Bool) {
-        struct Response: Decodable { let plan: CarePlan; let delivered: Bool }
+    static func resendInvite(context: WidgetContext, planId: String) async throws -> (plan: CarePlan, delivered: Bool, emailed: Bool) {
+        struct Response: Decodable { let plan: CarePlan; let delivered: Bool; let emailed: Bool? }
         let response: Response = try await context.api(.post, "widgets/care/plans/\(planId)/invite")
-        return (response.plan, response.delivered)
+        return (response.plan, response.delivered, response.emailed ?? false)
     }
 
     static func respond(context: WidgetContext, planId: String, accept: Bool) async throws -> CarePlan {
@@ -70,10 +70,10 @@ enum CareAPI {
     }
 
     /// The family invitation push again; `delivered` is the server's word.
-    static func resendWatcherInvite(context: WidgetContext, planId: String, watcherId: String) async throws -> (plan: CarePlan, delivered: Bool) {
-        struct Response: Decodable { let plan: CarePlan; let delivered: Bool }
+    static func resendWatcherInvite(context: WidgetContext, planId: String, watcherId: String) async throws -> (plan: CarePlan, delivered: Bool, emailed: Bool) {
+        struct Response: Decodable { let plan: CarePlan; let delivered: Bool; let emailed: Bool? }
         let response: Response = try await context.api(.post, "widgets/care/plans/\(planId)/watchers/\(watcherId)/invite")
-        return (response.plan, response.delivered)
+        return (response.plan, response.delivered, response.emailed ?? false)
     }
 
     static func removeWatcher(context: WidgetContext, planId: String, watcherId: String) async throws -> CarePlan {
