@@ -39,6 +39,15 @@ struct HeartbeatFullView: View {
             }
         }
         .onDisappear { strap.disconnect() }
+        // A strap streams a live number; watching it shouldn't need taps
+        .keepsScreenAwake(strapIsLive)
+    }
+
+    private var strapIsLive: Bool {
+        switch strap.state {
+        case .scanning, .connecting, .connected: return true
+        default: return false
+        }
     }
 
     private var latest: HeartReading? {
@@ -244,6 +253,9 @@ struct PulseMeasureView: View {
             .widgetInlineNavigationTitle("Measuring")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
+        // A finger on the camera can't tap the screen: never let it dim or
+        // lock mid-reading. Released when the sheet closes.
+        .keepsScreenAwake(true)
     }
 
     /// The guide shows until a pulse is actually being read.
