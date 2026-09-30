@@ -111,8 +111,33 @@ public struct WorkoutShareSummary: Codable, Equatable, Sendable {
     public var cardio: [CardioLine]
     public var prCount: Int
     public var unit: String
+    /// What a viewer copies as their own routine: each exercise's identity
+    /// and its opening working set. Nil on posts from before 0.19.
+    public var routine: [RoutineLine]?
 
-    public init(name: String, startedAt: Date, durationSeconds: Int, completedSets: Int, exercises: [ExerciseLine], cardio: [CardioLine], prCount: Int, unit: String) {
+    /// One exercise of a shared workout, enough to rebuild it elsewhere.
+    public struct RoutineLine: Codable, Equatable, Sendable {
+        /// A built-in catalog id, or the poster's own custom id (meaningless
+        /// on another phone; the name is what matches there).
+        public var exerciseId: String?
+        public var name: String
+        public var muscleGroup: String
+        public var sets: Int
+        public var reps: Int
+        public var weight: Double?
+
+        public init(exerciseId: String?, name: String, muscleGroup: String, sets: Int, reps: Int, weight: Double?) {
+            self.exerciseId = exerciseId
+            self.name = name
+            self.muscleGroup = muscleGroup
+            self.sets = sets
+            self.reps = reps
+            self.weight = weight
+        }
+    }
+
+    public init(name: String, startedAt: Date, durationSeconds: Int, completedSets: Int, exercises: [ExerciseLine], cardio: [CardioLine],
+                prCount: Int, unit: String, routine: [RoutineLine]? = nil) {
         self.name = name
         self.startedAt = startedAt
         self.durationSeconds = durationSeconds
@@ -121,6 +146,7 @@ public struct WorkoutShareSummary: Codable, Equatable, Sendable {
         self.cardio = cardio
         self.prCount = prCount
         self.unit = unit
+        self.routine = routine
     }
 
     public var cardioMinutes: Int { cardio.reduce(0) { $0 + $1.minutes } }
@@ -128,7 +154,7 @@ public struct WorkoutShareSummary: Codable, Equatable, Sendable {
     /// Builds the summary from a finished session. `exerciseName` resolves
     /// custom names that live only on this device.
     public static func make(session: WorkoutSession, newRecords: [String: PersonalRecord], unit: WeightUnit, weightKg: Double?,
-                            exerciseName: (String) -> String) -> WorkoutShareSummary {
+                            exerciseName: (String) -> String, exerciseInfo: ((String) -> Exercise?)? = nil) -> WorkoutShareSummary {
         let ids = WorkoutSessionLogic.orderedExerciseIds(in: session)
         let lines: [ExerciseLine] = ids.compactMap { id in
             let done = session.sets.filter { $0.exerciseId == id && $0.completedAt != nil && !$0.isWarmup }
@@ -142,6 +168,15 @@ public struct WorkoutShareSummary: Codable, Equatable, Sendable {
         let cardio = session.cardio.filter(\.holdsUserData).map {
             CardioLine(name: $0.kind.name, minutes: $0.minutes, detail: WorkoutCardioLogic.line(for: $0, distanceUnit: distanceUnit, weightKg: weightKg))
         }
+        // The copyable routine: the same first-working-set rule a routine
+        // update uses, so a copy starts where the poster started
+        let routine: [RoutineLine] = ids.compactMap { id in
+            let done = session.sets.filter { $0.exerciseId == id && $0.completedAt != nil && !$0.isWarmup }
+            guard let first = done.first else { return nil }
+            let info = exerciseInfo?(id)
+            return RoutineLine(exerciseId: id, name: info?.name ?? exerciseName(id), muscleGroup: info?.muscleGroup ?? "Other",
+                               sets: done.count, reps: first.reps, weight: first.weight > 0 ? first.weight : nil)
+        }
         return WorkoutShareSummary(
             name: session.name,
             startedAt: session.startedAt,
@@ -150,7 +185,8 @@ public struct WorkoutShareSummary: Codable, Equatable, Sendable {
             exercises: lines,
             cardio: cardio,
             prCount: newRecords.count,
-            unit: unit.label
+            unit: unit.label,
+            routine: routine.isEmpty ? nil : routine
         )
     }
 

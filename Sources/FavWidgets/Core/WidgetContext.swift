@@ -88,6 +88,11 @@ public final class WidgetContext: ObservableObject {
     /// push carries its id. The quotes page reads and clears it on appear.
     public var launchQuoteId: String?
 
+    /// A shared workout the host wants shown (a tapped `workout_shared` row
+    /// in the activity feed). The Workouts page reads and clears it on
+    /// appear and opens the post, where the viewer can copy it as a routine.
+    public var launchWorkoutPostId: String?
+
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host
         self.theme = theme

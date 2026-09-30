@@ -86,12 +86,13 @@ struct WorkoutSummaryView: View {
                 }
                 Toggle(isOn: Binding(get: { settings.model.shareWithInnerCircle }, set: { on in settings.update { $0.shareWithInnerCircle = on } })) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Post to my Inner Circle").font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label)
-                        Text(posted ? "Posted." : "They see it in their Workouts widget.").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                        Text("Share this workout").font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label)
+                        Text(posted ? "Posted." : "It shows in their activity feed, and they can copy it as a routine.")
+                            .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     }
                 }
                 .tint(context.accent)
-                if settings.model.shareWithInnerCircle, !posted, !audience.lists.isEmpty {
+                if settings.model.shareWithInnerCircle, !posted {
                     audiencePicker
                 }
                 HStack(spacing: 10) {
@@ -200,27 +201,40 @@ struct WorkoutSummaryView: View {
         context.track("workout_routine_updated", ["new": update.isNew ? "1" : "0"])
     }
 
-    /// Which list. One entry per named list with its size, plus "anyone on my
-    /// lists", which is what a post with no list has always meant.
+    private var toConnections: Bool { settings.model.shareAudience == "connections" }
+
+    private var audienceTitle: String {
+        if toConnections { return "All my connections" }
+        return chosenList?.name ?? (audience.lists.isEmpty ? "My Inner Circle" : "Anyone on my lists")
+    }
+
+    /// Who sees it: all connections, or the Inner Circle — anyone on any
+    /// list (what a post with no list has always meant) or one named list.
     private var audiencePicker: some View {
         Menu {
             Button {
-                settings.update { $0.shareListId = nil }
+                settings.update { $0.shareAudience = "connections"; $0.shareListId = nil }
             } label: {
-                Label("Anyone on my lists", systemImage: settings.model.shareListId == nil ? "checkmark" : "")
+                Label("All my connections", systemImage: toConnections ? "checkmark" : "")
+            }
+            Button {
+                settings.update { $0.shareAudience = nil; $0.shareListId = nil }
+            } label: {
+                Label(audience.lists.isEmpty ? "My Inner Circle" : "Anyone on my Inner Circle lists",
+                      systemImage: !toConnections && settings.model.shareListId == nil ? "checkmark" : "")
             }
             ForEach(audience.lists) { list in
                 Button {
-                    settings.update { $0.shareListId = list.id }
+                    settings.update { $0.shareAudience = nil; $0.shareListId = list.id }
                 } label: {
                     Label("\(list.name) · \(list.count == 1 ? "1 person" : "\(list.count) people")",
-                          systemImage: settings.model.shareListId == list.id ? "checkmark" : "")
+                          systemImage: !toConnections && settings.model.shareListId == list.id ? "checkmark" : "")
                 }
             }
         } label: {
             HStack(spacing: 6) {
                 Text("To:").font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
-                Text(chosenList?.name ?? "Anyone on my lists").font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                Text(audienceTitle).font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
                 Image(systemName: "chevron.up.chevron.down").font(.system(size: 11, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
                 Spacer()
             }
@@ -242,12 +256,14 @@ struct WorkoutSummaryView: View {
         Task {
             defer { posting = false }
             do {
-                try await WorkoutFeedAPI.share(context: context, summary: share, audienceListId: chosenList?.id)
+                try await WorkoutFeedAPI.share(context: context, summary: share,
+                                               audience: toConnections ? "connections" : "innerCircle",
+                                               audienceListId: toConnections ? nil : chosenList?.id)
                 posted = true
-                context.track("workout_posted_inner_circle")
+                context.track(toConnections ? "workout_posted_connections" : "workout_posted_inner_circle")
                 dismiss()
             } catch {
-                context.host.presentAlert(WidgetAlert(title: "Couldn't post to your Inner Circle", message: error.localizedDescription))
+                context.host.presentAlert(WidgetAlert(title: "Couldn't share your workout", message: error.localizedDescription))
             }
         }
     }

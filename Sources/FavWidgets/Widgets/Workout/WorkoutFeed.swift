@@ -18,15 +18,20 @@ enum WorkoutFeedAPI {
 
     private struct ShareBody: Encodable {
         let summary: WorkoutShareSummary
+        let audience: String
         let audienceListId: String?
     }
 
-    /// `audienceListId` names one of the person's Inner Circle lists; nil
-    /// means anyone on any of them.
-    static func share(context: WidgetContext, summary: WorkoutShareSummary, audienceListId: String? = nil) async throws {
+    private struct PostEnvelope: Decodable { let post: Post }
+
+    /// `audience` is "connections" or "innerCircle"; for the Inner Circle,
+    /// `audienceListId` names one list and nil means any of them. The post
+    /// also appears in that audience's activity feed.
+    static func share(context: WidgetContext, summary: WorkoutShareSummary, audience: String = "innerCircle", audienceListId: String? = nil) async throws {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        let body = try encoder.encode(ShareBody(summary: summary, audienceListId: audienceListId))
+        let body = try encoder.encode(ShareBody(summary: summary, audience: audience,
+                                                audienceListId: audience == "innerCircle" ? audienceListId : nil))
         _ = try await context.host.request(WidgetAPIRequest(.post, "widgets/workouts/share", body: body))
     }
 
@@ -45,8 +50,14 @@ enum WorkoutFeedAPI {
 
     /// The lists worth offering: the ones with someone on them.
     static func audienceLists(context: WidgetContext) async throws -> [AudienceList] {
-        let envelope = try WidgetJSON.decode(ListsEnvelope.self, from: await context.host.request(WidgetAPIRequest(.get, "users/me/inner-circle/lists")))
+        let envelope = try WidgetJSON.decode(ListsEnvelope.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/workouts/lists")))
         return (envelope.data.lists ?? []).filter { !$0.userIds.isEmpty }
+    }
+
+    /// One shared workout, when the viewer is allowed to see it
+    static func post(context: WidgetContext, id: String) async throws -> Post {
+        let path = "widgets/workouts/posts/" + (id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id)
+        return try WidgetJSON.decode(PostEnvelope.self, from: await context.host.request(WidgetAPIRequest(.get, path))).post
     }
 
     static func feed(context: WidgetContext) async throws -> [Post] {
@@ -86,20 +97,23 @@ final class WorkoutAudienceStore: RemoteStore {
     }
 }
 
-/// "Following": what your Inner Circle has been lifting.
+/// "Following": what your connections and Inner Circle have been lifting.
+/// Tap one to see it in full and copy it as a routine.
 struct WorkoutFollowingSection: View {
     let context: WidgetContext
+    @ObservedObject var settings: WidgetStateController<WorkoutSettings>
     @ObservedObject var store: WorkoutFeedStore
+    @State private var opened: WorkoutFeedAPI.Post?
 
     private var theme: WidgetTheme { context.theme }
 
     var body: some View {
         Group {
-            WidgetUI.header("Inner Circle", theme: theme)
+            WidgetUI.header("Shared with you", theme: theme)
                 .padding(.top, 8)
                 .listRowSeparator(.hidden)
             if store.posts.isEmpty {
-                Text(store.isLoading ? "Loading…" : "Workouts shared by people who put you in their Inner Circle show up here. Manage your own list in Settings → Privacy → Inner Circle.")
+                Text(store.isLoading ? "Loading…" : "Workouts your connections share with you show up here. Tap one to copy it as a routine.")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                     .fixedSize(horizontal: false, vertical: true)
                     .listRowSeparator(.hidden)
@@ -139,11 +153,16 @@ struct WorkoutFollowingSection: View {
                 }
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+                .contentShape(Rectangle())
+                .onTapGesture { opened = post }
                 .listRowSeparator(.hidden)
             }
         }
         .listRowBackground(Color.clear)
         .task { await store.loadIfStale(context: context) }
+        .sheet(item: $opened) { post in
+            WorkoutPostView(context: context, settings: settings, postId: post.postId, initialPost: post)
+        }
     }
 
     private func headline(_ post: WorkoutFeedAPI.Post) -> String {

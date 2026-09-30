@@ -11,6 +11,10 @@ struct WorkoutFullView: View {
     /// The live workout is still running, but the person tapped Back to
     /// look at the home page. Resume brings it back.
     @State private var showHomeWhileActive = false
+    /// A shared workout to show (a tapped activity-feed row)
+    @State private var openPost: PostTarget?
+
+    private struct PostTarget: Identifiable { let id: String }
 
     private var showsSession: Bool { settings.model.activeSession != nil && !showHomeWhileActive }
 
@@ -34,6 +38,16 @@ struct WorkoutFullView: View {
         }
         .sheet(item: $summary) { summary in
             WorkoutSummaryView(context: context, settings: settings, summary: summary)
+        }
+        .sheet(item: $openPost) { target in
+            WorkoutPostView(context: context, settings: settings, postId: target.id)
+        }
+        .onAppear {
+            guard let postId = context.launchWorkoutPostId else { return }
+            context.launchWorkoutPostId = nil
+            // Over a running workout, still show it: copying is fine, and
+            // Start explains it has to wait
+            openPost = PostTarget(id: postId)
         }
         .background(context.theme.background.ignoresSafeArea())
         // A live workout is titled by what it is — the routine's name —

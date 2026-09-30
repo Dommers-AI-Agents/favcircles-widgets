@@ -46,7 +46,7 @@ struct WorkoutHomeView: View {
                 topBar
                 if let active = settings.model.activeSession { resumeBanner(active) }
                 startSection
-                WorkoutFollowingSection(context: context, store: WorkoutFeedStore.shared(context))
+                WorkoutFollowingSection(context: context, settings: settings, store: WorkoutFeedStore.shared(context))
                 historySection
                 prSection
             }

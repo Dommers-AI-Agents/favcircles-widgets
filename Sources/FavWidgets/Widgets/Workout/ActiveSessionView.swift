@@ -84,6 +84,8 @@ struct ActiveSessionView: View {
                 settings.update { $0.activeSession?.sets.append(contentsOf: rows) }
             }
         }
+        // Hands are full of weights between sets: the log stays on screen
+        .keepsScreenAwake(true)
         .sheet(isPresented: $showReorder) {
             ExerciseReorderView(context: context, settings: settings)
         }
@@ -368,7 +370,9 @@ struct ActiveSessionView: View {
             .map { (id: $0.key, exercise: settings.model.exercise(id: $0.key)?.name ?? $0.key, record: $0.value) }
             .sorted { $0.exercise < $1.exercise }
         let share = WorkoutShareSummary.make(session: result.session, newRecords: result.newRecords, unit: unit,
-                                             weightKg: settings.model.profile.weightKg) { settings.model.exercise(id: $0)?.name ?? "Exercise" }
+                                             weightKg: settings.model.profile.weightKg,
+                                             exerciseName: { settings.model.exercise(id: $0)?.name ?? "Exercise" },
+                                             exerciseInfo: { [model = settings.model] in model.exercise(id: $0) })
         onFinished(WorkoutSummary(
             name: result.session.name,
             duration: WorkoutSessionLogic.duration(of: result.session),
