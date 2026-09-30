@@ -237,11 +237,11 @@ struct CareCheckinFullView: View {
             } else {
                 Text(plan.isPaused ? "\(plan.ownerName) paused the questions for now." : "Nothing waiting. \(plan.ownerName) checks in at \(CareCopy.timesLine(plan.times)).")
                     .font(.system(size: 14)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
-                if let last = plan.lastAnswer, let text = last.answerText, let at = last.answeredAt {
-                    Text("Last answer: \(text) · \(CareCopy.relative(at, calendar: context.calendar))")
-                        .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
-                }
             }
+            // Their own answers looked back on — the week, the trends, the habits
+            Divider().padding(.vertical, 4)
+            CareMyWeekView(context: context, history: store.histories[plan.planId] ?? [])
+            Divider().padding(.vertical, 4)
             whoSeesMyAnswers(plan: plan)
             Button("Stop these check-ins") {
                 run("end-\(plan.planId)") {
@@ -254,6 +254,7 @@ struct CareCheckinFullView: View {
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+        .task(id: plan.planId) { _ = await store.history(context: context, planId: plan.planId, refresh: true) }
     }
 
     /// The parent's view of the family on their check-in: who sees the
@@ -356,6 +357,8 @@ struct CareCheckinFullView: View {
             updated.openAsk = nil
             updated.lastAnswer = answered
             updated.lastAnsweredAt = answered.answeredAt
+            // The week, trends and list below the question include this answer
+            _ = await store.history(context: context, planId: plan.planId, refresh: true)
             return updated
         }
     }

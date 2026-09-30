@@ -247,15 +247,7 @@ struct CarePlanDetailView: View {
     }
 
     private func scaleBar(_ value: Int, warn: Bool) -> some View {
-        let theme = context.theme
-        return HStack(spacing: 2) {
-            ForEach(0..<10, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(i < value ? (warn ? theme.warning : context.accent) : theme.tertiaryBackground)
-                    .frame(width: 6, height: 14)
-            }
-        }
-        .accessibilityLabel("\(value) out of 10")
+        CareScaleBar(context: context, value: value, warn: warn)
     }
 
     // MARK: - Times
@@ -370,30 +362,8 @@ struct CarePlanDetailView: View {
             if history.isEmpty {
                 Text("Nothing asked yet.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
             }
-            ForEach(history) { ask in
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: CareCopy.answerSymbol(ask))
-                        .font(.system(size: 14))
-                        .foregroundStyle(ask.alert ? theme.warning : (ask.isAnswered ? context.accent : theme.secondaryLabel)).frame(width: 22)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(ask.questionText).font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).lineLimit(2)
-                        HStack(spacing: 8) {
-                            Text(answerLine(ask)).font(.system(size: 14, weight: .medium)).foregroundStyle(theme.label)
-                            if ask.kind == .scale, let score = ask.answerScore { scaleBar(score, warn: ask.alert) }
-                        }
-                        if !ask.note.isEmpty { Text("“\(ask.note)”").font(.system(size: 13)).foregroundStyle(theme.label) }
-                        Text(CareCopy.relative(ask.askedAt, calendar: context.calendar)).font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
-                    }
-                }
-                .padding(.vertical, 6)
-            }
+            ForEach(history) { CareAnswerRow(context: context, ask: $0) }
         }
-    }
-
-    private func answerLine(_ ask: CareAsk) -> String {
-        if let text = ask.answerText { return text }
-        if ask.isMissed { return ask.pushDelivered ? "No answer" : "Not delivered" }
-        return "Waiting…"
     }
 
     // MARK: - Edits
