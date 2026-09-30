@@ -18,7 +18,9 @@ struct CareCheckinFullView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if let plans = store.plans {
-                    if plans.isEmpty { explainer }
+                    // Always on top: the page explains itself, set up or not
+                    // (a screenshot of it should tell a stranger what it is)
+                    explainer
                     ForEach(plans.invitations) { invitation(plan: $0) }
                     // "Wes invited you to take part in checking on Mom" — mine to answer.
                     ForEach(plans.familyInvitations(for: me)) { familyInvitation(plan: $0) }
@@ -68,8 +70,12 @@ struct CareCheckinFullView: View {
     private var explainer: some View {
         let theme = context.theme
         return VStack(alignment: .leading, spacing: 10) {
+            Label("How it works", systemImage: "heart.text.square.fill")
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
             Text("A short \"how are you?\" lands on your parent's phone a few times a day. They answer with one tap, without unlocking. You see every answer, and you hear about it when there's silence.")
                 .font(.system(size: 15)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
+            Text("Invite brothers, sisters or anyone close to watch with you — your parent knows who's in, and can take anyone off.")
+                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
             Text("They need Circles on their phone with notifications on, and you need to be connected.")
                 .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
         }
