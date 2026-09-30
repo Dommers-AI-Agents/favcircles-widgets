@@ -152,7 +152,7 @@ struct WhatToEatFullView: View {
                         Text("No saved \(cuisine.name) spots nearby. Here are favorites close by instead.")
                             .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
                     }
-                    WidgetUI.primaryButton(matching.isEmpty ? "Pick one for me" : "Pick a \(cuisine?.name ?? "") spot for me", color: context.accent) {
+                    WidgetUI.primaryButton(matching.isEmpty ? "Pick one for me" : "Pick \(Self.article(for: cuisine?.name ?? "")) \(cuisine?.name ?? "") spot for me", color: context.accent) {
                         pickForMe(from: matching.isEmpty ? matches : matching)
                     }
                     ForEach(Array(matches.prefix(20)), id: \.scored.candidate.id) { match in
@@ -209,6 +209,12 @@ struct WhatToEatFullView: View {
             }
             .pickerStyle(.segmented)
         }
+    }
+
+    /// "an Italian spot", "a Thai spot".
+    static func article(for word: String) -> String {
+        guard let first = word.lowercased().first else { return "a" }
+        return "aeiou".contains(first) ? "an" : "a"
     }
 
     private func pickForMe(from options: [CravingPicker.PlaceMatch]) {
