@@ -104,14 +104,21 @@ public struct Cocktail: Codable, Equatable, Hashable, Identifiable, Sendable {
     }
 }
 
-private typealias I = CocktailIngredient
+/// Shorthand for the recipe tables (this file and the CocktailLibrary+… extensions).
+typealias I = CocktailIngredient
 
 public enum CocktailLibrary {
-    private static let shakeSour = ["Add everything to a shaker with ice.", "Shake hard for about 12 seconds.", "Strain into the glass."]
-    private static let stir = ["Add everything to a mixing glass with ice.", "Stir for about 25 seconds until well chilled.", "Strain into the chilled glass."]
-    private static let build = ["Fill the glass with ice.", "Add the spirit and mixers.", "Stir gently and garnish."]
+    static let shakeSour = ["Add everything to a shaker with ice.", "Shake hard for about 12 seconds.", "Strain into the glass."]
+    static let stir = ["Add everything to a mixing glass with ice.", "Stir for about 25 seconds until well chilled.", "Strain into the chilled glass."]
+    static let build = ["Fill the glass with ice.", "Add the spirit and mixers.", "Stir gently and garnish."]
 
-    public static let all: [Cocktail] = [
+    /// Every drink: the classics below plus each spirit's longer list
+    /// (Models/Cocktails/CocktailLibrary+<Spirit>.swift), at least 20 per
+    /// spirit chip so a surprise rarely repeats.
+    public static let all: [Cocktail] = classics + moreVodka + moreTequila + moreMezcal + moreGin + moreRum
+        + moreWhiskey + moreBrandy + moreBubbly + moreLiqueur + moreZeroProof
+
+    static let classics: [Cocktail] = [
         // MARK: Whiskey
         Cocktail("manhattan", "Manhattan", base: .whiskey, style: .stirred, strength: .strong,
                  blurb: "Rye, sweet vermouth and bitters: rich, smooth and classic.",

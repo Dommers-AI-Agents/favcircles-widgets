@@ -5,16 +5,36 @@ import Foundation
 struct DrinkPickerTests {
     @Test func libraryIsCompleteAndUnique() {
         let all = CocktailLibrary.all
-        #expect(all.count >= 50)
+        #expect(all.count >= 200)
         #expect(Set(all.map(\.id)).count == all.count, "duplicate ids")
+        let names = all.map { $0.name.lowercased() }
+        #expect(Set(names).count == names.count, "duplicate names")
         for drink in all {
             #expect(!drink.ingredients.isEmpty, "\(drink.name) has no ingredients")
             #expect(!drink.steps.isEmpty, "\(drink.name) has no steps")
             #expect(!drink.glass.isEmpty, "\(drink.name) has no glass")
+            #expect(!drink.blurb.isEmpty && !drink.orderTip.isEmpty, "\(drink.name) is missing copy")
+            #expect(drink.id == drink.id.lowercased() && !drink.id.contains(" "), "\(drink.id) isn't kebab-case")
         }
-        // Every base Wes named has something to suggest
-        for base in [SpiritBase.vodka, .tequila, .gin, .rum, .whiskey, .mezcal, .zeroProof] {
-            #expect(DrinkPicker.filtered(base: base).count >= 2, "\(base) is thin")
+        // Wes, 2026-10-01: at least 20 per spirit chip, so a surprise rarely repeats
+        for base in SpiritBase.allCases {
+            #expect(DrinkPicker.filtered(base: base).count >= 20, "\(base.label) has only \(DrinkPicker.filtered(base: base).count)")
+        }
+    }
+
+    @Test func zeroProofDrinksHaveNoAlcohol() {
+        let alcohol = ["vodka", "gin", "rum", "tequila", "mezcal", "whiskey", "whisky", "bourbon", "rye", "scotch",
+                       "brandy", "cognac", "wine", "champagne", "prosecco", "liqueur", "vermouth", "bitters",
+                       "schnapps", "amaro", "campari", "aperol", "beer", "cider", "sake", "port", "sherry"]
+        for drink in DrinkPicker.filtered(base: .zeroProof) {
+            for ingredient in drink.ingredients {
+                let words = Set(ingredient.item.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init))
+                // "ginger beer", "root beer", "apple cider" and "non-alcoholic …" are fine
+                let soft = ingredient.item.lowercased()
+                if soft.contains("ginger beer") || soft.contains("root beer") || soft.contains("non-alcoholic")
+                    || soft.contains("apple cider") || soft.contains("zero-proof") { continue }
+                #expect(words.isDisjoint(with: alcohol), "\(drink.name): \(ingredient.item)")
+            }
         }
     }
 
