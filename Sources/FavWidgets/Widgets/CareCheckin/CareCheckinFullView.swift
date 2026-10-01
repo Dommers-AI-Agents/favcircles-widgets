@@ -18,7 +18,11 @@ struct CareCheckinFullView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if let plans = store.plans {
-                    // Always on top: the page explains itself, set up or not
+                    let asked = plans.asParent.filter { !$0.isInvited && $0.status != "declined" }
+                    // A question waiting comes first: tapping its push lands
+                    // on the question itself, not below the explainer (Sal, 2026-10-01)
+                    ForEach(asked.filter { $0.openAsk != nil }) { askedSection(plan: $0) }
+                    // Then the page explains itself, set up or not
                     // (a screenshot of it should tell a stranger what it is)
                     explainer
                     ForEach(plans.invitations) { invitation(plan: $0) }
@@ -29,7 +33,7 @@ struct CareCheckinFullView: View {
                         watcherRequest(plan: $0.0, watcher: $0.1)
                     }
                     ForEach(plans.waitingOnParent(for: me)) { waitingRow(plan: $0) }
-                    ForEach(plans.asParent.filter { !$0.isInvited && $0.status != "declined" }) { askedSection(plan: $0) }
+                    ForEach(asked.filter { $0.openAsk == nil }) { askedSection(plan: $0) }
                     ownedSection(plans.following)
                 } else if let error = store.loadError {
                     VStack(alignment: .leading, spacing: 10) {
