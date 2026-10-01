@@ -1,5 +1,8 @@
 import SwiftUI
 import FavWidgetsCore
+#if canImport(MapKit)
+import MapKit
+#endif
 
 /// "What to Eat": for the indecisive. Spins a cuisine and a dish, then
 /// finds restaurants you or your people saved that serve it.
@@ -70,6 +73,48 @@ final class WhatToEatPool: ObservableObject {
         } catch {
             status = .failed("Couldn't load restaurants. Pull to refresh.")
         }
+    }
+
+    /// Map-search results per cuisine id, for this session.
+    @Published private(set) var spots: [String: [NearbySpot]] = [:]
+    @Published private(set) var searching: Set<String> = []
+
+    /// Asks Apple Maps for this cuisine near the user (once per cuisine per
+    /// session). No location, no search: nothing is made up.
+    func searchNearby(_ cuisine: Cuisine) async {
+        guard spots[cuisine.id] == nil, !searching.contains(cuisine.id), let origin else { return }
+        searching.insert(cuisine.id)
+        defer { searching.remove(cuisine.id) }
+        #if canImport(MapKit)
+        let request = MKLocalSearch.Request()
+        request.naturalLanguageQuery = cuisine.searchQuery
+        request.resultTypes = .pointOfInterest
+        request.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: origin.latitude, longitude: origin.longitude),
+                                            latitudinalMeters: 16_000, longitudinalMeters: 16_000)
+        do {
+            let response = try await MKLocalSearch(request: request).start()
+            spots[cuisine.id] = response.mapItems.prefix(25).compactMap { item in
+                guard let name = item.name else { return nil }
+                let c = item.placemark.coordinate
+                let pm = item.placemark
+                let street = [pm.subThoroughfare, pm.thoroughfare].compactMap { $0 }.joined(separator: " ")
+                let address = [street.isEmpty ? nil : street, pm.locality].compactMap { $0 }.joined(separator: ", ")
+                return NearbySpot(name: name, address: address.isEmpty ? nil : address,
+                                  coordinate: WidgetCoordinate(latitude: c.latitude, longitude: c.longitude),
+                                  phone: item.phoneNumber, url: item.url)
+            }
+        } catch {
+            spots[cuisine.id] = []
+        }
+        #else
+        spots[cuisine.id] = []
+        #endif
+    }
+
+    func whereToGet(for settings: WhatToEatSettings) -> CravingPicker.Where {
+        let cuisine = settings.currentCuisine
+        return CravingPicker.whereToGet(cuisine, candidates: candidates, spots: cuisine.flatMap { spots[$0.id] } ?? [],
+                                        origin: origin, maxDistanceMeters: settings.maxDistanceMeters, sources: settings.sources)
     }
 
     func matches(for settings: WhatToEatSettings) -> [CravingPicker.PlaceMatch] {

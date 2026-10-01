@@ -112,6 +112,37 @@ struct CravingPickerTests {
         }
     }
 
+    @Test func whereToGetSeafood_mapResultsVouchForSavesAndFillTheGap() {
+        let seafood = CravingLibrary.cuisine(id: "seafood")!
+        let saved = [
+            place("Sushi Hana", metersNorth: 300),
+            place("Ilios Crafted Greek", metersNorth: 100),
+            place("Mac's Speed Shop", metersNorth: 900)          // name says nothing
+        ]
+        let spots = [
+            NearbySpot(name: "Mac's Speed Shop - Charlotte", address: "2511 South Blvd",
+                       coordinate: WidgetCoordinate(latitude: 35.2271 + 905 / 111_320, longitude: -80.8431)),  // same venue
+            NearbySpot(name: "Fin & Fino", address: "135 Levine Ave",
+                       coordinate: WidgetCoordinate(latitude: 35.2271 + 1_200 / 111_320, longitude: -80.8431)),
+            NearbySpot(name: "Oyster Bar", address: nil,
+                       coordinate: WidgetCoordinate(latitude: 35.2271 + 400 / 111_320, longitude: -80.8431))
+        ]
+        let w = CravingPicker.whereToGet(seafood, candidates: saved, spots: spots, origin: origin,
+                                         maxDistanceMeters: 10_000, sources: Set(WidgetPlaceSource.allCases))
+        #expect(w.saved.map(\.scored.candidate.name) == ["Mac's Speed Shop"])     // vouched by the map
+        #expect(w.nearby.map(\.name) == ["Oyster Bar", "Fin & Fino"])            // not saved, nearest first
+        #expect(Set(w.otherSaved.map(\.scored.candidate.name)) == ["Sushi Hana", "Ilios Crafted Greek"])
+    }
+
+    @Test func sameVenueNeedsCloseAndASharedWord() {
+        let a = WidgetCoordinate(latitude: 35.2271, longitude: -80.8431)
+        let near = WidgetCoordinate(latitude: 35.2271 + 30 / 111_320, longitude: -80.8431)
+        let far = WidgetCoordinate(latitude: 35.2271 + 500 / 111_320, longitude: -80.8431)
+        #expect(CravingPicker.sameVenue("Sushi Hana", a, "Hana Sushi Bar", near))
+        #expect(!CravingPicker.sameVenue("Sushi Hana", a, "Hana Sushi Bar", far))
+        #expect(!CravingPicker.sameVenue("The Grill", a, "Bar & Grill Co", near))   // only filler words shared
+    }
+
     @Test func typeOfFoodPinsTheCuisine() {
         for _ in 0..<40 {
             let spin = CravingPicker.spin(filters: [], cuisineId: "thai")!

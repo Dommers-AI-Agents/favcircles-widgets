@@ -56,6 +56,24 @@ public struct Cuisine: Codable, Equatable, Hashable, Identifiable, Sendable {
         self.keywords = keywords
         self.dishes = dishes
     }
+
+    /// What to ask a map search for ("seafood restaurant", "sushi").
+    public var searchQuery: String {
+        switch id {
+        case "sushi": return "sushi japanese restaurant"
+        case "mediterranean": return "greek mediterranean restaurant"
+        case "breakfast": return "breakfast brunch"
+        case "salads": return "salad bowls"
+        case "sandwiches": return "deli sandwiches"
+        case "wings": return "wings pub"
+        case "southern": return "southern soul food"
+        case "pizza": return "pizza"
+        case "burgers": return "burgers"
+        case "bbq": return "bbq barbecue"
+        case "steakhouse": return "steakhouse"
+        default: return "\(name) restaurant"
+        }
+    }
 }
 
 private typealias D = Dish

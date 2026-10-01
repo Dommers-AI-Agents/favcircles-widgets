@@ -2,6 +2,25 @@ import Foundation
 
 /// What to Eat: spin a cuisine and a dish, then find saved restaurants
 /// that serve it.
+/// A restaurant from a map search (Apple Maps), not necessarily saved.
+public struct NearbySpot: Equatable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let name: String
+    public let address: String?
+    public let coordinate: WidgetCoordinate
+    public let phone: String?
+    public let url: URL?
+
+    public init(name: String, address: String?, coordinate: WidgetCoordinate, phone: String? = nil, url: URL? = nil) {
+        self.id = "\(name.lowercased())|\(String(format: "%.4f,%.4f", coordinate.latitude, coordinate.longitude))"
+        self.name = name
+        self.address = address
+        self.coordinate = coordinate
+        self.phone = phone
+        self.url = url
+    }
+}
+
 public enum CravingPicker {
     public struct Spin: Equatable, Sendable {
         public let cuisine: Cuisine
@@ -50,6 +69,50 @@ public enum CravingPicker {
     public static func nameSuggests(_ cuisine: Cuisine, name: String) -> Bool {
         let padded = " " + words(name) + " "
         return cuisine.keywords.contains { padded.contains(" " + words($0) + " ") }
+    }
+
+    /// Same venue: within 75 m and sharing a meaningful name word ("Sushi
+    /// Hana" vs "Hana Sushi Bar"), so a map result can vouch for a save.
+    public static func sameVenue(_ name: String, _ a: WidgetCoordinate, _ other: String, _ b: WidgetCoordinate) -> Bool {
+        guard a.distance(to: b) <= 75 else { return false }
+        let stop: Set<String> = ["the", "and", "of", "restaurant", "bar", "grill", "kitchen", "cafe", "co", "company", "at", "on"]
+        let wa = Set(words(name).split(separator: " ").map(String.init).filter { $0.count > 1 && !stop.contains($0) })
+        let wb = Set(words(other).split(separator: " ").map(String.init).filter { $0.count > 1 && !stop.contains($0) })
+        return !wa.isDisjoint(with: wb)
+    }
+
+    /// The answer to "where can I get it?": saved places that serve it (by
+    /// name, or because the map search lists them for this cuisine), and map
+    /// results nobody has saved, nearest first. Nothing invented: if neither
+    /// has anything, both lists are empty.
+    public struct Where: Equatable, Sendable {
+        public let saved: [PlaceMatch]          // serves the cuisine
+        public let nearby: [NearbySpot]         // map results, not already saved
+        public let otherSaved: [PlaceMatch]     // the rest of your saves, for when you just want somewhere
+    }
+
+    public static func whereToGet(_ cuisine: Cuisine?, candidates: [WidgetPlaceCandidate], spots: [NearbySpot],
+                                  origin: WidgetCoordinate?, maxDistanceMeters: Double,
+                                  sources: Set<WidgetPlaceSource>) -> Where {
+        let pool = NextBarPicker.pool(candidates, origin: origin, maxDistanceMeters: maxDistanceMeters, sources: sources)
+        var saved: [PlaceMatch] = []
+        var other: [PlaceMatch] = []
+        var vouched = Set<String>()
+        for item in pool {
+            let c = item.candidate
+            let byName = cuisine.map { nameSuggests($0, name: c.name) } ?? false
+            let spot = spots.first { sameVenue(c.name, c.coordinate, $0.name, $0.coordinate) }
+            if let spot { vouched.insert(spot.id) }
+            if byName || spot != nil {
+                saved.append(PlaceMatch(scored: item, matchesCuisine: true))
+            } else {
+                other.append(PlaceMatch(scored: item, matchesCuisine: false))
+            }
+        }
+        let inRange = spots.filter { origin == nil || origin!.distance(to: $0.coordinate) <= maxDistanceMeters }
+        let nearby = inRange.filter { !vouched.contains($0.id) }
+            .sorted { (origin?.distance(to: $0.coordinate) ?? 0) < (origin?.distance(to: $1.coordinate) ?? 0) }
+        return Where(saved: saved, nearby: nearby, otherSaved: other)
     }
 
     /// Saved restaurants in range: ones whose names suggest the cuisine

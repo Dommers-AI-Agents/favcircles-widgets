@@ -28,6 +28,7 @@ struct WhatToEatFullView: View {
             }
             .padding(16)
         }
+        .onChange(of: state.model.currentCuisineId) { _ in pickedPlaceId = nil }   // a new craving, a new pick
         .onChange(of: pickedPlaceId) { id in
             if id != nil { withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("top", anchor: .top) } }
         }
@@ -178,11 +179,28 @@ struct WhatToEatFullView: View {
 
     // MARK: - Pick a place
 
+    /// One thing you could go to: a saved place, or a map result.
+    enum Option: Identifiable, Equatable {
+        case saved(CravingPicker.PlaceMatch)
+        case nearby(NearbySpot)
+        var id: String {
+            switch self {
+            case .saved(let m): return "saved:\(m.scored.candidate.id)"
+            case .nearby(let s): return "nearby:\(s.id)"
+            }
+        }
+    }
+
     private var placeTab: some View {
         let theme = context.theme
         let cuisine = state.model.currentCuisine
-        let matches = pool.matches(for: state.model)
-        let matching = matches.filter(\.matchesCuisine)
+        let found = pool.whereToGet(for: state.model)
+        let isSearching = cuisine.map { pool.searching.contains($0.id) || (pool.origin != nil && pool.spots[$0.id] == nil) } ?? false
+        let all: [Option] = found.saved.map(Option.saved) + found.nearby.map(Option.nearby) + found.otherSaved.map(Option.saved)
+        let picked = all.first { $0.id == pickedPlaceId }
+        let pickFrom: [Option] = !found.saved.isEmpty ? found.saved.map(Option.saved)
+            : !found.nearby.isEmpty ? Array(found.nearby.prefix(6)).map(Option.nearby)
+            : found.otherSaved.map(Option.saved)
         return VStack(alignment: .leading, spacing: 16) {
             if let cuisine, let dish = state.model.currentDish {
                 Text("\(cuisine.emoji) Craving \(cuisine.name): \(dish)")
@@ -191,71 +209,103 @@ struct WhatToEatFullView: View {
             }
             switch pool.status {
             case .loading, .idle:
-                HStack(spacing: 8) { ProgressView(); Text("Finding saved restaurants near you…") }
+                HStack(spacing: 8) { ProgressView(); Text("Finding restaurants near you…") }
                     .font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
             case .failed(let message):
                 Text(message).font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
             case .loaded:
-                if matches.isEmpty {
-                    Text(pool.locationDenied
-                         ? "Turn on location for FavCircles to see restaurants near you."
-                         : "No saved restaurants in range. Widen the distance, or save a few restaurants to your circles.")
+                if pool.locationDenied && found.saved.isEmpty {
+                    Text("Turn on location for FavCircles to find \(cuisine?.name ?? "restaurants") near you.")
                         .font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
-                } else {
-                    if let cuisine, matching.isEmpty {
-                        Text("No saved \(cuisine.name) spots nearby. Here are favorites close by instead.")
+                }
+                if let picked {
+                    pickCard(picked, options: pickFrom)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                } else if !pickFrom.isEmpty {
+                    WidgetUI.primaryButton(cuisine.map { "Pick \(Self.article(for: $0.name)) \($0.name) spot for me" } ?? "Pick one for me", color: context.accent) {
+                        pickForMe(from: pickFrom)
+                    }
+                }
+
+                // 1. Your saves (and your people's) that serve it
+                if let cuisine {
+                    WidgetUI.header("\(cuisine.name) from your circles", theme: theme)
+                    if found.saved.filter({ Option.saved($0).id != pickedPlaceId }).isEmpty {
+                        Text(found.saved.isEmpty
+                             ? "None of your saved places serve \(cuisine.name.lowercased()) yet."
+                             : "That's the one above.")
                             .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
                     }
-                    if let picked = matches.first(where: { $0.scored.candidate.id == pickedPlaceId }) {
-                        pickCard(picked, options: matching.isEmpty ? matches : matching)
-                            .id("pick")
-                            .transition(.scale(scale: 0.9).combined(with: .opacity))
-                    } else {
-                        WidgetUI.primaryButton(matching.isEmpty ? "Pick one for me" : "Pick \(Self.article(for: cuisine?.name ?? "")) \(cuisine?.name ?? "") spot for me", color: context.accent) {
-                            pickForMe(from: matching.isEmpty ? matches : matching)
-                        }
+                    ForEach(found.saved.filter { Option.saved($0).id != pickedPlaceId }, id: \.scored.candidate.id) { m in
+                        placeRow(m)
+                        Divider().overlay(theme.separator)
                     }
-                    WidgetUI.header(pickedPlaceId == nil ? "Your saved spots nearby" : "Other options", theme: theme)
-                    ForEach(Array(matches.filter { $0.scored.candidate.id != pickedPlaceId }.prefix(20)), id: \.scored.candidate.id) { match in
-                        placeRow(match)
+
+                    // 2. Real restaurants nearby from Apple Maps
+                    WidgetUI.header("More \(cuisine.name.lowercased()) nearby", theme: theme)
+                    if isSearching {
+                        HStack(spacing: 8) { ProgressView(); Text("Searching the map…") }
+                            .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                    } else if found.nearby.isEmpty {
+                        Text(pool.origin == nil ? "Turn on location to search the map." : "Nothing else within \(NextBarFormat.distance(state.model.maxDistanceMeters)). Try a wider distance below.")
+                            .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                    }
+                    ForEach(found.nearby.filter { Option.nearby($0).id != pickedPlaceId }.prefix(12), id: \.id) { spot in
+                        nearbyRow(spot)
+                        Divider().overlay(theme.separator)
+                    }
+                }
+
+                // 3. Everything else you've saved, for "just somewhere good"
+                if !found.otherSaved.isEmpty {
+                    WidgetUI.header(cuisine == nil ? "Your saved spots nearby" : "Or one of your other favorites", theme: theme)
+                    ForEach(found.otherSaved.filter { Option.saved($0).id != pickedPlaceId }.prefix(10), id: \.scored.candidate.id) { m in
+                        placeRow(m)
                         Divider().overlay(theme.separator)
                     }
                 }
             }
             distancePicker
         }
+        .task(id: state.model.currentCuisineId) {
+            await pool.loadIfNeeded()
+            if let cuisine = state.model.currentCuisine { await pool.searchNearby(cuisine) }
+        }
+    }
+
+    private func distanceText(to coordinate: WidgetCoordinate) -> String? {
+        guard let origin = pool.origin else { return nil }
+        return "\(NextBarFormat.distance(origin.distance(to: coordinate))) away"
     }
 
     /// The chosen place, big and on top, with what to do next.
-    private func pickCard(_ match: CravingPicker.PlaceMatch, options: [CravingPicker.PlaceMatch]) -> some View {
+    private func pickCard(_ option: Option, options: [Option]) -> some View {
         let theme = context.theme
-        let candidate = match.scored.candidate
+        let name: String; let address: String?; let detail: String; let serves: Bool
+        switch option {
+        case .saved(let m):
+            let c = m.scored.candidate
+            name = c.name; address = c.address; serves = m.matchesCuisine
+            detail = [distanceText(to: c.coordinate), NextBarFormat.attribution(c.source, savedBy: c.savedByName, savers: c.savers)].compactMap { $0 }.joined(separator: " · ")
+        case .nearby(let s):
+            name = s.name; address = s.address; serves = true
+            detail = [distanceText(to: s.coordinate), "found on Apple Maps"].compactMap { $0 }.joined(separator: " · ")
+        }
         return VStack(alignment: .leading, spacing: 12) {
             Label("Tonight, go here", systemImage: "star.fill")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(context.accent)
-            Text(candidate.name)
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(theme.label)
+            Text(name).font(.system(size: 26, weight: .bold)).foregroundStyle(theme.label)
             VStack(alignment: .leading, spacing: 4) {
-                if let address = candidate.address, !address.isEmpty {
-                    Text(address).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
-                }
-                Text([pool.origin != nil ? "\(NextBarFormat.distance(match.scored.distanceMeters)) away" : nil,
-                      NextBarFormat.attribution(candidate.source, savedBy: candidate.savedByName, savers: candidate.savers)]
-                        .compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
-                if let dish = state.model.currentDish, match.matchesCuisine {
+                if let address, !address.isEmpty { Text(address).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel) }
+                Text(detail).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                if let dish = state.model.currentDish, serves {
                     Text("Order the \(dish.lowercasedFirst)").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.label)
                 }
             }
             HStack(spacing: 10) {
-                Button {
-                    context.track("whattoeat_lets_go")
-                    context.host.haptic(.success)
-                    context.host.openPlace(candidate.placeRef)
-                } label: {
-                    Label("Let's go", systemImage: "figure.walk")
+                Button { go(option) } label: {
+                    Label(Self.isSaved(option) ? "Let's go" : "Directions", systemImage: Self.isSaved(option) ? "figure.walk" : "arrow.triangle.turn.up.right.diamond.fill")
                         .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).frame(height: 46)
                         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent))
@@ -268,12 +318,58 @@ struct WhatToEatFullView: View {
                         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.15)))
                 }
                 .buttonStyle(.plain)
+                .disabled(options.count < 2)
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(context.accent.opacity(0.12)))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(context.accent, lineWidth: 2))
+    }
+
+    static func isSaved(_ option: Option) -> Bool {
+        if case .saved = option { return true }
+        return false
+    }
+
+    /// Saved place: its FavCircles page. Map result: directions in Maps.
+    private func go(_ option: Option) {
+        context.host.haptic(.success)
+        switch option {
+        case .saved(let m):
+            context.track("whattoeat_lets_go", ["kind": "saved"])
+            context.host.openPlace(m.scored.candidate.placeRef)
+        case .nearby(let s):
+            context.track("whattoeat_lets_go", ["kind": "nearby"])
+            var c = URLComponents(string: "https://maps.apple.com/")!
+            c.queryItems = [URLQueryItem(name: "daddr", value: "\(s.coordinate.latitude),\(s.coordinate.longitude)"),
+                            URLQueryItem(name: "q", value: s.name)]
+            if let url = c.url { context.host.openURL(url) }
+        }
+    }
+
+    private func nearbyRow(_ spot: NearbySpot) -> some View {
+        let theme = context.theme
+        return Button {
+            context.track("whattoeat_choose_nearby")
+            context.host.haptic(.selection)
+            withAnimation(.spring(response: 0.35)) { pickedPlaceId = Option.nearby(spot).id }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "mappin.circle.fill").foregroundStyle(context.accent).frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(spot.name).font(.system(size: 15, weight: .medium)).foregroundStyle(theme.label).lineLimit(1)
+                    Text(spot.address ?? "On Apple Maps").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
+                }
+                Spacer()
+                if let origin = pool.origin {
+                    Text(NextBarFormat.distance(origin.distance(to: spot.coordinate))).font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                }
+            }
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func placeRow(_ match: CravingPicker.PlaceMatch) -> some View {
@@ -328,11 +424,21 @@ struct WhatToEatFullView: View {
         return "aeiou".contains(first) ? "an" : "a"
     }
 
-    private func pickForMe(from options: [CravingPicker.PlaceMatch]) {
-        let scored = options.map(\.scored)
-        guard let chosen = NextBarPicker.pick(from: scored, excluding: pickedPlaceId.map { [$0] } ?? []) else { return }
+    private func pickForMe(from options: [Option]) {
+        // Nearer is likelier (same weighting as NextBar), never the current pick again
+        let fresh = options.filter { $0.id != pickedPlaceId }
+        guard !fresh.isEmpty else { return }
+        let weights = fresh.map { option -> Double in
+            switch option {
+            case .saved(let m): return NextBarPicker.weight(distanceMeters: m.scored.distanceMeters)
+            case .nearby(let s): return NextBarPicker.weight(distanceMeters: pool.origin.map { $0.distance(to: s.coordinate) } ?? 0)
+            }
+        }
+        var roll = Double.random(in: 0..<weights.reduce(0, +))
+        var chosen = fresh[fresh.count - 1]
+        for (option, w) in zip(fresh, weights) { if roll < w { chosen = option; break }; roll -= w }
         context.track("whattoeat_pick_place")
         context.host.haptic(.success)
-        withAnimation(.spring(response: 0.35)) { pickedPlaceId = chosen.candidate.id }
+        withAnimation(.spring(response: 0.35)) { pickedPlaceId = chosen.id }
     }
 }
