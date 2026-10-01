@@ -7,6 +7,7 @@ struct DrinkFullView: View {
     @State private var query = ""
     @State private var shown: Cocktail?
     @State private var shakeCount = 0
+    @State private var sending: Cocktail?
 
     private var results: [Cocktail] { DrinkPicker.search(query) }
 
@@ -21,10 +22,13 @@ struct DrinkFullView: View {
                     baseChips
                     if let drink = shown ?? state.model.currentPick {
                         DrinkRecipeView(context: context, drink: drink,
-                                        isFavorite: state.model.favoriteIds.contains(drink.id)) {
-                            context.host.haptic(.selection)
-                            state.update { $0.toggleFavorite(drink.id) }
-                        }
+                                        isFavorite: state.model.favoriteIds.contains(drink.id),
+                                        onFavorite: {
+                                            context.host.haptic(.selection)
+                                            state.update { $0.toggleFavorite(drink.id) }
+                                        },
+                                        onSend: { sending = drink },
+                                        onShare: { share(drink) })
                         .id("\(drink.id)-\(shakeCount)")
                         .transition(.asymmetric(insertion: .scale(scale: 0.92).combined(with: .opacity), removal: .opacity))
                     }
@@ -39,7 +43,27 @@ struct DrinkFullView: View {
             .padding(16)
         }
         .background(theme.background)
-        .task { await state.loadIfNeeded(); if state.model.currentPickId == nil { state.shake() } }
+        .task {
+            await state.loadIfNeeded()
+            // A drink a friend sent, tapped in chat: open that recipe
+            if let launched = context.launchDrinkId {
+                context.launchDrinkId = nil
+                if let drink = CocktailLibrary.cocktail(id: launched) { shown = drink; return }
+            }
+            if state.model.currentPickId == nil { state.shake() }
+        }
+        .sheet(item: $sending) { drink in
+            DrinkSendSheet(context: context, drink: drink)
+        }
+    }
+
+    /// The card image and the recipe as text, to the share sheet. Private
+    /// by nature: nothing is posted anywhere.
+    private func share(_ drink: Cocktail) {
+        var items: [WidgetShareItem] = [.text(DrinkShareText.shareText(drink))]
+        if let jpeg = DrinkShareCard.jpeg(drink: drink, accent: context.accent) { items.insert(.imageJPEG(jpeg), at: 0) }
+        context.track("drink_shared")
+        context.host.share(items)
     }
 
     private var shakeTitle: String {
@@ -76,9 +100,10 @@ struct DrinkFullView: View {
                 Text("No drink called \"\(query)\" yet. Try a classic like Manhattan, Margarita or Mojito, or a style like sour or tiki.")
                     .font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
             } else if found.count == 1, let only = found.first {
-                DrinkRecipeView(context: context, drink: only, isFavorite: state.model.favoriteIds.contains(only.id)) {
-                    state.update { $0.toggleFavorite(only.id) }
-                }
+                DrinkRecipeView(context: context, drink: only, isFavorite: state.model.favoriteIds.contains(only.id),
+                                onFavorite: { state.update { $0.toggleFavorite(only.id) } },
+                                onSend: { sending = only },
+                                onShare: { share(only) })
             } else {
                 WidgetUI.header("\(found.count) drinks", theme: theme)
                 ForEach(found) { drink in
@@ -178,6 +203,8 @@ struct DrinkRecipeView: View {
     let drink: Cocktail
     let isFavorite: Bool
     let onFavorite: () -> Void
+    let onSend: () -> Void
+    let onShare: () -> Void
 
     var body: some View {
         let theme = context.theme
@@ -233,9 +260,26 @@ struct DrinkRecipeView: View {
                 Label(drink.garnish, systemImage: "leaf").font(.system(size: 13))
             }
             .foregroundStyle(theme.secondaryLabel)
+            HStack(spacing: 10) {
+                actionButton("Send to a friend", systemImage: "paperplane.fill", filled: true, action: onSend)
+                actionButton("Share", systemImage: "square.and.arrow.up", filled: false, action: onShare)
+            }
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    private func actionButton(_ title: String, systemImage: String, filled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .foregroundStyle(filled ? .white : context.accent)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(filled ? context.accent : context.accent.opacity(0.12)))
+        }
+        .buttonStyle(.plain)
     }
 
     private var strength: String {

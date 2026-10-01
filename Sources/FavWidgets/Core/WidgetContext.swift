@@ -93,6 +93,10 @@ public final class WidgetContext: ObservableObject {
     /// appear and opens the post, where the viewer can copy it as a routine.
     public var launchWorkoutPostId: String?
 
+    /// A drink the host wants shown (a friend's sent drink, tapped in chat).
+    /// The drink page reads and clears it on appear and opens that recipe.
+    public var launchDrinkId: String?
+
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host
         self.theme = theme
