@@ -14,6 +14,9 @@ struct DrinkShareCard: View {
                     Text("\(drink.base.label) · \(drink.style.label)")
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
                     Text(drink.name).font(.system(size: 30, weight: .bold, design: .rounded)).foregroundStyle(.white)
+                    if let calories = DrinkCalories.label(drink) {
+                        Text(calories).font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.85))
+                    }
                 }
                 Spacer()
                 Text(drink.base.emoji).font(.system(size: 36))

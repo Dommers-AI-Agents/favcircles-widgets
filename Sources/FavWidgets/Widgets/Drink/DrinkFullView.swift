@@ -215,6 +215,12 @@ struct DrinkRecipeView: View {
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(context.accent)
                     Text(drink.name).font(.system(size: 28, weight: .bold)).foregroundStyle(theme.label)
+                    if let calories = DrinkCalories.label(drink) {
+                        Text("\(calories) · estimate")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(theme.secondaryLabel)
+                            .accessibilityLabel("About \(DrinkCalories.estimate(drink) ?? 0) calories, estimated from the recipe")
+                    }
                 }
                 Spacer()
                 Button(action: onFavorite) {
