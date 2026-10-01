@@ -4,7 +4,7 @@ import FavWidgetsCore
 /// The check-in endpoints. Server-owned; every write returns the plan.
 enum CareAPI {
     private struct PlanResponse: Decodable { let plan: CarePlan }
-    private struct AsksResponse: Decodable { let asks: [CareAsk] }
+    private struct AsksResponse: Decodable { let asks: [CareAsk]; let hasMore: Bool? }
     private struct AskResponse: Decodable { let ask: CareAsk }
 
     static func plans(context: WidgetContext) async throws -> CarePlans {
@@ -81,7 +81,18 @@ enum CareAPI {
     }
 
     static func asks(context: WidgetContext, planId: String) async throws -> [CareAsk] {
-        try WidgetJSON.decode(AsksResponse.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/care/asks?planId=\(planId)&limit=60"))).asks
+        try await asksPage(context: context, planId: planId, before: nil).asks
+    }
+
+    /// One page of answers, newest first; `before` = the oldest askedAt shown
+    static func asksPage(context: WidgetContext, planId: String, before: Date?) async throws -> (asks: [CareAsk], hasMore: Bool) {
+        var path = "widgets/care/asks?planId=\(planId)&limit=60"
+        if let before {
+            let stamp = CareHistoryPaging.cursor(before)
+            path += "&before=" + (stamp.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed.subtracting(CharacterSet(charactersIn: "+:"))) ?? stamp)
+        }
+        let response = try WidgetJSON.decode(AsksResponse.self, from: await context.host.request(WidgetAPIRequest(.get, path)))
+        return (response.asks, response.hasMore ?? false)
     }
 
     static func answer(context: WidgetContext, askId: String, payload: CareAnswerPayload, note: String) async throws -> CareAsk {
@@ -152,10 +163,27 @@ final class CareStore: RemoteStore {
     /// open of the detail sheet. `apply` on an answer invalidates it.
     @Published private(set) var histories: [String: [CareAsk]] = [:]
 
+    /// Whether older answers exist beyond what's loaded, per plan
+    @Published private(set) var moreHistory: [String: Bool] = [:]
+
     func history(context: WidgetContext, planId: String, refresh: Bool = false) async -> [CareAsk] {
         if !refresh, let cached = histories[planId] { return cached }
-        let asks = (try? await CareAPI.asks(context: context, planId: planId)) ?? histories[planId] ?? []
-        histories[planId] = asks
-        return asks
+        if let page = try? await CareAPI.asksPage(context: context, planId: planId, before: nil) {
+            histories[planId] = page.asks
+            moreHistory[planId] = page.hasMore
+            return page.asks
+        }
+        return histories[planId] ?? []
+    }
+
+    /// The next 60 older answers, appended. Returns the whole list.
+    func loadOlderHistory(context: WidgetContext, planId: String) async -> [CareAsk] {
+        let loaded = histories[planId] ?? []
+        guard let oldest = loaded.map(\.askedAt).min(),
+              let page = try? await CareAPI.asksPage(context: context, planId: planId, before: oldest) else { return loaded }
+        let merged = CareHistoryPaging.append(page.asks, to: loaded)
+        histories[planId] = merged
+        moreHistory[planId] = page.hasMore
+        return merged
     }
 }

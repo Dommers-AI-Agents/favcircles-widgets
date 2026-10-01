@@ -12,6 +12,7 @@ struct CarePlanDetailView: View {
     @State private var newQuestion = ""
     @State private var newKind: CareQuestionKind = .yesno
     @State private var history: [CareAsk] = []
+    @State private var loadingOlder = false
     @State private var busy = false
     @State private var showProfile = false
     @State private var showAllRotation = false
@@ -363,6 +364,21 @@ struct CarePlanDetailView: View {
                 Text("Nothing asked yet.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
             }
             ForEach(history) { CareAnswerRow(context: context, ask: $0) }
+            if store.moreHistory[plan.planId] == true {
+                Button {
+                    Task {
+                        loadingOlder = true
+                        history = await store.loadOlderHistory(context: context, planId: plan.planId)
+                        loadingOlder = false
+                    }
+                } label: {
+                    Text(loadingOlder ? "Loading…" : "Show older answers")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                }
+                .buttonStyle(.plain)
+                .disabled(loadingOlder)
+            }
         }
     }
 
