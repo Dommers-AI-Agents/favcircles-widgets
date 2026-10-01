@@ -32,10 +32,10 @@ public enum CravingPicker {
 
     /// A random spin, avoiding recent keys when anything else fits. The
     /// cuisine is chosen first so a cuisine with many dishes isn't favored.
-    public static func spin(filters: Set<CravingTag> = [], excluding: [String] = [],
+    public static func spin(filters: Set<CravingTag> = [], cuisineId: String? = nil, excluding: [String] = [],
                             in library: [Cuisine] = CravingLibrary.all,
                             random: () -> Double = { Double.random(in: 0..<1) }) -> Spin? {
-        let pool = candidates(filters: filters, in: library)
+        let pool = candidates(filters: filters, cuisineId: cuisineId, in: library)
         let fresh = pool.filter { !excluding.contains($0.key) }
         let choices = fresh.isEmpty ? pool : fresh
         let cuisineIds = Array(Set(choices.map(\.cuisine.id))).sorted()
@@ -77,16 +77,19 @@ public enum CravingPicker {
 /// ring, and the place picked for it.
 public struct WhatToEatSettings: WidgetModel {
     public var filters: Set<CravingTag>
+    /// "Type of food": nil = any cuisine.
+    public var cuisineFilter: String?
     public var currentCuisineId: String?
     public var currentDish: String?
     public var recentKeys: [String]
     public var maxDistanceMeters: Double
     public var sources: Set<WidgetPlaceSource>
 
-    public init(filters: Set<CravingTag> = [], currentCuisineId: String? = nil, currentDish: String? = nil,
+    public init(filters: Set<CravingTag> = [], cuisineFilter: String? = nil, currentCuisineId: String? = nil, currentDish: String? = nil,
                 recentKeys: [String] = [], maxDistanceMeters: Double = 10_000,
                 sources: Set<WidgetPlaceSource> = Set(WidgetPlaceSource.allCases)) {
         self.filters = filters
+        self.cuisineFilter = cuisineFilter
         self.currentCuisineId = currentCuisineId
         self.currentDish = currentDish
         self.recentKeys = recentKeys
@@ -107,10 +110,12 @@ public struct WhatToEatSettings: WidgetModel {
     }
 
     // Tolerant decoding: unknown tags or sources are dropped, not fatal.
-    enum CodingKeys: String, CodingKey { case filters, currentCuisineId, currentDish, recentKeys, maxDistanceMeters, sources }
+    enum CodingKeys: String, CodingKey { case filters, cuisineFilter, currentCuisineId, currentDish, recentKeys, maxDistanceMeters, sources }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         filters = Set(((try? c.decodeIfPresent([String].self, forKey: .filters)) ?? nil ?? []).compactMap(CravingTag.init(rawValue:)))
+        // A cuisine this build doesn't know means "any"
+        cuisineFilter = (try c.decodeIfPresent(String.self, forKey: .cuisineFilter)).flatMap { CravingLibrary.cuisine(id: $0) == nil ? nil : $0 }
         currentCuisineId = try c.decodeIfPresent(String.self, forKey: .currentCuisineId)
         currentDish = try c.decodeIfPresent(String.self, forKey: .currentDish)
         recentKeys = try c.decodeIfPresent([String].self, forKey: .recentKeys) ?? []

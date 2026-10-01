@@ -112,6 +112,27 @@ struct CravingPickerTests {
         }
     }
 
+    @Test func typeOfFoodPinsTheCuisine() {
+        for _ in 0..<40 {
+            let spin = CravingPicker.spin(filters: [], cuisineId: "thai")!
+            #expect(spin.cuisine.id == "thai")
+            let both = CravingPicker.spin(filters: [.spicy], cuisineId: "thai")!
+            #expect(both.cuisine.id == "thai" && both.dish.tags.contains(.spicy))
+        }
+        // A mood the cuisine can't satisfy still answers from that cuisine
+        #expect(CravingPicker.spin(filters: [.splurge], cuisineId: "vietnamese")?.cuisine.id == "vietnamese")
+    }
+
+    @Test func unknownCuisineFilterDecodesAsAny() throws {
+        let json = #"{"filters":["spicy","nope"],"cuisineFilter":"martian","recentKeys":[],"maxDistanceMeters":5000,"sources":["mine"]}"#
+        let s = try WidgetJSON.decode(WhatToEatSettings.self, from: Data(json.utf8))
+        #expect(s.cuisineFilter == nil)
+        #expect(s.filters == [.spicy])
+        var t = WhatToEatSettings.empty; t.cuisineFilter = "thai"
+        let round = try WidgetJSON.decode(WhatToEatSettings.self, from: JSONEncoder().encode(t))
+        #expect(round.cuisineFilter == "thai")
+    }
+
     @Test func impossibleFilterCombosStillGiveAnAnswer() {
         // Nothing is spicy + light + splurge + vegetarian; fall back to any of them
         #expect(CravingPicker.spin(filters: [.spicy, .splurge, .vegetarian, .light]) != nil)

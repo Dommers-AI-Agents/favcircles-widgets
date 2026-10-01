@@ -16,8 +16,10 @@ struct WhatToEatFullView: View {
 
     var body: some View {
         let theme = context.theme
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
+                Color.clear.frame(height: 0).id("top")
                 Picker("Mode", selection: $tab) {
                     ForEach(Tab.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
@@ -25,6 +27,10 @@ struct WhatToEatFullView: View {
                 if tab == .spin { spinTab } else { placeTab }
             }
             .padding(16)
+        }
+        .onChange(of: pickedPlaceId) { id in
+            if id != nil { withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("top", anchor: .top) } }
+        }
         }
         .background(theme.background)
         .refreshable { await pool.reload() }
@@ -47,6 +53,7 @@ struct WhatToEatFullView: View {
                     Button {
                         context.host.haptic(.selection)
                         state.update { if on { $0.filters.remove(tag) } else { $0.filters.insert(tag) } }
+                        runSpin()   // show the effect at once, not on the next Spin
                     } label: {
                         Text("\(tag.emoji) \(tag.label)")
                             .font(.system(size: 14, weight: .semibold))
@@ -57,6 +64,8 @@ struct WhatToEatFullView: View {
                     .buttonStyle(.plain)
                 }
             }
+
+            cuisineRow
 
             resultCard
 
@@ -79,6 +88,41 @@ struct WhatToEatFullView: View {
         }
     }
 
+    /// "Type of food": any cuisine, or one in particular.
+    private var cuisineRow: some View {
+        let theme = context.theme
+        let options: [Cuisine?] = [nil] + CravingLibrary.all
+        return VStack(alignment: .leading, spacing: 8) {
+            WidgetUI.header("Type of food", theme: theme)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(options, id: \.self) { cuisine in
+                        let on = state.model.cuisineFilter == cuisine?.id
+                        Button {
+                            context.host.haptic(.selection)
+                            state.update { $0.cuisineFilter = cuisine?.id }
+                            runSpin()
+                        } label: {
+                            Text(cuisine.map { "\($0.emoji) \($0.name)" } ?? "🎲 Any")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(on ? .white : theme.label)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(Capsule().fill(on ? context.accent : theme.secondaryBackground))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// What the result was picked for, e.g. "Healthy · Chinese".
+    private var filterCaption: String? {
+        var parts = CravingTag.allCases.filter { state.model.filters.contains($0) }.map(\.label)
+        if let id = state.model.cuisineFilter, let c = CravingLibrary.cuisine(id: id) { parts.append(c.name) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private var resultCard: some View {
         let theme = context.theme
         let cuisine = state.model.currentCuisine
@@ -90,6 +134,12 @@ struct WhatToEatFullView: View {
                 Text(cuisine.emoji).font(.system(size: 56))
                 Text(cuisine.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
                 Text(dish).font(.system(size: 26, weight: .bold)).foregroundStyle(theme.label).multilineTextAlignment(.center)
+                if let caption = filterCaption {
+                    Text("Picked for: \(caption)")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(theme.secondaryLabel)
+                        .padding(.top, 2)
+                }
             } else {
                 Text("🎰").font(.system(size: 56))
                 Text("Tap Spin").font(.system(size: 20, weight: .bold)).foregroundStyle(theme.secondaryLabel)
@@ -110,8 +160,12 @@ struct WhatToEatFullView: View {
         Task { @MainActor in
             let delays: [UInt64] = [60, 60, 70, 80, 90, 110, 130, 160, 200, 250]
             for delay in delays {
-                let c = CravingLibrary.all.randomElement()!
-                reel = (c.emoji, c.name)
+                if let id = state.model.cuisineFilter, let c = CravingLibrary.cuisine(id: id) {
+                    reel = (c.emoji, c.dishes.randomElement()?.name ?? c.name)
+                } else {
+                    let c = CravingLibrary.all.randomElement()!
+                    reel = (c.emoji, c.name)
+                }
                 context.host.haptic(.selection)
                 try? await Task.sleep(nanoseconds: delay * 1_000_000)
             }
@@ -152,10 +206,17 @@ struct WhatToEatFullView: View {
                         Text("No saved \(cuisine.name) spots nearby. Here are favorites close by instead.")
                             .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
                     }
-                    WidgetUI.primaryButton(matching.isEmpty ? "Pick one for me" : "Pick \(Self.article(for: cuisine?.name ?? "")) \(cuisine?.name ?? "") spot for me", color: context.accent) {
-                        pickForMe(from: matching.isEmpty ? matches : matching)
+                    if let picked = matches.first(where: { $0.scored.candidate.id == pickedPlaceId }) {
+                        pickCard(picked, options: matching.isEmpty ? matches : matching)
+                            .id("pick")
+                            .transition(.scale(scale: 0.9).combined(with: .opacity))
+                    } else {
+                        WidgetUI.primaryButton(matching.isEmpty ? "Pick one for me" : "Pick \(Self.article(for: cuisine?.name ?? "")) \(cuisine?.name ?? "") spot for me", color: context.accent) {
+                            pickForMe(from: matching.isEmpty ? matches : matching)
+                        }
                     }
-                    ForEach(Array(matches.prefix(20)), id: \.scored.candidate.id) { match in
+                    WidgetUI.header(pickedPlaceId == nil ? "Your saved spots nearby" : "Other options", theme: theme)
+                    ForEach(Array(matches.filter { $0.scored.candidate.id != pickedPlaceId }.prefix(20)), id: \.scored.candidate.id) { match in
                         placeRow(match)
                         Divider().overlay(theme.separator)
                     }
@@ -163,6 +224,56 @@ struct WhatToEatFullView: View {
             }
             distancePicker
         }
+    }
+
+    /// The chosen place, big and on top, with what to do next.
+    private func pickCard(_ match: CravingPicker.PlaceMatch, options: [CravingPicker.PlaceMatch]) -> some View {
+        let theme = context.theme
+        let candidate = match.scored.candidate
+        return VStack(alignment: .leading, spacing: 12) {
+            Label("Tonight, go here", systemImage: "star.fill")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(context.accent)
+            Text(candidate.name)
+                .font(.system(size: 26, weight: .bold))
+                .foregroundStyle(theme.label)
+            VStack(alignment: .leading, spacing: 4) {
+                if let address = candidate.address, !address.isEmpty {
+                    Text(address).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                }
+                Text([pool.origin != nil ? "\(NextBarFormat.distance(match.scored.distanceMeters)) away" : nil,
+                      NextBarFormat.attribution(candidate.source, savedBy: candidate.savedByName, savers: candidate.savers)]
+                        .compactMap { $0 }.joined(separator: " · "))
+                    .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                if let dish = state.model.currentDish, match.matchesCuisine {
+                    Text("Order the \(dish.lowercasedFirst)").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.label)
+                }
+            }
+            HStack(spacing: 10) {
+                Button {
+                    context.track("whattoeat_lets_go")
+                    context.host.haptic(.success)
+                    context.host.openPlace(candidate.placeRef)
+                } label: {
+                    Label("Let's go", systemImage: "figure.walk")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(height: 46)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent))
+                }
+                .buttonStyle(.plain)
+                Button { pickForMe(from: options) } label: {
+                    Label("Pick another", systemImage: "shuffle")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                        .frame(maxWidth: .infinity).frame(height: 46)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(context.accent.opacity(0.12)))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(context.accent, lineWidth: 2))
     }
 
     private func placeRow(_ match: CravingPicker.PlaceMatch) -> some View {

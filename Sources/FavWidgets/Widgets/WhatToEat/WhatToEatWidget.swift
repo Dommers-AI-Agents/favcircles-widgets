@@ -30,7 +30,7 @@ public struct WhatToEatWidget: FavWidget {
 extension WidgetStateController where Model == WhatToEatSettings {
     @discardableResult
     func spin() -> CravingPicker.Spin? {
-        guard let spin = CravingPicker.spin(filters: model.filters, excluding: model.recentKeys) else { return nil }
+        guard let spin = CravingPicker.spin(filters: model.filters, cuisineId: model.cuisineFilter, excluding: model.recentKeys) else { return nil }
         update { $0.noteSpin(spin) }
         return spin
     }
