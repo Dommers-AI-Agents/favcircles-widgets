@@ -30,6 +30,13 @@ struct MotivationTests {
         }
     }
 
+    @Test func savageHasAHundredDifferentLines() {
+        // Wes 2026-10-02: 100 mean lines, no curses.
+        let all = MotivationLines.pool(intensity: .savage, focus: MotivationFocus.allCases)
+        #expect(all.count == 100)
+        #expect(Set(all).count == 100)
+    }
+
     @Test func noBankUsesWordsWesRuledOut() {
         // Wes 2026-10-02: other curses are fine, not this one.
         for intensity in MotivationIntensity.allCases {
