@@ -68,6 +68,8 @@ enum PostcardMail {
         let message: String?
         let createdAt: Date?
         let printerHold: Bool?
+        let outForDeliveryAt: Date?
+        let deliveryConfirmed: Bool?
 
         var asRecordOrder: PostcardMailOrder {
             PostcardMailOrder(
@@ -80,7 +82,9 @@ enum PostcardMail {
                 imageUrl: imageUrl,
                 message: message,
                 createdAt: createdAt,
-                printerHold: printerHold
+                printerHold: printerHold,
+                outForDeliveryAt: outForDeliveryAt,
+                deliveryConfirmed: deliveryConfirmed
             )
         }
     }

@@ -163,6 +163,18 @@ public enum PostcardMailStatus: String, Codable, Sendable {
     }
 }
 
+/// USPS doesn't scan postcards at the mailbox, so Lob's last event is usually
+/// "processed for delivery" (sorted at the local post office, on the carrier's
+/// route). The server marks that delivered for billing, but the words say
+/// "out for delivery" until a real delivery scan or three days pass
+/// (Wes, 2026-10-02: "arrived" pushes came while Lob said Processed for Delivery).
+public enum MailDelivery {
+    public static func isOutForDelivery(status: PostcardMailStatus, outForDeliveryAt: Date?, deliveryConfirmed: Bool?, now: Date = Date()) -> Bool {
+        guard status == .delivered, deliveryConfirmed != true, let at = outForDeliveryAt else { return false }
+        return now.timeIntervalSince(at) < 3 * 86_400
+    }
+}
+
 /// The mail leg of a postcard, stored alongside the sent record so history
 /// can show it without a network call.
 public struct PostcardMailOrder: Codable, Equatable, Sendable {
@@ -181,10 +193,15 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
     /// The printer is holding the card (our account, not the customer's
     /// problem). Pulled from Lob by the server; absent on older records.
     public var printerHold: Bool?
+    /// When Lob said "processed for delivery", and whether a real delivery
+    /// scan followed (see MailDelivery). Absent on older records.
+    public var outForDeliveryAt: Date?
+    public var deliveryConfirmed: Bool?
 
     public init(orderId: String, status: PostcardMailStatus, priceCents: Int, recipientName: String,
                 expectedDeliveryDate: String? = nil, cancelableUntil: Date? = nil,
-                imageUrl: String? = nil, message: String? = nil, createdAt: Date? = nil, printerHold: Bool? = nil) {
+                imageUrl: String? = nil, message: String? = nil, createdAt: Date? = nil, printerHold: Bool? = nil,
+                outForDeliveryAt: Date? = nil, deliveryConfirmed: Bool? = nil) {
         self.orderId = orderId
         self.status = status
         self.priceCents = priceCents
@@ -195,6 +212,8 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
         self.message = message
         self.createdAt = createdAt
         self.printerHold = printerHold
+        self.outForDeliveryAt = outForDeliveryAt
+        self.deliveryConfirmed = deliveryConfirmed
     }
 
     /// The history row's id for this order, shared by the send path and the
@@ -220,7 +239,9 @@ public struct PostcardMailOrder: Codable, Equatable, Sendable {
         case .inTransit:
             return "In the mail to \(recipientName) · typically arrives in 4 to 6 business days"
         case .delivered:
-            return "Delivered to \(recipientName)"
+            return MailDelivery.isOutForDelivery(status: status, outForDeliveryAt: outForDeliveryAt, deliveryConfirmed: deliveryConfirmed)
+                ? "Out for delivery to \(recipientName) · arrives today or tomorrow"
+                : "Delivered to \(recipientName)"
         case .canceled:
             return "Canceled · you weren't charged"
         case .rejected:

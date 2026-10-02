@@ -184,8 +184,14 @@ public struct FridgeMailCard: Decodable, Equatable, Identifiable, Sendable {
     public var createdAt: Date
     /// The printer is holding the card; the server pulls this from Lob.
     public var printerHold: Bool?
+    /// "Processed for delivery" time and whether a delivery scan followed (MailDelivery)
+    public var outForDeliveryAt: Date?
+    public var deliveryConfirmed: Bool?
 
     public var id: String { cardId }
+    public var isOutForDelivery: Bool {
+        MailDelivery.isOutForDelivery(status: status, outForDeliveryAt: outForDeliveryAt, deliveryConfirmed: deliveryConfirmed)
+    }
     public var imageURL: URL? { imageUrl.flatMap(URL.init(string:)) }
 
     public init(cardId: String, status: PostcardMailStatus, recipientId: String? = nil, recipientName: String? = nil,
@@ -282,13 +288,13 @@ public enum FridgeMailCopy {
     }
 
     /// The Sent row's status. Prepaid cards never mention charges.
-    public static func cardStatus(_ status: PostcardMailStatus, recipientName: String?, printerHold: Bool = false) -> String {
+    public static func cardStatus(_ status: PostcardMailStatus, recipientName: String?, printerHold: Bool = false, outForDelivery: Bool = false) -> String {
         let who = (recipientName ?? "").isEmpty ? "Grandma" : recipientName!
         switch status {
         case .created, .authorized, .submitting: return "Printing for \(who)"
         case .submitted: return printerHold ? "Held at the printer · we're sorting it out" : "At the printer for \(who) · mails within a day, then 4 to 6 business days"
         case .inTransit: return "In the mail to \(who) · typically arrives in 4 to 6 business days"
-        case .delivered: return "Delivered to \(who)"
+        case .delivered: return outForDelivery ? "Out for delivery to \(who) · arrives today or tomorrow" : "Delivered to \(who)"
         case .canceled: return "Canceled"
         case .rejected, .expired: return "Couldn't be printed · card credited back"
         case .refunded: return "Credited back"
