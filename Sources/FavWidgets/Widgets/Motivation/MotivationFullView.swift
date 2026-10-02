@@ -167,7 +167,7 @@ struct MotivationFullView: View {
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Coach texts me").foregroundStyle(theme.label)
+                        Text("Coach notifications").foregroundStyle(theme.label)
                         Text(WaterReminderPlan.summary(reminders, quietHours: context.host.quietHours))
                             .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                     }
@@ -238,7 +238,7 @@ struct MotivationFullView: View {
     }
 
     private var reminderFootnote: String {
-        var text = "A different line every time. Tap Did it (or press and hold a reminder) and he leaves you alone until tomorrow."
+        var text = "Push notifications on this phone, a different line each time. Tap Did it (or press and hold a notification) and he leaves you alone until tomorrow."
         if let quiet = context.host.quietHours {
             text += " None during your quiet hours (\(WaterReminderPlan.clock(quiet.startMinutes)) – \(WaterReminderPlan.clock(quiet.endMinutes)))."
         }
@@ -250,7 +250,7 @@ struct MotivationFullView: View {
         let quiet = context.host.quietHours
         Task {
             let ok = await MotivationReminderScheduler.sync(log, quietHours: quiet)
-            reminderError = ok ? nil : "Notifications are off for Circles. Turn them on in Settings to get the coach's texts."
+            reminderError = ok ? nil : "Notifications are off for Circles. Turn them on in Settings to hear from the coach."
         }
     }
 }
