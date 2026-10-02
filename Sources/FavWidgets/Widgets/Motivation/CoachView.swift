@@ -29,17 +29,6 @@ struct CoachView: View {
         let breathe = 1 + 0.015 * sin(t * 2)
 
         return ZStack {
-            // Hair behind the head: long strands that swing.
-            ForEach(0..<7, id: \.self) { i in
-                let x = CGFloat(i - 3) * 9 * s
-                Capsule()
-                    .fill(Self.hair)
-                    .frame(width: 16 * s, height: (78 + CGFloat(abs(i - 3)) * -4) * s)
-                    .rotationEffect(.degrees(sway * (0.6 + Double(abs(i - 3)) * 0.25) + Double(i - 3) * 9),
-                                    anchor: .top)
-                    .offset(x: x, y: 18 * s)
-            }
-
             // Shoulders / tank top.
             RoundedRectangle(cornerRadius: 24 * s, style: .continuous)
                 .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
@@ -50,6 +39,24 @@ struct CoachView: View {
             Rectangle().fill(Self.skinShade)
                 .frame(width: 22 * s, height: 16 * s)
                 .offset(y: 30 * s)
+
+            // Long hair: a mane behind the head falling past the shoulders,
+            // with strands on each side that swing.
+            Ellipse().fill(Self.hair)
+                .frame(width: 80 * s, height: 96 * s)
+                .rotationEffect(.degrees(sway * 0.4), anchor: .top)
+                .offset(y: 4 * s)
+            ForEach(0..<3, id: \.self) { i in
+                let spread = CGFloat(i) * 7
+                Capsule().fill(Self.hair)
+                    .frame(width: 13 * s, height: (62 - spread) * s)
+                    .rotationEffect(.degrees(sway * (1 + Double(i) * 0.35) + 8 + Double(i) * 6), anchor: .top)
+                    .offset(x: (-30 - spread) * s, y: (14 + spread * 0.6) * s)
+                Capsule().fill(Self.hair)
+                    .frame(width: 13 * s, height: (62 - spread) * s)
+                    .rotationEffect(.degrees(sway * (1 + Double(i) * 0.35) - 8 - Double(i) * 6), anchor: .top)
+                    .offset(x: (30 + spread) * s, y: (14 + spread * 0.6) * s)
+            }
 
             head(jaw: jaw, s: s)
                 .rotationEffect(.degrees(shake))
@@ -67,14 +74,8 @@ struct CoachView: View {
 
             // Hair on top, parted, framing the face.
             Ellipse().fill(Self.hair)
-                .frame(width: 66 * s, height: 34 * s)
-                .offset(y: -28 * s)
-            Capsule().fill(Self.hair)
-                .frame(width: 12 * s, height: 50 * s)
-                .offset(x: -30 * s, y: -2 * s)
-            Capsule().fill(Self.hair)
-                .frame(width: 12 * s, height: 50 * s)
-                .offset(x: 30 * s, y: -2 * s)
+                .frame(width: 64 * s, height: 30 * s)
+                .offset(y: -29 * s)
 
             // Headband.
             Capsule().fill(Color.red)
@@ -96,8 +97,8 @@ struct CoachView: View {
             Circle().fill(Color.black).frame(width: 6 * s, height: 6 * s).offset(x: 11 * s, y: -1 * s)
 
             // Beard around the mouth; the jaw drops it.
-            Ellipse().fill(Self.hair)
-                .frame(width: 50 * s, height: (28 + 8 * jaw) * s)
+            Ellipse().fill(Self.beard)
+                .frame(width: 48 * s, height: (26 + 8 * jaw) * s)
                 .offset(y: (24 + 3 * jaw) * s)
 
             // Mouth: dark, wide open when yelling, teeth on top.
@@ -118,6 +119,7 @@ struct CoachView: View {
     static let skin = Color(red: 0.94, green: 0.76, blue: 0.62)
     static let skinShade = Color(red: 0.85, green: 0.66, blue: 0.53)
     static let hair = Color(red: 0.36, green: 0.22, blue: 0.12)
+    static let beard = Color(red: 0.48, green: 0.31, blue: 0.17)
 }
 
 /// The coach with his line in a speech bubble above him.
