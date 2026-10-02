@@ -35,6 +35,19 @@ enum WorkoutFeedAPI {
         _ = try await context.host.request(WidgetAPIRequest(.post, "widgets/workouts/share", body: body))
     }
 
+    private struct LinkBody: Encodable { let summary: WorkoutShareSummary }
+    private struct LinkResponse: Decodable { let url: URL }
+
+    /// A link for texting this workout: anyone holding it can open it in the
+    /// Workouts widget (or on the web), view it and copy it.
+    static func link(context: WidgetContext, summary: WorkoutShareSummary) async throws -> URL {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let body = try encoder.encode(LinkBody(summary: summary))
+        let data = try await context.host.request(WidgetAPIRequest(.post, "widgets/workouts/link", body: body))
+        return try WidgetJSON.decode(LinkResponse.self, from: data).url
+    }
+
     /// One of the person's own named lists, as the audience menu shows it.
     struct AudienceList: Decodable, Identifiable, Equatable {
         let id: String

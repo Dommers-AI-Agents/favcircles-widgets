@@ -7,6 +7,7 @@ struct WorkoutSummaryView: View {
     let summary: WorkoutSummary
     @Environment(\.dismiss) private var dismiss
     @State private var posting = false
+    @State private var sharing = false
     @State private var posted = false
     @ObservedObject private var audience: WorkoutAudienceStore
     /// nil = not answered yet, true = the routine was updated, false = left alone.
@@ -99,7 +100,7 @@ struct WorkoutSummaryView: View {
                     Button {
                         shareOut()
                     } label: {
-                        Label("Share", systemImage: "square.and.arrow.up")
+                        Label(sharing ? "Sharing…" : "Share", systemImage: "square.and.arrow.up")
                             .font(.system(size: 16, weight: .semibold)).foregroundStyle(context.accent)
                             .frame(maxWidth: .infinity).frame(height: 50)
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.14)))
@@ -243,11 +244,18 @@ struct WorkoutSummaryView: View {
         }
     }
 
+    /// One bubble: the workout card, tapping through to this workout in the
+    /// Workouts widget. Offline, the card alone.
     private func shareOut() {
-        var items: [WidgetShareItem] = [.text(share.shareText(calendar: context.calendar))]
-        if let jpeg = WorkoutShareCard.jpeg(summary: share, accent: context.accent) { items.append(.imageJPEG(jpeg)) }
-        context.track("workout_shared")
-        context.host.share(items)
+        guard !sharing else { return }
+        sharing = true
+        let jpeg = WorkoutShareCard.jpeg(summary: share, accent: context.accent)
+        Task {
+            let url = try? await WorkoutFeedAPI.link(context: context, summary: share)
+            sharing = false
+            context.track(url == nil ? "workout_shared" : "workout_shared_link")
+            context.host.share(WorkoutShareLink.items(url: url, summary: share, cardJPEG: jpeg, calendar: context.calendar))
+        }
     }
 
     private func finish() {

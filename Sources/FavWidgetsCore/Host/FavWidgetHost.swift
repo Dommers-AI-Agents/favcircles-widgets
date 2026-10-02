@@ -47,6 +47,9 @@ public enum WidgetShareItem: Sendable {
     case text(String)
     case imageJPEG(Data)
     case url(URL)
+    /// A link that Messages draws as one tappable bubble showing `imageJPEG`
+    /// (the host hands the share sheet the preview itself, so no web fetch)
+    case link(URL, title: String, imageJPEG: Data?)
 }
 
 public struct WidgetAlert: Sendable {
