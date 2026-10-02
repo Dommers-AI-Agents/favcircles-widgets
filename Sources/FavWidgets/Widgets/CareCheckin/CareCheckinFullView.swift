@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import FavWidgetsCore
 
 /// Both roles on one screen: invitations and today's question for the
@@ -12,6 +13,9 @@ struct CareCheckinFullView: View {
     @State private var showPicker = false
     @State private var detailPlan: CarePlan?
     @State private var profilePlan: CarePlan?
+    @State private var bannerStyle: CareBannerTip.BannerStyle = .unknown
+    @AppStorage("care.bannerTip.dismissed") private var bannerTipDismissed = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         let theme = context.theme
@@ -22,6 +26,9 @@ struct CareCheckinFullView: View {
                     // A question waiting comes first: tapping its push lands
                     // on the question itself, not below the explainer (Sal, 2026-10-01)
                     ForEach(asked.filter { $0.openAsk != nil }) { askedSection(plan: $0) }
+                    if CareBannerTip.shouldShow(style: bannerStyle, isAskedSomething: !asked.isEmpty, dismissed: bannerTipDismissed) {
+                        bannerTip
+                    }
                     // Then the page explains itself, set up or not
                     // (a screenshot of it should tell a stranger what it is)
                     explainer
@@ -50,6 +57,11 @@ struct CareCheckinFullView: View {
         .background(theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await store.loadIfNeeded(context: context) }
+        .task { bannerStyle = await Self.readBannerStyle() }
+        // Back from Settings: the tip goes once banners are Persistent
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { Task { bannerStyle = await Self.readBannerStyle() } }
+        }
         .refreshable { await store.load(context: context) }
         // Right after "check on Mom": the questionnaire that decides which
         // questions she gets, before the invitation is even answered. Opened
@@ -67,6 +79,41 @@ struct CareCheckinFullView: View {
         store.profilePromptPlanId = nil
         guard let plan = store.plans?.asOwner.first(where: { $0.planId == planId }) else { return }
         profilePlan = plan
+    }
+
+    // MARK: - Keep questions on screen
+
+    private var bannerTip: some View {
+        let theme = context.theme
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(CareBannerTip.title, systemImage: "pin.fill")
+                .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+            Text(CareBannerTip.body)
+                .font(.system(size: 14)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 16) {
+                Button("Open Settings") {
+                    context.track("care_banner_tip_settings")
+                    context.host.openURL(CareBannerTip.settingsURL)
+                }
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
+                Button("Not now") { bannerTipDismissed = true }
+                    .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent.opacity(0.10)))
+    }
+
+    private static func readBannerStyle() async -> CareBannerTip.BannerStyle {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return .none }
+        switch settings.alertStyle {
+        case .alert: return .persistent
+        case .banner: return .temporary
+        case .none: return .none
+        @unknown default: return .unknown
+        }
     }
 
     // MARK: - Explainer
