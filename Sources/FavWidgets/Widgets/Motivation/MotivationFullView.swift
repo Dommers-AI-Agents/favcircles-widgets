@@ -10,6 +10,19 @@ struct MotivationFullView: View {
 
     @State private var extra = 0
     @State private var reminderError: String?
+    /// A line opened from a notification or a friend's chat card: the coach
+    /// shows it until "Hit me again".
+    @State private var pinnedLine: String?
+    /// The line being sent (drives the send sheet).
+    @State private var sending: SendTarget?
+
+    private struct SendTarget: Identifiable {
+        let line: String
+        let source: String
+        var id: String { line }
+    }
+
+    private var shownLine: String { pinnedLine ?? state.model.currentLine(extra: extra) }
 
     var body: some View {
         let theme = context.theme
@@ -25,6 +38,25 @@ struct MotivationFullView: View {
         .background(theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await state.loadIfNeeded() }
+        .task { await openLaunchedLine() }
+        .sheet(item: $sending) { target in
+            MotivationSendSheet(context: context, line: target.line, source: target.source)
+        }
+    }
+
+    /// From a notification's "Send to someone" (open the send sheet) or a
+    /// friend's chat card (just show the line). Not until the push lands.
+    private func openLaunchedLine() async {
+        guard let id = context.launchMotivationLineId else { return }
+        let send = context.launchMotivationSend
+        context.launchMotivationLineId = nil
+        context.launchMotivationSend = false
+        guard let line = MotivationLines.line(id: id) else { return }
+        pinnedLine = line
+        context.track("motivation_line_opened", ["action": send ? "send" : "show"])
+        guard send else { return }
+        await context.waitForPageToSettle()
+        sending = SendTarget(line: line, source: "push")
     }
 
     // MARK: - Coach
@@ -37,7 +69,7 @@ struct MotivationFullView: View {
         let streak = model.streak(endingOn: today, calendar: context.calendar)
 
         VStack(spacing: 14) {
-            CoachShoutView(line: model.currentLine(extra: extra), size: 150, accent: context.accent, theme: theme)
+            CoachShoutView(line: shownLine, size: 150, accent: context.accent, theme: theme)
                 .onTapGesture { hitMeAgain() }
 
             HStack(spacing: 10) {
@@ -60,6 +92,15 @@ struct MotivationFullView: View {
                 .accessibilityHint(done ? "Tap to undo" : "Marks today done and quiets today's reminders")
             }
 
+            Button { sending = SendTarget(line: shownLine, source: "page") } label: {
+                Label("Send to someone who needs it", systemImage: "megaphone.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(context.accent, lineWidth: 1.5))
+                    .foregroundStyle(context.accent)
+            }
+            .buttonStyle(.plain)
+
             HStack(spacing: 6) {
                 Image(systemName: "flame.fill").foregroundStyle(streak > 0 ? theme.warning : theme.secondaryLabel)
                 Text(streakText(streak: streak, done: done))
@@ -79,6 +120,7 @@ struct MotivationFullView: View {
     }
 
     private func hitMeAgain() {
+        pinnedLine = nil
         extra += 1
         context.host.haptic(.medium)
         context.track("motivation_hit_me_again")
@@ -105,6 +147,7 @@ struct MotivationFullView: View {
                     state.update { $0.intensity = value }
                     context.track("motivation_intensity", ["value": value.rawValue])
                     extra = 0
+                    pinnedLine = nil
                     resync()
                 }
             )) {
@@ -147,6 +190,7 @@ struct MotivationFullView: View {
             }
         }
         extra = 0
+        pinnedLine = nil
         resync()
     }
 

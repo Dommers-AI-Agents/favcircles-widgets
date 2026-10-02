@@ -7,6 +7,9 @@ import Foundation
 public enum MotivationQuickLog {
     public static let categoryIdentifier = "MOTIVATION_REMINDER"
     public static let didItAction = "MOTIVATION_DID_IT"
+    /// "Send to someone 📣": opens the app on the Motivation widget with the
+    /// notification's line ready to send (the app registers it `.foreground`).
+    public static let sendAction = "MOTIVATION_SEND"
 
     @discardableResult
     public static func markDone(store: WidgetDataStore, now: Date = Date(), calendar: Calendar = .current) async throws -> MotivationLog {

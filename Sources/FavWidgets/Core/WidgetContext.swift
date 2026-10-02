@@ -96,6 +96,12 @@ public final class WidgetContext: ObservableObject {
     /// A drink the host wants shown (a friend's sent drink, tapped in chat).
     /// The drink page reads and clears it on appear and opens that recipe.
     public var launchDrinkId: String?
+    /// A Coach Mane line to open the Motivation page on (`MotivationLines.id`),
+    /// from a notification's "Send to someone" or a friend's chat card.
+    public var launchMotivationLineId: String?
+    /// With `launchMotivationLineId`: also open the send sheet (the
+    /// notification's Send action), rather than only showing the line.
+    public var launchMotivationSend = false
 
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still

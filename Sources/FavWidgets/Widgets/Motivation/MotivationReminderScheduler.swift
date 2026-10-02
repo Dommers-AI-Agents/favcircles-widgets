@@ -44,7 +44,8 @@ public enum MotivationReminderScheduler {
             content.threadIdentifier = "motivation"
             // The app registers this category with a "Did it" action.
             content.categoryIdentifier = MotivationQuickLog.categoryIdentifier
-            content.userInfo = ["type": notificationType]
+            // lineId: "Send to someone 📣" opens on this exact line.
+            content.userInfo = ["type": notificationType, "lineId": MotivationLines.id(for: slot.line)]
             var date = calendar.dateComponents([.year, .month, .day], from: slot.day.date(calendar: calendar))
             date.hour = slot.minutes / 60
             date.minute = slot.minutes % 60

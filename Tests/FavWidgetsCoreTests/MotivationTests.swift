@@ -37,6 +37,27 @@ struct MotivationTests {
         #expect(Set(all).count == 100)
     }
 
+    @Test func everyLineHasAStableUniqueId() {
+        let all = MotivationLines.all
+        let ids = all.map(MotivationLines.id(for:))
+        #expect(Set(ids).count == all.count)
+        for (line, id) in zip(all, ids) {
+            #expect(id.count == 8 && id.allSatisfy(\.isHexDigit), "\(id)")
+            #expect(MotivationLines.line(id: id) == line)
+        }
+        // Pinned: a changed hash would orphan every notification already scheduled.
+        #expect(MotivationLines.id(for: "") == "811c9dc5")
+        #expect(MotivationLines.line(id: "00000000") == nil)
+    }
+
+    @Test func shareAndChatTextCarryTheLine() {
+        let line = MotivationLines.bank(.savage, .run)[0]
+        #expect(MotivationShareText.shareText(line: line).contains(line))
+        #expect(MotivationShareText.shareText(line: line).contains(MotivationShareText.appStoreURL))
+        #expect(MotivationShareText.chatText(line: line) == "📣 Coach Mane says: \(line)")
+        #expect(MotivationLines.all.allSatisfy { $0.count <= MotivationShareText.lineLimit })
+    }
+
     @Test func noBankUsesWordsWesRuledOut() {
         // Wes 2026-10-02: other curses are fine, not this one.
         for intensity in MotivationIntensity.allCases {

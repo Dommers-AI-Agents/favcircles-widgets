@@ -19,7 +19,9 @@ struct CoachView: View {
         .accessibilityLabel(shouting ? "Coach Mane, shouting" : "Coach Mane")
     }
 
-    private func figure(t: Double) -> some View {
+    /// One frame of the coach at time `t` (the share card renders a fixed
+    /// frame: `TimelineView` doesn't draw in `ImageRenderer`).
+    func figure(t: Double) -> some View {
         let s = size / 120
         // Shout: fast jaw + a head shake that comes in bursts.
         let burst = shouting ? max(0, sin(t * 2.2)) : 0

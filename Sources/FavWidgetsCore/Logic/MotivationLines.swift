@@ -156,6 +156,28 @@ public enum MotivationLines {
         return areas.flatMap { bank(intensity, $0) }
     }
 
+    /// A stable short id for a line: FNV-1a of its text as 8 hex digits.
+    /// Survives reordering the banks and is safe in a deep link (no colons).
+    /// Notifications carry it so "Send to someone" opens on the same line.
+    public static func id(for line: String) -> String {
+        var hash: UInt32 = 2_166_136_261
+        for byte in line.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 16_777_619
+        }
+        return String(format: "%08x", hash)
+    }
+
+    /// Every line in every bank.
+    public static var all: [String] {
+        MotivationIntensity.allCases.flatMap { pool(intensity: $0, focus: MotivationFocus.allCases) }
+    }
+
+    /// The line an id was made from, if it's still in a bank.
+    public static func line(id: String) -> String? {
+        all.first { Self.id(for: $0) == id }
+    }
+
     /// Deterministic pick for slot `slot` on `day` (days since 1970). Walks
     /// the pool with a stride coprime to its size so consecutive slots and
     /// consecutive days don't repeat until the pool is used up.
