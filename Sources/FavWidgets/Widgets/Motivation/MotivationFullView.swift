@@ -112,8 +112,8 @@ struct MotivationFullView: View {
             }
             .pickerStyle(.segmented)
             Text(model.intensity == .savage
-                 ? "Savage swears. A lot. Reminders show on your Lock Screen, so pick it knowing who's around."
-                 : "Blunt, no swearing. Switch to Savage if you want it rougher.")
+                 ? "Savage doesn't hold back. No swearing — just no sympathy either."
+                 : "Blunt and encouraging. Switch to Savage if you want it rougher.")
                 .font(.system(size: 12))
                 .foregroundStyle(theme.secondaryLabel)
                 .fixedSize(horizontal: false, vertical: true)

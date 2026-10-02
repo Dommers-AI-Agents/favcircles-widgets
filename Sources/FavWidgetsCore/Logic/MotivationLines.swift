@@ -1,6 +1,7 @@
 import Foundation
 
-/// The coach's lines. Clean never swears; Savage does, on purpose, because
+/// The coach's lines. Neither bank swears (Wes 2026-10-02: keep the app off
+/// the profanity age rating); Savage is just ruder. Opt-in, because
 /// the user picked it. No slurs in either bank.
 public enum MotivationLines {
     public static func bank(_ intensity: MotivationIntensity, _ focus: MotivationFocus) -> [String] {
@@ -38,34 +39,34 @@ public enum MotivationLines {
             ]
         case (.savage, .gym):
             return [
-                "Go to the fucking gym. Now.",
-                "Get your lazy ass off the couch and lift something heavy.",
+                "Get to the gym. Right now. Move it.",
+                "Off the couch, lazybones. Lift something heavy.",
                 "The bar's not going to curl itself, princess. Move.",
-                "You skipped yesterday. Skip today and you're a fucking quitter.",
-                "Quit scrolling and go lift, you soft little bitch.",
-                "Your muscles are crying. From neglect. Go to the damn gym.",
-                "Nobody gives a shit how tired you are. Train.",
-                "Stop being so damn soft and go squat."
+                "You skipped yesterday. Skip today and you're a quitter.",
+                "Put the phone down and go lift, softie.",
+                "Your muscles are crying. From neglect. Go train.",
+                "Nobody cares how tired you are. Train.",
+                "Stop being so soft and go squat."
             ]
         case (.savage, .run):
             return [
-                "Go run, you lazy piece of shit.",
-                "Your excuses are slower than you are. Get the fuck out the door.",
+                "Go run, you lazy couch potato.",
+                "Your excuses are slower than you are. Out the door. Now.",
                 "Lace up, buttercup. Crying is cardio too, but running burns more.",
-                "Rain? Who gives a fuck. Run.",
-                "Quit whining about the cold. Go fucking run.",
-                "Move your ass. The miles won't do themselves."
+                "Rain? Who cares. Run.",
+                "Quit whining about the cold. Go run.",
+                "Move it. The miles won't run themselves."
             ]
         case (.savage, .discipline):
             return [
-                "Losers make excuses. Are you a fucking loser?",
-                "Nobody's coming to save your sorry ass. Get up.",
-                "Quit bitching and do the work.",
-                "Your excuses are bullshit and you know it.",
-                "Stop being soft. Do the damn thing.",
-                "Motivation is bullshit. Discipline. Now.",
-                "You said you'd do it. Don't be a lying little bitch. Go.",
-                "Get off your ass. Today. Not tomorrow. Today."
+                "Losers make excuses. Are you a loser?",
+                "Nobody's coming to save you. Get up.",
+                "Quit complaining and do the work.",
+                "Your excuses are garbage and you know it.",
+                "Stop being soft. Do the thing.",
+                "Motivation is overrated. Discipline. Now.",
+                "You said you'd do it. Don't be a liar. Go.",
+                "Get up. Today. Not tomorrow. Today."
             ]
         }
     }

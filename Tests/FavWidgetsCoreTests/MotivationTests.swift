@@ -15,12 +15,17 @@ struct MotivationTests {
         return d
     }
 
-    @Test func cleanNeverSwears() {
-        let words = ["fuck", "shit", "pussy", "bitch", "ass", "damn"]
-        for focus in MotivationFocus.allCases {
-            for line in MotivationLines.bank(.clean, focus) {
-                let lower = line.lowercased()
-                for word in words { #expect(!lower.contains(" \(word)") && !lower.hasPrefix(word), "\(line)") }
+    @Test func noBankSwears() {
+        // Wes 2026-10-02: no profanity anywhere, so the app needs no profanity age rating.
+        let words = ["fuck", "shit", "puss", "bitch", "ass", "damn", "hell", "crap", "bastard", "dick", "piss", "bullshit"]
+        for intensity in MotivationIntensity.allCases {
+            for focus in MotivationFocus.allCases {
+                for line in MotivationLines.bank(intensity, focus) {
+                    let tokens = line.lowercased().split { !$0.isLetter }.map(String.init)
+                    for word in words {
+                        #expect(!tokens.contains { $0.hasPrefix(word) }, "\(line)")
+                    }
+                }
             }
         }
     }

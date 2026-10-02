@@ -1,6 +1,6 @@
 import Foundation
 
-/// How hard the coach goes. Clean is the default; Savage swears and has to
+/// How hard the coach goes. Clean is the default; Savage is ruder (never swears) and has to
 /// be picked on purpose.
 public enum MotivationIntensity: String, Codable, CaseIterable, Sendable {
     case clean, savage
