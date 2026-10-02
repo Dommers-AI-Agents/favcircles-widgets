@@ -51,6 +51,10 @@ struct PostcardFullView: View {
     // History.
     @State var extraMonths: [MonthKey] = []
     @State var selectedRecord: PostcardRecord?
+    /// A received card opened from its QR / web page (a share token).
+    @State var receivedToken: ReceivedToken?
+
+    struct ReceivedToken: Identifiable { let id: String }
 
     var body: some View {
         let theme = context.theme
@@ -87,6 +91,13 @@ struct PostcardFullView: View {
             openLaunchedOrder()
         }
         .task { await loadMailConfig() }
+        .task {
+            // The printed card's QR or the page's "Open it in the app"
+            guard let token = context.launchPostcardShareToken else { return }
+            context.launchPostcardShareToken = nil
+            await context.waitForPageToSettle()
+            receivedToken = ReceivedToken(id: token)
+        }
         .onChange(of: mailOn) { on in
             // Start the print upload as soon as they opt in: it has to be
             // finished before the Send tap, because Apple Pay can't be
@@ -134,6 +145,11 @@ struct PostcardFullView: View {
         }
         .sheet(item: $selectedRecord) { record in
             PostcardRecordDetail(context: context, record: record)
+        }
+        .sheet(item: $receivedToken) { token in
+            PostcardReceivedView(context: context, token: token.id) { card in
+                sendBack(to: card)
+            }
         }
     }
 

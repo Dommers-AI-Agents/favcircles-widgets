@@ -102,6 +102,9 @@ public final class WidgetContext: ObservableObject {
     /// With `launchMotivationLineId`: also open the send sheet (the
     /// notification's Send action), rather than only showing the line.
     public var launchMotivationSend = false
+    /// A received postcard to show (`postcardShares` token), from the printed
+    /// card's QR or the web page's "Open it in the app".
+    public var launchPostcardShareToken: String?
 
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still

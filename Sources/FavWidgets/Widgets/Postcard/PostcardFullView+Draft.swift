@@ -127,6 +127,16 @@ extension PostcardFullView {
 
     /// Clears everything except the place (the user is still on the same
     /// trip) and the template.
+    /// "Send one back" from a received card: back to the composer (keeping
+    /// any half-written card), addressed to the sender when they're a
+    /// connection — the only people an in-app card can go to.
+    func sendBack(to card: ReceivedPostcard) {
+        sentRecord = nil
+        if card.senderIsConnection, let senderId = card.senderId {
+            recipient = WidgetContact(id: senderId, displayName: card.senderName)
+        }
+    }
+
     func resetCompose() {
         photo = nil
         photoItem = nil
