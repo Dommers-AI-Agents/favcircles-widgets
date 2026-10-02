@@ -67,6 +67,7 @@ struct QuotesFullView: View {
         .task {
             guard let launched = context.launchQuoteId else { return }
             context.launchQuoteId = nil
+            await context.waitForPageToSettle()
             reelStart = .some(launched)
         }
         .quoteReelCover(isPresented: Binding(

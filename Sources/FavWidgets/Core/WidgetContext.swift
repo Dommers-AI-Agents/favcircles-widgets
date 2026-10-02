@@ -97,6 +97,14 @@ public final class WidgetContext: ObservableObject {
     /// The drink page reads and clears it on appear and opens that recipe.
     public var launchDrinkId: String?
 
+    /// Await before presenting a launch target (a sheet or cover opened from
+    /// launchWorkoutPostId and friends). On the first open the page is still
+    /// being pushed, and a sheet presented mid-push flashed blank and closed;
+    /// the second tap worked (Wes, 2026-10-02).
+    public func waitForPageToSettle() async {
+        try? await Task.sleep(nanoseconds: 600_000_000)
+    }
+
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host
         self.theme = theme

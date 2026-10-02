@@ -42,11 +42,12 @@ struct WorkoutFullView: View {
         .sheet(item: $openPost) { target in
             WorkoutPostView(context: context, settings: settings, postId: target.id)
         }
-        .onAppear {
+        .task {
             guard let postId = context.launchWorkoutPostId else { return }
             context.launchWorkoutPostId = nil
             // Over a running workout, still show it: copying is fine, and
-            // Start explains it has to wait
+            // Start explains it has to wait. Not until the push has landed.
+            await context.waitForPageToSettle()
             openPost = PostTarget(id: postId)
         }
         .background(context.theme.background.ignoresSafeArea())
