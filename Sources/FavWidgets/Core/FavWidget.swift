@@ -32,6 +32,7 @@ public enum FavWidgetRegistry {
         HabitWidget(),
         CalorieWidget(),
         WorkoutWidget(),
+        MotivationWidget(),
         BillSplitWidget(),
         PostcardWidget(),
         NextBarWidget(),

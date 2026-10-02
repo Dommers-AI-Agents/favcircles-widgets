@@ -1,0 +1,94 @@
+import Testing
+import Foundation
+@testable import FavWidgetsCore
+
+struct MotivationTests {
+    private var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "America/New_York")!
+        return c
+    }
+
+    private func date(_ day: String, _ hour: Int, _ minute: Int = 0) -> Date {
+        var d = DayKey(rawValue: day).date(calendar: calendar)
+        d = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: d)!
+        return d
+    }
+
+    @Test func cleanNeverSwears() {
+        let words = ["fuck", "shit", "pussy", "bitch", "ass", "damn"]
+        for focus in MotivationFocus.allCases {
+            for line in MotivationLines.bank(.clean, focus) {
+                let lower = line.lowercased()
+                for word in words { #expect(!lower.contains(" \(word)") && !lower.hasPrefix(word), "\(line)") }
+            }
+        }
+    }
+
+    @Test func cleanPoolNeverPicksASavageLine() {
+        let savage = Set(MotivationFocus.allCases.flatMap { MotivationLines.bank(.savage, $0) })
+        let log = MotivationLog(intensity: .clean, reminders: WaterReminders(enabled: true, intervalHours: 1, startMinutes: 0, endMinutes: 23 * 60))
+        for slot in MotivationPlan.slots(log, now: date("2026-10-02", 0, 0), calendar: calendar) {
+            #expect(!savage.contains(slot.line))
+        }
+    }
+
+    @Test func focusLimitsThePool() {
+        let pool = MotivationLines.pool(intensity: .savage, focus: [.run])
+        #expect(pool == MotivationLines.bank(.savage, .run))
+        #expect(MotivationLines.pool(intensity: .clean, focus: []).count
+                == MotivationFocus.allCases.reduce(0) { $0 + MotivationLines.bank(.clean, $1).count })
+    }
+
+    @Test func consecutiveSlotsDontRepeatUntilThePoolIsUsedUp() {
+        let pool = MotivationLines.pool(intensity: .clean, focus: MotivationFocus.allCases)
+        let picks = (0..<pool.count).map { MotivationLines.line(pool: pool, day: 20_000, slot: $0, slotsPerDay: pool.count) }
+        #expect(Set(picks).count == pool.count)
+    }
+
+    @Test func schedulesTheRestOfTodayThenWholeDays() {
+        // Every 4 h, 7:00–19:00 → 7, 11, 15, 19 = 4 slots/day → 7 days, capped.
+        let log = MotivationLog(reminders: WaterReminders(enabled: true, intervalHours: 4, startMinutes: 7 * 60, endMinutes: 19 * 60))
+        let slots = MotivationPlan.slots(log, now: date("2026-10-02", 12, 0), calendar: calendar)
+        #expect(slots.prefix(2).map(\.minutes) == [15 * 60, 19 * 60])
+        #expect(slots.prefix(2).allSatisfy { $0.day.rawValue == "2026-10-02" })
+        #expect(slots[2].day.rawValue == "2026-10-03" && slots[2].minutes == 7 * 60)
+        #expect(slots.count == 2 + 6 * 4)
+        #expect(slots.count <= MotivationPlan.maxPending)
+    }
+
+    @Test func didItTodaySkipsTodaysRest() {
+        var log = MotivationLog(reminders: WaterReminders(enabled: true, intervalHours: 4, startMinutes: 7 * 60, endMinutes: 19 * 60))
+        log.setDone(true, on: DayKey(rawValue: "2026-10-02"))
+        let slots = MotivationPlan.slots(log, now: date("2026-10-02", 12, 0), calendar: calendar)
+        #expect(slots.first?.day.rawValue == "2026-10-03")
+    }
+
+    @Test func hourlyStaysUnderTheCap() {
+        let log = MotivationLog(reminders: WaterReminders(enabled: true, intervalHours: 1, startMinutes: 0, endMinutes: 23 * 60 + 59))
+        #expect(MotivationPlan.slots(log, now: date("2026-10-02", 0, 0), calendar: calendar).count <= MotivationPlan.maxPending)
+        #expect(MotivationPlan.slots(MotivationLog(), now: Date(), calendar: calendar).isEmpty) // off by default
+    }
+
+    @Test func streakAndMergeKeepEveryDoneDay() {
+        var a = MotivationLog()
+        a.setDone(true, on: DayKey(rawValue: "2026-10-01"))
+        a.setDone(true, on: DayKey(rawValue: "2026-10-02"))
+        var b = MotivationLog(intensity: .savage)
+        b.setDone(true, on: DayKey(rawValue: "2026-09-30"))
+        let merged = MotivationLog.merge(local: a, remote: b)
+        #expect(merged.intensity == .clean)
+        #expect(merged.streak(endingOn: DayKey(rawValue: "2026-10-02"), calendar: calendar) == 3)
+        #expect(merged.streak(endingOn: DayKey(rawValue: "2026-10-03"), calendar: calendar) == 3) // today not done yet doesn't break it
+    }
+
+    @Test func roundTripsAndOldDocumentsDecode() throws {
+        var log = MotivationLog(intensity: .savage, focus: [.gym])
+        log.setDone(true, on: DayKey(rawValue: "2026-10-02"))
+        let data = try WidgetDocumentCodec.encode(log)
+        #expect(try WidgetDocumentCodec.decode(MotivationLog.self, from: data) == log)
+        let sparse = try JSONDecoder().decode(MotivationLog.self, from: Data(#"{"intensity":"nonsense"}"#.utf8))
+        #expect(sparse.intensity == .clean)
+        #expect(!sparse.reminders.enabled)
+    }
+}
