@@ -38,14 +38,14 @@ public enum MotivationLines {
             ]
         case (.savage, .gym):
             return [
-                "Go to the fucking gym, you pussy.",
+                "Go to the fucking gym. Now.",
                 "Get your lazy ass off the couch and lift something heavy.",
                 "The bar's not going to curl itself, princess. Move.",
                 "You skipped yesterday. Skip today and you're a fucking quitter.",
                 "Quit scrolling and go lift, you soft little bitch.",
                 "Your muscles are crying. From neglect. Go to the damn gym.",
                 "Nobody gives a shit how tired you are. Train.",
-                "Stop being a pussy and go squat."
+                "Stop being so damn soft and go squat."
             ]
         case (.savage, .run):
             return [
@@ -53,7 +53,7 @@ public enum MotivationLines {
                 "Your excuses are slower than you are. Get the fuck out the door.",
                 "Lace up, buttercup. Crying is cardio too, but running burns more.",
                 "Rain? Who gives a fuck. Run.",
-                "Stop being a pussy about the cold. Go run.",
+                "Quit whining about the cold. Go fucking run.",
                 "Move your ass. The miles won't do themselves."
             ]
         case (.savage, .discipline):
@@ -63,7 +63,7 @@ public enum MotivationLines {
                 "Quit bitching and do the work.",
                 "Your excuses are bullshit and you know it.",
                 "Stop being soft. Do the damn thing.",
-                "Motivation is for pussies. Discipline. Now.",
+                "Motivation is bullshit. Discipline. Now.",
                 "You said you'd do it. Don't be a lying little bitch. Go.",
                 "Get off your ass. Today. Not tomorrow. Today."
             ]

@@ -25,6 +25,17 @@ struct MotivationTests {
         }
     }
 
+    @Test func noBankUsesWordsWesRuledOut() {
+        // Wes 2026-10-02: other curses are fine, not this one.
+        for intensity in MotivationIntensity.allCases {
+            for focus in MotivationFocus.allCases {
+                for line in MotivationLines.bank(intensity, focus) {
+                    #expect(!line.lowercased().contains("puss"), "\(line)")
+                }
+            }
+        }
+    }
+
     @Test func cleanPoolNeverPicksASavageLine() {
         let savage = Set(MotivationFocus.allCases.flatMap { MotivationLines.bank(.savage, $0) })
         let log = MotivationLog(intensity: .clean, reminders: WaterReminders(enabled: true, intervalHours: 1, startMinutes: 0, endMinutes: 23 * 60))
