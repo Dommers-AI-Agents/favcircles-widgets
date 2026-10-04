@@ -6,6 +6,8 @@ import FavWidgetsCore
 struct EventDetailView: View {
     let context: WidgetContext
     let eventId: String
+    /// A one-off celebration line ("You're in Party Bus! +1 FavCoin")
+    let banner: String?
     let onGone: () -> Void
     let onChange: (EventSummary) -> Void
 
@@ -18,13 +20,15 @@ struct EventDetailView: View {
     @State private var showInvite = false
     @State private var renaming = false
     @State private var newName = ""
+    @State private var showBanner = false
     @Environment(\.dismiss) private var dismiss
 
     enum Tab: String, CaseIterable { case photos = "Photos", places = "Places", people = "People" }
 
-    init(context: WidgetContext, eventId: String, onGone: @escaping () -> Void, onChange: @escaping (EventSummary) -> Void) {
+    init(context: WidgetContext, eventId: String, banner: String? = nil, onGone: @escaping () -> Void, onChange: @escaping (EventSummary) -> Void) {
         self.context = context
         self.eventId = eventId
+        self.banner = banner
         self.onGone = onGone
         self.onChange = onChange
         _model = StateObject(wrappedValue: EventDetailModel(eventId: eventId, context: context))
@@ -64,6 +68,15 @@ struct EventDetailView: View {
                     ToolbarItem(placement: .confirmationAction) { menu(event) }
                 }
             }
+            .overlay(alignment: .top) {
+                if showBanner, let banner {
+                    Text("🎉 \(banner)").font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).padding(.vertical, 12)
+                        .background(Capsule().fill(context.accent))
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
             .overlay(alignment: .bottom) {
                 if let uploading = model.uploading {
                     Text(uploading).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
@@ -74,6 +87,12 @@ struct EventDetailView: View {
             }
         }
         .task { await model.load() }
+        .task {
+            guard banner != nil else { return }
+            withAnimation(.spring()) { showBanner = true }
+            try? await Task.sleep(nanoseconds: 3_500_000_000)
+            withAnimation { showBanner = false }
+        }
         .onChange(of: model.detail?.event) { event in if let event { onChange(event) } }
         .onChange(of: pickedItems) { items in
             guard !items.isEmpty else { return }

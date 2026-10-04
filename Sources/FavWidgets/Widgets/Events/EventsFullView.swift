@@ -9,6 +9,8 @@ struct EventsFullView: View {
     @State private var creating = false
     @State private var openEvent: EventRef?
     @State private var joinToken: TokenRef?
+    /// "You're in! +1 FavCoin" — shown on the event screen after a join
+    @State private var banner: String?
 
     struct EventRef: Identifiable { let id: String }
     struct TokenRef: Identifiable { let id: String }
@@ -40,17 +42,19 @@ struct EventsFullView: View {
         .sheet(isPresented: $creating) {
             EventCreateSheet(context: context) { event in
                 store.upsert(event)
-                openEvent = EventRef(id: event.id)
+                banner = nil
+                openAfterSheetCloses(event.id)
             }
         }
         .sheet(item: $joinToken) { token in
-            EventJoinSheet(context: context, token: token.id) { event in
+            EventJoinSheet(context: context, token: token.id) { event, coinCredited in
                 store.upsert(event)
-                openEvent = EventRef(id: event.id)
+                banner = coinCredited == nil ? nil : EventCopy.joinedMessage(name: event.name, coinCredited: coinCredited ?? false)
+                openAfterSheetCloses(event.id)
             }
         }
         .fullScreenCoverOrSheet(item: $openEvent) { ref in
-            EventDetailView(context: context, eventId: ref.id, onGone: {
+            EventDetailView(context: context, eventId: ref.id, banner: banner, onGone: {
                 store.remove(ref.id)
                 openEvent = nil
             }, onChange: { store.upsert($0) })
@@ -99,6 +103,15 @@ struct EventsFullView: View {
         .background(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous).fill(theme.secondaryBackground))
     }
 
+    /// Presenting the event while the sheet is still animating away made it
+    /// flash and close (the 0.23.3 bug class) — wait for the page to settle.
+    private func openAfterSheetCloses(_ id: String) {
+        Task { @MainActor in
+            await context.waitForPageToSettle()
+            openEvent = EventRef(id: id)
+        }
+    }
+
     /// A link/invite (join screen) or a push (open the event).
     private func openLaunched() async {
         if let token = context.launchEventToken {
@@ -107,6 +120,7 @@ struct EventsFullView: View {
             joinToken = TokenRef(id: token)
         } else if let id = context.launchEventId {
             context.launchEventId = nil
+            banner = nil
             await context.waitForPageToSettle()
             openEvent = EventRef(id: id)
         }
@@ -181,7 +195,8 @@ struct EventCreateSheet: View {
 struct EventJoinSheet: View {
     let context: WidgetContext
     let token: String
-    let onJoined: (EventSummary) -> Void
+    /// The event, and whether a FavCoin came with it (nil = already a member)
+    let onJoined: (EventSummary, Bool?) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var preview: EventInvitePreview?
     @State private var failed: String?
@@ -237,9 +252,8 @@ struct EventJoinSheet: View {
                 context.host.haptic(.success)
                 context.track("event_joined", ["coin": result.coinCredited ? "1" : "0"])
                 try? await Task.sleep(nanoseconds: 700_000_000)
-                context.host.presentAlert(WidgetAlert(title: "🎉", message: EventCopy.joinedMessage(name: result.event.name, coinCredited: result.coinCredited)))
                 dismiss()
-                onJoined(result.event)
+                onJoined(result.event, result.coinCredited)
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't join", message: (error as NSError).localizedDescription))
             }
@@ -250,7 +264,7 @@ struct EventJoinSheet: View {
         Task { @MainActor in
             if let event = try? await EventsClient(context: context).detail(preview.id).event {
                 dismiss()
-                onJoined(event)
+                onJoined(event, nil)
             }
         }
     }
