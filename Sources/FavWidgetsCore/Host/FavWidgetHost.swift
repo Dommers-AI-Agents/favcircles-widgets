@@ -200,10 +200,23 @@ public protocol FavWidgetHost: AnyObject {
     /// The account's quiet hours, so a widget scheduling local reminders can
     /// stay silent when the server would. nil = none set.
     var quietHours: WidgetQuietHours? { get }
+
+    // MARK: Events (added in 0.26.0)
+
+    /// Saves a photo to the person's Photos library (asks for add-only
+    /// access the first time). Throws when they decline.
+    func saveImageToPhotos(_ jpeg: Data) async throws
+    /// Any venue matching `text` near a point (Apple Maps search), not only
+    /// saved places — tagging the bar a party bus just pulled up to.
+    func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate]
 }
 
 public extension FavWidgetHost {
     var quietHours: WidgetQuietHours? { nil }
+    func saveImageToPhotos(_ jpeg: Data) async throws {
+        throw NSError(domain: "FavWidgetHost", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saving photos isn't available"])
+    }
+    func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate] { [] }
 }
 
 /// A daily window, in minutes since local midnight; may cross midnight

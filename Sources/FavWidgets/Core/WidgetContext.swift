@@ -105,6 +105,11 @@ public final class WidgetContext: ObservableObject {
     /// A received postcard to show (`postcardShares` token), from the printed
     /// card's QR or the web page's "Open it in the app".
     public var launchPostcardShareToken: String?
+    /// An event invite link's token (`/app/event/<token>`, a push's invite):
+    /// the Events page opens on the join screen.
+    public var launchEventToken: String?
+    /// An event to open (a "joined" or "new photos" push).
+    public var launchEventId: String?
 
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still

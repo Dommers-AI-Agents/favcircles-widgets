@@ -1,0 +1,133 @@
+import SwiftUI
+import FavWidgetsCore
+
+/// Talks to `/api/widgets/events` through the host's API channel.
+struct EventsClient {
+    let context: WidgetContext
+
+    private struct ListResponse: Decodable { let events: [EventSummary] }
+    private struct EventResponse: Decodable { let event: EventSummary }
+    private struct PreviewResponse: Decodable { let preview: EventInvitePreview }
+    struct JoinResponse: Decodable { let event: EventSummary; let joined: Bool; let coinCredited: Bool }
+    private struct PhotosResponse: Decodable { let photos: [EventPhoto] }
+    private struct PhotoResponse: Decodable { let photo: EventPhoto }
+    private struct PlaceResponse: Decodable { let place: EventPlace }
+    struct SaveResponse: Decodable { let place: EventPlace; let circleId: String; let alreadySaved: Bool }
+    private struct OK: Decodable { let success: Bool }
+
+    func list() async throws -> [EventSummary] {
+        let r: ListResponse = try await context.api(.get, "widgets/events"); return r.events
+    }
+    func create(name: String, emoji: String) async throws -> EventSummary {
+        let r: EventResponse = try await context.api(.post, "widgets/events", body: ["name": name, "emoji": emoji]); return r.event
+    }
+    func detail(_ id: String) async throws -> EventDetail {
+        try await context.api(.get, "widgets/events/\(id)")
+    }
+    func preview(token: String) async throws -> EventInvitePreview {
+        let r: PreviewResponse = try await context.api(.get, "widgets/events/invite/\(token)"); return r.preview
+    }
+    func join(token: String) async throws -> JoinResponse {
+        try await context.api(.post, "widgets/events/join", body: ["token": token])
+    }
+    func update(_ id: String, _ body: [String: Any]) async throws -> EventSummary {
+        let r: EventResponse = try await context.api(.put, "widgets/events/\(id)", body: body); return r.event
+    }
+    func resetLink(_ id: String) async throws -> EventSummary {
+        let r: EventResponse = try await context.api(.post, "widgets/events/\(id)/link/reset"); return r.event
+    }
+    func end(_ id: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)") }
+    func leave(_ id: String) async throws { let _: OK = try await context.api(.post, "widgets/events/\(id)/leave") }
+    func remove(_ id: String, member: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/members/\(member)") }
+    func invite(_ id: String, userIds: [String]) async throws { let _: OK = try await context.api(.post, "widgets/events/\(id)/invite", body: ["userIds": userIds]) }
+    func addPhotos(_ id: String, urls: [URL]) async throws -> [EventPhoto] {
+        let r: PhotosResponse = try await context.api(.post, "widgets/events/\(id)/photos",
+                                                      body: ["photos": urls.map { ["imageUrl": $0.absoluteString] }])
+        return r.photos
+    }
+    func deletePhoto(_ id: String, photo: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/photos/\(photo)") }
+    func like(_ id: String, photo: String) async throws -> EventPhoto {
+        let r: PhotoResponse = try await context.api(.post, "widgets/events/\(id)/photos/\(photo)/like"); return r.photo
+    }
+    func tag(_ id: String, place: WidgetPlaceCandidate) async throws -> EventPlace {
+        let r: PlaceResponse = try await context.api(.post, "widgets/events/\(id)/places", body: [
+            "name": place.name, "address": place.address ?? "", "lat": place.coordinate.latitude,
+            "lng": place.coordinate.longitude, "category": place.category, "placeId": place.id, "isGlobal": place.isGlobal
+        ])
+        return r.place
+    }
+    func save(_ id: String, place: String) async throws -> SaveResponse {
+        try await context.api(.post, "widgets/events/\(id)/places/\(place)/save")
+    }
+    func connect(userId: String) async throws { let _: OK = try await context.api(.post, "widgets/connect", body: ["targetUserId": userId]) }
+}
+
+/// The user's events, shared by the card and the full view.
+@MainActor
+final class EventsStore: RemoteStore {
+    @Published private(set) var events: [EventSummary] = []
+
+    static func shared(in context: WidgetContext) -> EventsStore {
+        context.transient("events.store") { EventsStore() }
+    }
+
+    func refresh(_ context: WidgetContext, force: Bool = false) async {
+        let client = EventsClient(context: context)
+        if force {
+            await load { self.events = try await client.list() }
+        } else {
+            await loadIfNeeded(staleAfter: 60) { self.events = try await client.list() }
+        }
+    }
+
+    func upsert(_ event: EventSummary) {
+        if let i = events.firstIndex(where: { $0.id == event.id }) { events[i] = event } else { events.insert(event, at: 0) }
+    }
+
+    func remove(_ id: String) { events.removeAll { $0.id == id } }
+}
+
+/// One open event's photos/places/people, refreshed while on screen.
+@MainActor
+final class EventDetailModel: ObservableObject {
+    @Published var detail: EventDetail?
+    @Published var error: String?
+    @Published var uploading: String?
+
+    let eventId: String
+    private let client: EventsClient
+
+    init(eventId: String, context: WidgetContext) {
+        self.eventId = eventId
+        self.client = EventsClient(context: context)
+    }
+
+    func load() async {
+        do { detail = try await client.detail(eventId); error = nil } catch { self.error = "Couldn't load the event. Pull to try again." }
+    }
+
+    var photos: [EventPhoto] { detail?.photos ?? [] }
+    var places: [EventPlace] { detail?.places ?? [] }
+
+    func replacePhoto(_ photo: EventPhoto) {
+        guard let d = detail else { return }
+        detail = EventDetail(event: d.event, photos: d.photos.map { $0.id == photo.id ? photo : $0 }, places: d.places)
+    }
+    func removePhoto(_ id: String) {
+        guard let d = detail else { return }
+        detail = EventDetail(event: d.event, photos: d.photos.filter { $0.id != id }, places: d.places)
+    }
+    func prependPhotos(_ photos: [EventPhoto]) {
+        guard let d = detail else { return }
+        detail = EventDetail(event: d.event, photos: photos + d.photos, places: d.places)
+    }
+    func upsertPlace(_ place: EventPlace) {
+        guard let d = detail else { return }
+        let places = d.places.contains(where: { $0.id == place.id }) ? d.places.map { $0.id == place.id ? place : $0 } : [place] + d.places
+        detail = EventDetail(event: d.event, photos: d.photos, places: places)
+    }
+    func replaceEvent(_ event: EventSummary) {
+        guard let d = detail else { return }
+        detail = EventDetail(event: event, photos: d.photos, places: d.places)
+    }
+}
