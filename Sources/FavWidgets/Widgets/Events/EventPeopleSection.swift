@@ -48,6 +48,17 @@ struct EventPeopleSection: View {
                 }
                 .padding(.vertical, 4)
             }
+            if !event.invitedPeople.isEmpty {
+                Text("Invited").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel).padding(.top, 6)
+                ForEach(event.invitedPeople) { person in
+                    HStack(spacing: 12) {
+                        Image(systemName: "envelope.badge").font(.system(size: 18)).foregroundStyle(context.accent).frame(width: 40)
+                        Text(person.name).font(.system(size: 15)).foregroundStyle(theme.label)
+                        Spacer()
+                        Text("Hasn't joined yet").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    }
+                }
+            }
             Divider().overlay(theme.separator)
             if event.isHost {
                 Button(role: .destructive) { confirmEnd = true } label: { Text("End event").font(.system(size: 15, weight: .semibold)) }

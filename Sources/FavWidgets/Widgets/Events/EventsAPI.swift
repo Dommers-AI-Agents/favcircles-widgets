@@ -39,7 +39,10 @@ struct EventsClient {
     func end(_ id: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)") }
     func leave(_ id: String) async throws { let _: OK = try await context.api(.post, "widgets/events/\(id)/leave") }
     func remove(_ id: String, member: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/members/\(member)") }
-    func invite(_ id: String, userIds: [String]) async throws { let _: OK = try await context.api(.post, "widgets/events/\(id)/invite", body: ["userIds": userIds]) }
+    private struct InviteResponse: Decodable { let invited: Int; let event: EventSummary? }
+    func invite(_ id: String, userIds: [String]) async throws -> EventSummary? {
+        let r: InviteResponse = try await context.api(.post, "widgets/events/\(id)/invite", body: ["userIds": userIds]); return r.event
+    }
     func addPhotos(_ id: String, urls: [URL]) async throws -> [EventPhoto] {
         let r: PhotosResponse = try await context.api(.post, "widgets/events/\(id)/photos",
                                                       body: ["photos": urls.map { ["imageUrl": $0.absoluteString] }])

@@ -32,3 +32,18 @@ struct EventModelsTests {
         #expect(EventCopy.notConnected(event, myId: "wes", connectedIds: ["sal"]).isEmpty)
     }
 }
+
+struct EventInviteCopyTests {
+    @Test func inviteButtonNeverSaysZero() {
+        #expect(EventCopy.inviteButton(selected: 0) == "Invite")
+        #expect(EventCopy.inviteButton(selected: 3) == "Invite 3")
+    }
+
+    @Test func invitedListDecodesAndIsOptional() throws {
+        let base = #"{"id":"e1","name":"Party Bus","emoji":"🚌","hostId":"wes","hostName":"Wesley","isHost":true,"joinOpen":true,"createdAt":null,"photoCount":0,"placeCount":0,"members":[],"inviteUrl":"https://x/app/event/t","myCircleId":null"#
+        let old = try JSONDecoder().decode(EventSummary.self, from: Data((base + "}").utf8))
+        #expect(old.invitedPeople.isEmpty)
+        let new = try JSONDecoder().decode(EventSummary.self, from: Data((base + #","invited":[{"id":"amy","name":"Amy"}]}"#).utf8))
+        #expect(new.invitedPeople.map(\.name) == ["Amy"])
+    }
+}

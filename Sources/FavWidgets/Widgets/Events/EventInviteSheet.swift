@@ -5,6 +5,8 @@ import FavWidgetsCore
 struct EventInviteSheet: View {
     let context: WidgetContext
     let event: EventSummary
+    /// The event with its new "Invited" list
+    var onInvited: (EventSummary) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var contacts: [WidgetContact] = []
     @State private var picked: Set<String> = []
@@ -13,8 +15,9 @@ struct EventInviteSheet: View {
     var body: some View {
         let theme = context.theme
         let memberIds = Set(event.members.map(\.id))
+        let invitedIds = Set(event.invitedPeople.map(\.id))
         WidgetSheet(title: "Invite to \(event.name)", theme: theme,
-                    confirm: (label: sending ? "Sending…" : "Invite \(picked.count)", enabled: !picked.isEmpty && !sending, action: sendInvites),
+                    confirm: (label: sending ? "Sending…" : EventCopy.inviteButton(selected: picked.count), enabled: !picked.isEmpty && !sending, action: sendInvites),
                     cancelDisabled: sending) {
             List {
                 Section {
@@ -30,12 +33,20 @@ struct EventInviteSheet: View {
                 }
                 Section("Or invite your connections") {
                     ForEach(contacts.filter { !memberIds.contains($0.id) }) { contact in
-                        Button { toggle(contact.id) } label: {
+                        if invitedIds.contains(contact.id) {
                             HStack {
                                 Text(contact.displayName).foregroundStyle(theme.label)
                                 Spacer()
-                                Image(systemName: picked.contains(contact.id) ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(picked.contains(contact.id) ? context.accent : theme.secondaryLabel)
+                                Text("Invited").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                            }
+                        } else {
+                            Button { toggle(contact.id) } label: {
+                                HStack {
+                                    Text(contact.displayName).foregroundStyle(theme.label)
+                                    Spacer()
+                                    Image(systemName: picked.contains(contact.id) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(picked.contains(contact.id) ? context.accent : theme.secondaryLabel)
+                                }
                             }
                         }
                     }
@@ -62,10 +73,14 @@ struct EventInviteSheet: View {
         Task { @MainActor in
             defer { sending = false }
             do {
-                try await EventsClient(context: context).invite(event.id, userIds: Array(picked))
+                let count = picked.count
+                let updated = try await EventsClient(context: context).invite(event.id, userIds: Array(picked))
                 context.host.haptic(.success)
-                context.track("event_invited", ["count": "\(picked.count)"])
+                context.track("event_invited", ["count": "\(count)"])
+                if let updated { onInvited(updated) }
                 dismiss()
+                context.host.presentAlert(WidgetAlert(title: "Invites sent",
+                    message: "\(count) \(count == 1 ? "person was" : "people were") invited to \(event.name). They'll show as Invited until they join."))
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't send invites", message: "Check your connection and try again."))
             }

@@ -115,7 +115,9 @@ struct EventDetailView: View {
             EventPhotoViewer(context: context, model: model, startId: start.id)
         }
         .sheet(isPresented: $showInvite) {
-            if let event = model.detail?.event { EventInviteSheet(context: context, event: event) }
+            if let event = model.detail?.event {
+                EventInviteSheet(context: context, event: event) { model.replaceEvent($0) }
+            }
         }
         .alert("Rename event", isPresented: $renaming) {
             TextField("Name", text: $newName)

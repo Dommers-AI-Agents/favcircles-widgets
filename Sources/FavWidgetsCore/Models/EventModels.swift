@@ -21,10 +21,18 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
     public let photoCount: Int
     public let placeCount: Int
     public let members: [Member]
+    /// Invited in the app and not joined yet (older servers omit it)
+    public let invited: [Invitee]?
     public let inviteUrl: String
     public let myCircleId: String?
 
     public var inviteURL: URL? { URL(string: inviteUrl) }
+    public var invitedPeople: [Invitee] { invited ?? [] }
+
+    public struct Invitee: Decodable, Identifiable, Equatable, Hashable, Sendable {
+        public let id: String
+        public let name: String
+    }
 }
 
 public struct EventPhoto: Decodable, Identifiable, Equatable, Hashable, Sendable {
@@ -94,6 +102,11 @@ public enum EventCopy {
     /// The text that rides with the invite link in a group message.
     public static func inviteText(_ event: EventSummary) -> String {
         "\(event.emoji) Join \(event.name) on FavCircles! Tap to join, share photos and save the places we go: \(event.inviteUrl)"
+    }
+
+    /// The invite sheet's send button: names how many are ticked, never "0".
+    public static func inviteButton(selected: Int) -> String {
+        selected == 0 ? "Invite" : "Invite \(selected)"
     }
 
     public static func joinButton(_ preview: EventInvitePreview) -> String {
