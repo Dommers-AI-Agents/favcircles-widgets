@@ -57,13 +57,13 @@ struct DrinkFullView: View {
         }
     }
 
-    /// The card image and the recipe as text, to the share sheet. Private
-    /// by nature: nothing is posted anywhere.
+    /// The recipe card (it lists the ingredients) as one tappable bubble.
+    /// Private by nature: nothing is posted anywhere.
     private func share(_ drink: Cocktail) {
-        var items: [WidgetShareItem] = [.text(DrinkShareText.shareText(drink))]
-        if let jpeg = DrinkShareCard.jpeg(drink: drink, accent: context.accent) { items.insert(.imageJPEG(jpeg), at: 0) }
         context.track("drink_shared")
-        context.host.share(items)
+        context.host.share(WidgetShareCard.items(widgetId: "drink", title: "\(drink.name) · Make Me a Drink",
+                                                 cardJPEG: DrinkShareCard.jpeg(drink: drink, accent: context.accent),
+                                                 fallbackText: DrinkShareText.shareText(drink)))
     }
 
     private var shakeTitle: String {

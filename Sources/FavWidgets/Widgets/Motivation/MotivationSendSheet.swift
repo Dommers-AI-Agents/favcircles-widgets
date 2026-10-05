@@ -70,12 +70,12 @@ struct MotivationSendSheet: View {
         }
     }
 
-    /// The card and the line to the share sheet (shown over this sheet).
+    /// The card alone, as one tappable bubble (WidgetShareCard).
     private func shareAnywhere() {
-        var items: [WidgetShareItem] = [.text(MotivationShareText.shareText(line: line))]
-        if let jpeg = MotivationShareCard.jpeg(line: line, accent: context.accent) { items.insert(.imageJPEG(jpeg), at: 0) }
         context.track("motivation_shared", ["from": source])
-        context.host.share(items)
+        context.host.share(WidgetShareCard.items(widgetId: "motivation", title: MotivationShareText.shareTitle,
+                                                 cardJPEG: MotivationShareCard.jpeg(line: line, accent: context.accent),
+                                                 fallbackText: MotivationShareText.shareText(line: line)))
     }
 
     private func send() {

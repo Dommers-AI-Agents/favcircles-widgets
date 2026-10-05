@@ -31,18 +31,15 @@ extension PostcardFullView {
         }
     }
 
+    /// The card as one tappable bubble (its page when there is one), plus
+    /// the sender's own note if they wrote one — no boilerplate lines.
     func shareCard(jpeg: Data, note: String, link: URL?) {
-        var lines: [String] = []
-        if !note.isEmpty { lines.append(note) }
-        lines.append(caption.isEmpty ? "📮 A postcard for you" : "📮 \(caption)")
-        if let link {
-            lines.append("See it here: \(link.absoluteString)")
-        } else {
-            lines.append("Sent with FavCircles — https://favcircles.com/")
-        }
+        let title = caption.isEmpty ? "A postcard for you" : caption
+        var items: [WidgetShareItem] = link.map { [.link($0, title: title, imageJPEG: jpeg)] } ?? [.imageJPEG(jpeg)]
+        if !note.isEmpty { items.append(.text(note)) }
         context.track("postcard_shared", ["template_id": templateId, "has_link": link == nil ? "false" : "true"])
         context.host.haptic(.light)
-        context.host.share([.imageJPEG(jpeg), .text(lines.joined(separator: "\n"))])
+        context.host.share(items)
     }
 
     /// One Send, every selected route: in-app to a connection, email to

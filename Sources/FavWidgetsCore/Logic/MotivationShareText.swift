@@ -7,10 +7,13 @@ public enum MotivationShareText {
     /// Longest line the server takes (the longest real line is well under).
     public static let lineLimit = 160
 
-    /// Alongside the card image in the share sheet.
+    /// Only when there's no card image to share (the card is the message).
     public static func shareText(line: String) -> String {
-        "📣 Coach Mane says: \(line)\n\nGet Coach Mane on FavCircles: \(appStoreURL)"
+        "📣 Coach Mane says: \(line)"
     }
+
+    /// The link title Messages shows under the card.
+    public static let shareTitle = "Coach Mane · FavCircles"
 
     /// The chat message text: also what the friend's push and chat list show.
     public static func chatText(line: String) -> String {

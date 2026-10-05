@@ -53,7 +53,7 @@ struct MotivationTests {
     @Test func shareAndChatTextCarryTheLine() {
         let line = MotivationLines.bank(.savage, .run)[0]
         #expect(MotivationShareText.shareText(line: line).contains(line))
-        #expect(MotivationShareText.shareText(line: line).contains(MotivationShareText.appStoreURL))
+        #expect(!MotivationShareText.shareText(line: line).contains("http"))
         #expect(MotivationShareText.chatText(line: line) == "📣 Coach Mane says: \(line)")
         #expect(MotivationLines.all.allSatisfy { $0.count <= MotivationShareText.lineLimit })
     }
