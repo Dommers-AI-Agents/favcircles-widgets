@@ -148,10 +148,11 @@ struct ActiveRunView: View {
                     }
                     if session.phase == .paused {
                         Button { confirmEnd = true } label: {
+                            // Label-colored: black in light mode, white in dark (black vanished on dark)
                             Label("Finish", systemImage: "flag.checkered")
-                                .font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                                .font(.system(size: 17, weight: .bold)).foregroundStyle(theme.background)
                                 .frame(maxWidth: .infinity).frame(height: 54)
-                                .background(Capsule().fill(Color.black))
+                                .background(Capsule().fill(theme.label))
                         }
                     }
                 }
