@@ -26,6 +26,16 @@ public final class RunSession: NSObject, ObservableObject {
 
     public var unit: RunUnit = .localeDefault
     private weak var host: FavWidgetHost?
+    private var context: WidgetContext?
+
+    // Watching live (2026-10-06): the shared run's id once anyone's invited
+    @Published public private(set) var liveRun: SharedRun?
+    /// The newest cheer to pop up on the runner's screen
+    @Published public var newCheer: SharedRun.Cheer?
+    private var seenCheers = Set<String>()
+    private var lastLiveSync = Date.distantPast
+    private var lastSyncedSplits = 0
+    private var syncing = false
     private var ticker: Timer?
     private var lastLivePush = Date.distantPast
     #if os(iOS)
@@ -57,9 +67,11 @@ public final class RunSession: NSObject, ObservableObject {
 
     // MARK: - Control
 
-    public func start(host: FavWidgetHost, unit: RunUnit) {
+    public func start(context: WidgetContext, unit: RunUnit) {
         guard !isActive else { return }
-        self.host = host
+        self.context = context
+        self.host = context.host
+        liveRun = nil; newCheer = nil; seenCheers = []; lastSyncedSplits = 0
         self.unit = unit
         problem = nil
         #if os(iOS)
@@ -133,6 +145,7 @@ public final class RunSession: NSObject, ObservableObject {
                 guard let self else { return }
                 self.now = Date()
                 self.pushLive(force: false)
+                self.syncLiveIfDue()
             }
         }
     }
@@ -150,6 +163,64 @@ public final class RunSession: NSObject, ObservableObject {
             clockStart: phase == .running ? Date().addingTimeInterval(-moving) : nil,
             isPaused: phase == .paused))
     }
+
+    // MARK: - Watching live
+
+    /// Makes this run watchable (once); returns it so the caller can invite.
+    func shareLive() async throws -> SharedRun {
+        if let liveRun { return liveRun }
+        guard let context, let track else { throw URLError(.cancelled) }
+        let run = try await RunShareClient(context: context).startLive(unit: unit, startedAt: track.startedAt)
+        liveRun = run
+        lastLiveSync = .distantPast
+        syncLiveIfDue(force: true)
+        return run
+    }
+
+    /// Every 30 s, and right after each mile/km (watchers get that push).
+    private func syncLiveIfDue(force: Bool = false) {
+        guard let liveRun, let context, let track, !syncing else { return }
+        let splits = RunMath.splits(track.samples, unit: unit)
+        guard force || splits.count > lastSyncedSplits || Date().timeIntervalSince(lastLiveSync) >= 30 else { return }
+        syncing = true
+        lastLiveSync = Date()
+        var body: [String: Any] = [
+            "distanceM": track.distance, "movingSec": track.movingSeconds(at: Date()), "splits": splits,
+            "route": RunGeo.encode(RunGeo.simplify(track.points.map { ($0.latitude, $0.longitude) })),
+            "isPaused": phase == .paused
+        ]
+        if let last = track.points.last { body["lat"] = last.latitude; body["lng"] = last.longitude }
+        let id = liveRun.id
+        Task { @MainActor in
+            defer { syncing = false }
+            if let cheers = try? await RunShareClient(context: context).progress(id, body: body) {
+                lastSyncedSplits = splits.count
+                for cheer in RunShare.newCheers(cheers, seen: seenCheers) {
+                    seenCheers.insert(RunShare.key(cheer))
+                    newCheer = cheer
+                    context.host.haptic(.success)
+                }
+            }
+        }
+    }
+
+    /// The run was saved: watchers get the finish push and keep the run.
+    func finishLive(_ record: RunRecord) {
+        guard let liveRun, let context else { return }
+        let id = liveRun.id
+        Task { try? await RunShareClient(context: context).finish(id, body: RunShareClient.summary(record, unit: unit)) }
+    }
+
+    /// The run was thrown away: so is the shared one.
+    func cancelLive() {
+        guard let liveRun, let context else { return }
+        let id = liveRun.id
+        self.liveRun = nil
+        Task { try? await RunShareClient(context: context).cancel(id) }
+    }
+
+    /// The finished run's shared id, for posting it to activity.
+    var sharedRunId: String? { liveRun?.id }
 
     fileprivate func received(_ fix: RunFix) {
         guard var t = track else { return }

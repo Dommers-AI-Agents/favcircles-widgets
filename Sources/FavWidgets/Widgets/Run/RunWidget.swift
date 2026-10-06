@@ -66,6 +66,13 @@ struct RunFullView: View {
     @ObservedObject private var session = RunSession.shared
     @State private var months: [MonthKey] = []
     @State private var finished: RunRecord?
+    /// A shared run being watched (from the Watching list, a push, a link or the feed)
+    @State private var watching: WatchTarget?
+    /// The run just saved, offered for posting to activity
+    @State private var toPost: PostTarget?
+
+    struct WatchTarget: Identifiable { let id: String }
+    struct PostTarget: Identifiable { let id = UUID(); let record: RunRecord; let sharedRunId: String? }
 
     var body: some View {
         Group {
@@ -78,17 +85,22 @@ struct RunFullView: View {
         .background(context.theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await settings.loadIfNeeded() }
+        .task { await openLaunchedRun() }
         .onChange(of: session.finishRequested) { requested in if requested { finish() } }
         .sheet(item: $finished) { run in
             RunSummaryView(context: context, run: run, unit: settings.model.unit, isNew: true,
-                           onSave: { save(run) }, onDiscard: { finished = nil })
+                           onSave: { save(run) }, onDiscard: { RunSession.shared.cancelLive(); finished = nil })
+        }
+        .sheet(item: $watching) { target in RunWatchView(context: context, runId: target.id) }
+        .sheet(item: $toPost) { target in
+            RunPostSheet(context: context, record: target.record, unit: settings.model.unit, sharedRunId: target.sharedRunId) {}
         }
     }
 
     private func start() {
         context.track("run_start")
         context.host.haptic(.success)
-        RunSession.shared.start(host: context.host, unit: settings.model.unit)
+        RunSession.shared.start(context: context, unit: settings.model.unit)
     }
 
     private func finish() {
@@ -105,7 +117,32 @@ struct RunFullView: View {
         }
         context.track("run_saved", ["meters": String(Int(run.distanceMeters))])
         context.host.haptic(.success)
+        // Watchers get the finish and keep the run
+        RunSession.shared.finishLive(run)
+        let sharedId = RunSession.shared.sharedRunId
         finished = nil
+        // Then offer to post it (after the summary sheet has gone)
+        Task { @MainActor in
+            await context.waitForPageToSettle()
+            toPost = PostTarget(record: run, sharedRunId: sharedId)
+        }
+    }
+
+    /// A "watch my run" push, a feed row or a link opened Map My Run.
+    private func openLaunchedRun() async {
+        if let id = context.launchRunId {
+            context.launchRunId = nil
+            await context.waitForPageToSettle()
+            watching = WatchTarget(id: id)
+        } else if let token = context.launchRunToken {
+            context.launchRunToken = nil
+            if let run = try? await RunShareClient(context: context).join(token: token) {
+                await context.waitForPageToSettle()
+                watching = WatchTarget(id: run.id)
+            } else {
+                context.host.presentAlert(WidgetAlert(title: "Can't open that run", message: "The link may be old, or the run was deleted."))
+            }
+        }
     }
 }
 
@@ -116,6 +153,7 @@ struct ActiveRunView: View {
     let onFinish: () -> Void
     @ObservedObject private var session = RunSession.shared
     @State private var confirmEnd = false
+    @State private var showInvite = false
 
     var body: some View {
         let theme = context.theme
@@ -123,6 +161,26 @@ struct ActiveRunView: View {
         VStack(spacing: 0) {
             RunMapView(coordinates: coords, followsUser: true, tint: context.accent)
                 .frame(maxHeight: .infinity)
+                .overlay(alignment: .topTrailing) {
+                    Button { showInvite = true } label: {
+                        Label(session.liveRun == nil ? "Invite watchers" : "👀 Watchers", systemImage: "person.2.wave.2.fill")
+                            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(Capsule().fill(Color.black.opacity(0.75)))
+                    }
+                    .buttonStyle(.plain).padding(12)
+                }
+                .overlay(alignment: .top) {
+                    if let cheer = session.newCheer {
+                        RunCheerBanner(cheer: cheer).padding(.top, 60)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .task(id: RunShare.key(cheer)) {
+                                try? await Task.sleep(nanoseconds: 3_500_000_000)
+                                withAnimation { session.newCheer = nil }
+                            }
+                    }
+                }
+                .animation(.spring(), value: session.newCheer)
             VStack(spacing: 14) {
                 if let problem = session.problem {
                     Text(problem == .locationDenied
@@ -161,9 +219,10 @@ struct ActiveRunView: View {
             .padding(20)
             .background(theme.secondaryBackground)
         }
+        .sheet(isPresented: $showInvite) { RunInviteSheet(context: context) }
         .confirmationDialog("Finish this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("Finish and review") { onFinish() }
-            Button("Discard run", role: .destructive) { RunSession.shared.discard() }
+            Button("Discard run", role: .destructive) { RunSession.shared.cancelLive(); RunSession.shared.discard() }
             Button("Keep going", role: .cancel) {}
         }
     }
@@ -185,6 +244,8 @@ struct RunHomeView: View {
     @State private var loadedMonths: [MonthKey] = []
     @State private var runs: [RunRecord] = []
     @State private var opened: RunRecord?
+    @State private var shared: [SharedRun] = []
+    @State private var watchingId: String?
 
     var body: some View {
         let theme = context.theme
@@ -202,6 +263,24 @@ struct RunHomeView: View {
                 .buttonStyle(.plain)
                 Text("Your route, distance and pace show on the lock screen while you run.")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+
+                let others = shared.filter { !$0.isMine }
+                if !others.isEmpty {
+                    WidgetUI.header("Watching", theme: theme)
+                    ForEach(others) { run in
+                        Button { watchingId = run.id } label: {
+                            HStack(spacing: 10) {
+                                Text(run.isLive ? "● LIVE" : "🏁").font(.system(size: 12, weight: .heavy))
+                                    .foregroundStyle(run.isLive ? .red : theme.secondaryLabel).frame(width: 52, alignment: .leading)
+                                Text(RunShare.headline(run)).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+                                Spacer()
+                                Image(systemName: "chevron.right").foregroundStyle(theme.secondaryLabel)
+                            }
+                            .padding(.vertical, 6).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
 
                 Picker("Units", selection: Binding(get: { settings.model.unit }, set: { u in settings.update { $0.unit = u } })) {
                     Text("Miles").tag(RunUnit.miles); Text("Kilometers").tag(RunUnit.kilometers)
@@ -248,6 +327,10 @@ struct RunHomeView: View {
                 await load(context.currentMonth)
                 await load(context.currentMonth.previous)
             }
+            shared = (try? await RunShareClient(context: context).watching()) ?? []
+        }
+        .sheet(item: Binding(get: { watchingId.map { RunFullView.WatchTarget(id: $0) } }, set: { watchingId = $0?.id })) { t in
+            RunWatchView(context: context, runId: t.id)
         }
         .sheet(item: $opened) { run in
             RunSummaryView(context: context, run: run, unit: unit, isNew: false, onSave: {}, onDiscard: { opened = nil })
