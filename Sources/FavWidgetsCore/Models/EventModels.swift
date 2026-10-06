@@ -23,6 +23,9 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
     public let members: [Member]
     /// Invited in the app and not joined yet (older servers omit it)
     public let invited: [Invitee]?
+    /// Out of the viewer's list (by them, or by the coordinator for everyone)
+    public let archived: Bool?
+    public let archivedForEveryone: Bool?
     public let inviteUrl: String
     public let myCircleId: String?
     /// 2026-10-06 (older servers omit them): ended events stay with a recap;
@@ -33,6 +36,8 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
 
     public var inviteURL: URL? { URL(string: inviteUrl) }
     public var invitedPeople: [Invitee] { invited ?? [] }
+    public var isArchived: Bool { archived ?? false }
+    public var isArchivedForEveryone: Bool { archivedForEveryone ?? false }
     public var hasEnded: Bool { endedAt != nil }
     public var challengeList: [EventChallenge] { challenges ?? [] }
 

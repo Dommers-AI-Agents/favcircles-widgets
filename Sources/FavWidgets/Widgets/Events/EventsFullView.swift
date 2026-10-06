@@ -11,6 +11,7 @@ struct EventsFullView: View {
     @State private var joinToken: TokenRef?
     /// "You're in! +1 FavCoin" — shown on the event screen after a join
     @State private var banner: String?
+    @State private var showArchived = false
 
     struct EventRef: Identifiable { let id: String }
     struct TokenRef: Identifiable { let id: String }
@@ -24,9 +25,27 @@ struct EventsFullView: View {
                     Text("No events yet. Start one, send the link to your group chat, and everyone who joins sees the same photos.")
                         .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
                 }
-                ForEach(store.events) { event in
+                ForEach(store.events.filter { !$0.isArchived }) { event in
                     Button { openEvent = EventRef(id: event.id) } label: { row(event, theme: theme) }
                         .buttonStyle(.plain)
+                }
+                let archived = store.events.filter(\.isArchived)
+                if !archived.isEmpty {
+                    Button { withAnimation { showArchived.toggle() } } label: {
+                        HStack {
+                            Text("Archived (\(archived.count))").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                            Spacer()
+                            Image(systemName: showArchived ? "chevron.up" : "chevron.down").foregroundStyle(theme.secondaryLabel)
+                        }
+                        .padding(.top, 8)
+                    }
+                    .buttonStyle(.plain)
+                    if showArchived {
+                        ForEach(archived) { event in
+                            Button { openEvent = EventRef(id: event.id) } label: { row(event, theme: theme).opacity(0.7) }
+                                .buttonStyle(.plain)
+                        }
+                    }
                 }
                 if let error = store.loadError, store.events.isEmpty {
                     Text(error).font(.system(size: 13)).foregroundStyle(theme.warning)

@@ -47,3 +47,13 @@ struct EventInviteCopyTests {
         #expect(new.invitedPeople.map(\.name) == ["Amy"])
     }
 }
+
+struct EventArchiveTests {
+    @Test func archivedFlagsDecodeAndDefaultOff() throws {
+        let base = #"{"id":"e1","name":"Party Bus","emoji":"🚌","hostId":"wes","hostName":"Wesley","isHost":true,"joinOpen":false,"createdAt":null,"photoCount":0,"placeCount":0,"members":[],"inviteUrl":"https://x/app/event/t","myCircleId":null"#
+        let old = try JSONDecoder().decode(EventSummary.self, from: Data((base + "}").utf8))
+        #expect(!old.isArchived && !old.isArchivedForEveryone)
+        let archived = try JSONDecoder().decode(EventSummary.self, from: Data((base + #","archived":true,"archivedForEveryone":true}"#).utf8))
+        #expect(archived.isArchived && archived.isArchivedForEveryone)
+    }
+}

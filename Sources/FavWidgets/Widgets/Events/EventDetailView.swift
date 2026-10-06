@@ -21,6 +21,8 @@ struct EventDetailView: View {
     @State private var renaming = false
     @State private var newName = ""
     @State private var showBanner = false
+    @State private var confirmEnd = false
+    @State private var confirmLeave = false
     @State private var showRecap = false
     @State private var showAddChallenges = false
     /// A photo being added for this challenge (camera or library)
@@ -50,6 +52,11 @@ struct EventDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let event = model.detail?.event {
+                        if event.isArchived {
+                            Label(event.isArchivedForEveryone ? "Archived by the coordinator. Photos are still here." : "Archived for you. Photos are still here.",
+                                  systemImage: "archivebox")
+                                .font(.system(size: 13, weight: .medium)).foregroundStyle(theme.secondaryLabel)
+                        }
                         header(event, theme: theme)
                         if event.hasEnded { recapCard(event, theme: theme) }
                         if let rollCall = event.rollCall {
@@ -263,7 +270,31 @@ struct EventDetailView: View {
             if !model.photos.isEmpty {
                 Button { Task { await downloadAll() } } label: { Label("Download all photos", systemImage: "square.and.arrow.down.on.square") }
             }
+            Divider()
+            if event.isArchived {
+                Button { unarchive() } label: { Label("Unarchive", systemImage: "tray.and.arrow.up") }
+            } else {
+                Button { archive(forEveryone: false) } label: { Label("Archive for me", systemImage: "archivebox") }
+                if event.isHost {
+                    Button { archive(forEveryone: true) } label: { Label("Archive for everyone", systemImage: "archivebox.fill") }
+                }
+            }
+            if event.isHost {
+                Button(role: .destructive) { confirmEnd = true } label: { Label("End event (deletes the album)", systemImage: "trash") }
+            } else {
+                Button(role: .destructive) { confirmLeave = true } label: { Label("Leave \(event.name)", systemImage: "rectangle.portrait.and.arrow.right") }
+            }
         } label: { Image(systemName: "ellipsis.circle") }
+        .confirmationDialog("End \(event.name)?", isPresented: $confirmEnd, titleVisibility: .visible) {
+            Button("End event", role: .destructive) { end() }
+        } message: {
+            Text("The album and places are removed for everyone. Circles people saved stay theirs. To just put it away, use Archive.")
+        }
+        .confirmationDialog("Leave \(event.name)?", isPresented: $confirmLeave, titleVisibility: .visible) {
+            Button("Leave", role: .destructive) { leave() }
+        } message: {
+            Text("You'll lose access to the album. To just put it away, use Archive for me.")
+        }
     }
 
     // MARK: Photos
@@ -364,6 +395,41 @@ struct EventDetailView: View {
     }
 
     // MARK: Coordinator
+
+    private func archive(forEveryone: Bool) {
+        Task { @MainActor in
+            do {
+                let updated = try await EventsClient(context: context).archive(eventId, forEveryone: forEveryone)
+                model.replaceEvent(updated)
+                context.host.haptic(.success)
+                context.track("event_archived", ["everyone": forEveryone ? "1" : "0"])
+                dismiss()
+            } catch {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't archive", message: "Check your connection and try again."))
+            }
+        }
+    }
+
+    private func unarchive() {
+        Task { @MainActor in
+            if let updated = try? await EventsClient(context: context).unarchive(eventId) {
+                model.replaceEvent(updated)
+                context.host.haptic(.success)
+            }
+        }
+    }
+
+    private func end() {
+        Task { @MainActor in
+            if (try? await EventsClient(context: context).end(eventId)) != nil { dismiss(); onGone() }
+        }
+    }
+
+    private func leave() {
+        Task { @MainActor in
+            if (try? await EventsClient(context: context).leave(eventId)) != nil { dismiss(); onGone() }
+        }
+    }
 
     private func rename() {
         let name = newName

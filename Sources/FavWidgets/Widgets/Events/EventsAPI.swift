@@ -37,6 +37,12 @@ struct EventsClient {
         let r: EventResponse = try await context.api(.post, "widgets/events/\(id)/link/reset"); return r.event
     }
     func end(_ id: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)") }
+    func archive(_ id: String, forEveryone: Bool) async throws -> EventSummary {
+        let r: EventResponse = try await context.api(.post, "widgets/events/\(id)/archive", body: ["forEveryone": forEveryone]); return r.event
+    }
+    func unarchive(_ id: String) async throws -> EventSummary {
+        let r: EventResponse = try await context.api(.post, "widgets/events/\(id)/unarchive"); return r.event
+    }
     func leave(_ id: String) async throws { let _: OK = try await context.api(.post, "widgets/events/\(id)/leave") }
     func remove(_ id: String, member: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/members/\(member)") }
     private struct InviteResponse: Decodable { let invited: Int; let event: EventSummary? }
