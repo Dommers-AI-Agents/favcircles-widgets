@@ -8,7 +8,7 @@ struct RunShareClient {
     private struct RunResponse: Decodable { let run: SharedRun }
     private struct RunsResponse: Decodable { let runs: [SharedRun] }
     private struct InviteResponse: Decodable { let invited: Int }
-    private struct ProgressResponse: Decodable { let cheers: [SharedRun.Cheer]? }
+    private struct ProgressResponse: Decodable { let cheers: [SharedRun.Cheer]?; let watchers: [String]? }
     private struct PostResponse: Decodable { let runId: String }
     private struct OK: Decodable { let success: Bool }
 
@@ -33,8 +33,8 @@ struct RunShareClient {
     func watching() async throws -> [SharedRun] {
         let r: RunsResponse = try await context.api(.get, "widgets/run/watching"); return r.runs
     }
-    func progress(_ id: String, body: [String: Any]) async throws -> [SharedRun.Cheer] {
-        let r: ProgressResponse = try await context.api(.post, "widgets/run/\(id)/progress", body: body); return r.cheers ?? []
+    func progress(_ id: String, body: [String: Any]) async throws -> (cheers: [SharedRun.Cheer], watchers: [String]) {
+        let r: ProgressResponse = try await context.api(.post, "widgets/run/\(id)/progress", body: body); return (r.cheers ?? [], r.watchers ?? [])
     }
     func finish(_ id: String, body: [String: Any]) async throws { let _: OK = try await context.api(.post, "widgets/run/\(id)/finish", body: body) }
     func cancel(_ id: String) async throws { let _: OK = try await context.api(.delete, "widgets/run/\(id)") }

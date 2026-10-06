@@ -161,15 +161,6 @@ struct ActiveRunView: View {
         VStack(spacing: 0) {
             RunMapView(coordinates: coords, followsUser: true, tint: context.accent)
                 .frame(maxHeight: .infinity)
-                .overlay(alignment: .topTrailing) {
-                    Button { showInvite = true } label: {
-                        Label(session.liveRun == nil ? "Invite watchers" : "👀 Watchers", systemImage: "person.2.wave.2.fill")
-                            .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                            .padding(.horizontal, 12).padding(.vertical, 8)
-                            .background(Capsule().fill(Color.black.opacity(0.75)))
-                    }
-                    .buttonStyle(.plain).padding(12)
-                }
                 .overlay(alignment: .top) {
                     if let cheer = session.newCheer {
                         RunCheerBanner(cheer: cheer).padding(.top, 60)
@@ -182,6 +173,14 @@ struct ActiveRunView: View {
                 }
                 .animation(.spring(), value: session.newCheer)
             VStack(spacing: 14) {
+                Button { showInvite = true } label: {
+                    Text(inviteLabel)
+                        .font(.system(size: 15, weight: .bold)).foregroundStyle(context.accent)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity).frame(height: 42)
+                        .background(Capsule().fill(context.accent.opacity(0.15)))
+                }
+                .buttonStyle(.plain)
                 if let problem = session.problem {
                     Text(problem == .locationDenied
                          ? "Location is off for FavCircles. Turn it on in Settings to track your route."
@@ -220,11 +219,27 @@ struct ActiveRunView: View {
             .background(theme.secondaryBackground)
         }
         .sheet(isPresented: $showInvite) { RunInviteSheet(context: context) }
+        .task {
+            // "Start & invite people to follow"
+            guard session.wantsInviteOnStart else { return }
+            session.wantsInviteOnStart = false
+            await context.waitForPageToSettle()
+            showInvite = true
+        }
         .confirmationDialog("Finish this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("Finish and review") { onFinish() }
             Button("Discard run", role: .destructive) { RunSession.shared.cancelLive(); RunSession.shared.discard() }
             Button("Keep going", role: .cancel) {}
         }
+    }
+
+    private var inviteLabel: String {
+        let names = session.watcherNames
+        if names.isEmpty {
+            return session.liveRun == nil ? "👀 Invite people to follow along" : "👀 Invited · waiting for them to join"
+        }
+        let shown = names.prefix(2).joined(separator: ", ") + (names.count > 2 ? " +\(names.count - 2)" : "")
+        return "👀 \(shown) watching · Invite more"
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
@@ -261,7 +276,14 @@ struct RunHomeView: View {
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(context.accent))
                 }
                 .buttonStyle(.plain)
-                Text("Your route, distance and pace show on the lock screen while you run.")
+                Button { RunSession.shared.wantsInviteOnStart = true; onStart() } label: {
+                    Label("Start & invite people to follow", systemImage: "person.2.wave.2.fill")
+                        .font(.system(size: 16, weight: .bold)).foregroundStyle(context.accent)
+                        .frame(maxWidth: .infinity).frame(height: 50)
+                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(context.accent, lineWidth: 2))
+                }
+                .buttonStyle(.plain)
+                Text("Your route, distance and pace show on the lock screen while you run. Friends you invite follow along on a map, get a ping every mile and can cheer you on.")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
 
                 let others = shared.filter { !$0.isMine }

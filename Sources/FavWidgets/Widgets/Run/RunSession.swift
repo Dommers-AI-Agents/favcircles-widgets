@@ -32,6 +32,10 @@ public final class RunSession: NSObject, ObservableObject {
     @Published public private(set) var liveRun: SharedRun?
     /// The newest cheer to pop up on the runner's screen
     @Published public var newCheer: SharedRun.Cheer?
+    /// Who's following along right now ("Sal, Brit")
+    @Published public private(set) var watcherNames: [String] = []
+    /// Started with "Start & invite people to follow": the run screen opens the invite list
+    @Published public var wantsInviteOnStart = false
     private var seenCheers = Set<String>()
     private var lastLiveSync = Date.distantPast
     private var lastSyncedSplits = 0
@@ -71,7 +75,7 @@ public final class RunSession: NSObject, ObservableObject {
         guard !isActive else { return }
         self.context = context
         self.host = context.host
-        liveRun = nil; newCheer = nil; seenCheers = []; lastSyncedSplits = 0
+        liveRun = nil; newCheer = nil; seenCheers = []; lastSyncedSplits = 0; watcherNames = []
         self.unit = unit
         problem = nil
         #if os(iOS)
@@ -181,7 +185,10 @@ public final class RunSession: NSObject, ObservableObject {
     private func syncLiveIfDue(force: Bool = false) {
         guard let liveRun, let context, let track, !syncing else { return }
         let splits = RunMath.splits(track.samples, unit: unit)
-        guard force || splits.count > lastSyncedSplits || Date().timeIntervalSince(lastLiveSync) >= 30 else { return }
+        // Every 30 s; every 10 s while nobody has joined yet, so the first
+        // "Sal is watching" shows up quickly
+        let interval: TimeInterval = watcherNames.isEmpty ? 10 : 30
+        guard force || splits.count > lastSyncedSplits || Date().timeIntervalSince(lastLiveSync) >= interval else { return }
         syncing = true
         lastLiveSync = Date()
         var body: [String: Any] = [
@@ -193,9 +200,10 @@ public final class RunSession: NSObject, ObservableObject {
         let id = liveRun.id
         Task { @MainActor in
             defer { syncing = false }
-            if let cheers = try? await RunShareClient(context: context).progress(id, body: body) {
+            if let reply = try? await RunShareClient(context: context).progress(id, body: body) {
                 lastSyncedSplits = splits.count
-                for cheer in RunShare.newCheers(cheers, seen: seenCheers) {
+                watcherNames = reply.watchers
+                for cheer in RunShare.newCheers(reply.cheers, seen: seenCheers) {
                     seenCheers.insert(RunShare.key(cheer))
                     newCheer = cheer
                     context.host.haptic(.success)
