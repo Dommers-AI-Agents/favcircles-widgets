@@ -480,8 +480,9 @@ enum EventImagePrep {
     /// one pass (2048 px at 0.85 was always re-compressed by the uploader).
     static func jpeg(_ image: PostcardPlatformImage) -> Data? { encode(image, longest: 1920, quality: 0.72) }
 
-    /// The album grid's preview: 480 px, ~25 KB.
-    static func thumbnail(_ image: PostcardPlatformImage) -> Data? { encode(image, longest: 480, quality: 0.7) }
+    /// The album grid's preview: 400 px (a grid square is ~435 px on the
+    /// biggest phones), ~25–35 KB for a real phone photo.
+    static func thumbnail(_ image: PostcardPlatformImage) -> Data? { encode(image, longest: 400, quality: 0.6) }
 
     private static func encode(_ image: PostcardPlatformImage, longest maxSide: CGFloat, quality: CGFloat) -> Data? {
         #if os(iOS)
