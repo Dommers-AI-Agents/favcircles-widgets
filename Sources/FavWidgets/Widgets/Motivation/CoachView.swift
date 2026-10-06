@@ -10,9 +10,10 @@ struct CoachView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { timeline in
-            let t = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-            figure(t: t)
+        // Reduce Motion gets a calm coach (breathing, blinking) rather than
+        // a frozen one — he used to stop dead and read as a still picture
+        TimelineView(.animation(minimumInterval: 1 / 30)) { timeline in
+            figure(t: timeline.date.timeIntervalSinceReferenceDate, calm: reduceMotion)
         }
         .frame(width: size, height: size)
         .accessibilityElement()
@@ -21,14 +22,21 @@ struct CoachView: View {
 
     /// One frame of the coach at time `t` (the share card renders a fixed
     /// frame: `TimelineView` doesn't draw in `ImageRenderer`).
-    func figure(t: Double) -> some View {
+    func figure(t: Double, calm: Bool = false) -> some View {
         let s = size / 120
-        // Shout: fast jaw + a head shake that comes in bursts.
-        let burst = shouting ? max(0, sin(t * 2.2)) : 0
-        let jaw = shouting ? (0.35 + 0.65 * abs(sin(t * 11))) * (0.4 + 0.6 * burst) : 0.08 + 0.04 * sin(t * 2)
-        let shake = shouting ? sin(t * 18) * 3 * burst : 0
-        let sway = sin(t * (shouting ? 5 : 1.6)) * (shouting ? 7 : 3)
-        let breathe = 1 + 0.015 * sin(t * 2)
+        let yelling = shouting && !calm
+        // Shout: the jaw never stops flapping; bursts make it bigger and
+        // add a head shake. Between bursts it used to close and sit still.
+        let burst = yelling ? max(0, sin(t * 2.2)) : 0
+        let jaw = yelling ? (0.35 + 0.65 * abs(sin(t * 11))) * (0.6 + 0.4 * burst) : 0.08 + 0.04 * sin(t * 2)
+        let shake = yelling ? sin(t * 18) * 4 * burst : 0
+        let sway = calm ? 0 : sin(t * (shouting ? 5 : 2.2)) * (shouting ? 9 : 6)
+        let breathe = 1 + (calm ? 0.01 : 0.02) * sin(t * 2)
+        // Head: bobs while yelling; after "Did it", a slow proud nod
+        let bob = yelling ? abs(sin(t * 5.5)) * -4 : 0
+        let nod = (!shouting && !calm) ? sin(t * 2.4) * 5 : 0
+        // A quick blink every ~3 s
+        let blink = t.truncatingRemainder(dividingBy: 3.1) < 0.12
 
         return ZStack {
             // Shoulders / tank top.
@@ -60,15 +68,15 @@ struct CoachView: View {
                     .offset(x: (30 + spread) * s, y: (14 + spread * 0.6) * s)
             }
 
-            head(jaw: jaw, s: s)
-                .rotationEffect(.degrees(shake))
-                .offset(y: -6 * s)
+            head(jaw: jaw, s: s, blink: blink)
+                .rotationEffect(.degrees(shake + nod))
+                .offset(y: (-6 + bob) * s)
         }
         .scaleEffect(breathe)
         .frame(width: size, height: size)
     }
 
-    private func head(jaw: Double, s: CGFloat) -> some View {
+    private func head(jaw: Double, s: CGFloat, blink: Bool = false) -> some View {
         ZStack {
             // Face.
             Ellipse().fill(Self.skin)
@@ -95,8 +103,8 @@ struct CoachView: View {
                 .offset(x: 11 * s, y: -8 * s)
 
             // Eyes.
-            Circle().fill(Color.black).frame(width: 6 * s, height: 6 * s).offset(x: -11 * s, y: -1 * s)
-            Circle().fill(Color.black).frame(width: 6 * s, height: 6 * s).offset(x: 11 * s, y: -1 * s)
+            Capsule().fill(Color.black).frame(width: 6 * s, height: (blink ? 1.2 : 6) * s).offset(x: -11 * s, y: -1 * s)
+            Capsule().fill(Color.black).frame(width: 6 * s, height: (blink ? 1.2 : 6) * s).offset(x: 11 * s, y: -1 * s)
 
             // Beard around the mouth; the jaw drops it.
             Ellipse().fill(Self.beard)

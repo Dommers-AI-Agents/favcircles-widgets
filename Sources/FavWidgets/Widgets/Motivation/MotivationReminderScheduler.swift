@@ -36,10 +36,14 @@ public enum MotivationReminderScheduler {
         guard allowed else { return false }
 
         let calendar = Calendar.current
+        let streak = log.streak(endingOn: DayKey(Date(), calendar: calendar), calendar: calendar)
         for slot in MotivationPlan.slots(log, now: Date(), quietHours: quietHours, calendar: calendar) {
             let content = UNMutableNotificationContent()
-            content.title = "Coach Mane"
+            content.title = MotivationNotificationCopy.title
+            content.subtitle = MotivationNotificationCopy.subtitle(streak: streak)
             content.body = slot.line
+            // Coach Mane himself, shouting (moves when pressed open)
+            if let art = await CoachNotificationArt.attachment() { content.attachments = [art] }
             content.sound = .default
             content.threadIdentifier = "motivation"
             // The app registers this category with a "Did it" action.
