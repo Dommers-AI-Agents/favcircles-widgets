@@ -284,7 +284,7 @@ struct EventDetailView: View {
                         Color.gray.opacity(0.15)
                             .aspectRatio(1, contentMode: .fit)
                             .overlay(
-                                AsyncImage(url: URL(string: photo.imageUrl)) { image in
+                                CachedRemoteImage(url: URL(string: photo.gridURL)) { image in
                                     image.resizable().scaledToFill()
                                 } placeholder: { ProgressView() }
                             )
@@ -318,11 +318,14 @@ struct EventDetailView: View {
 
     private func upload(images: [PostcardPlatformImage], challengeId: String? = nil) async {
         guard !images.isEmpty else { return }
-        var urls: [URL] = []
+        var urls: [(full: URL, thumb: URL?)] = []
         for (i, image) in images.enumerated() {
             model.uploading = EventCopy.uploadProgress(done: i, total: images.count)
-            guard let jpeg = EventImagePrep.jpeg(image) else { continue }
-            if let url = try? await context.host.uploadImage(jpeg) { urls.append(url) }
+            guard let full = EventImagePrep.jpeg(image) else { continue }
+            guard let fullURL = try? await context.host.uploadImage(full) else { continue }
+            // The grid's ~25 KB preview; a failed preview just means the grid loads the photo
+            let thumbURL: URL? = if let thumb = EventImagePrep.thumbnail(image) { try? await context.host.uploadImage(thumb) } else { nil }
+            urls.append((fullURL, thumbURL))
         }
         defer { model.uploading = nil }
         guard !urls.isEmpty else {
@@ -456,7 +459,7 @@ struct EventAvatar: View {
         ZStack {
             Circle().fill(Color.white.opacity(0.9))
             if let url = member.avatarUrl.flatMap(URL.init(string:)) {
-                AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { initial }
+                CachedRemoteImage(url: url) { $0.resizable().scaledToFill() } placeholder: { initial }
                     .clipShape(Circle())
             } else {
                 initial
@@ -473,15 +476,22 @@ struct EventAvatar: View {
 
 /// Phone photos are huge; the upload pipeline wants a sane JPEG.
 enum EventImagePrep {
-    static func jpeg(_ image: PostcardPlatformImage) -> Data? {
+    /// The photo: 1920 px at 0.72 lands under the upload's 750 KB target in
+    /// one pass (2048 px at 0.85 was always re-compressed by the uploader).
+    static func jpeg(_ image: PostcardPlatformImage) -> Data? { encode(image, longest: 1920, quality: 0.72) }
+
+    /// The album grid's preview: 480 px, ~25 KB.
+    static func thumbnail(_ image: PostcardPlatformImage) -> Data? { encode(image, longest: 480, quality: 0.7) }
+
+    private static func encode(_ image: PostcardPlatformImage, longest maxSide: CGFloat, quality: CGFloat) -> Data? {
         #if os(iOS)
         let longest = max(image.size.width, image.size.height)
-        let scale = min(1, 2048 / max(longest, 1))
+        let scale = min(1, maxSide / max(longest, 1))
         let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let resized = UIGraphicsImageRenderer(size: target, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: target)) }
-        return resized.jpegData(compressionQuality: 0.85)
+        return resized.jpegData(compressionQuality: quality)
         #else
         return nil
         #endif

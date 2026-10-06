@@ -19,9 +19,12 @@ struct EventPhotoViewer: View {
                 } else {
                     TabView(selection: $currentId) {
                         ForEach(model.photos) { photo in
-                            AsyncImage(url: URL(string: photo.imageUrl)) { image in
+                            CachedRemoteImage(url: URL(string: photo.imageUrl)) { image in
                                 image.resizable().scaledToFit()
-                            } placeholder: { ProgressView().tint(.white) }
+                            } placeholder: {
+                                // The cached preview while the full photo loads
+                                CachedRemoteImage(url: URL(string: photo.gridURL)) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
+                            }
                             .tag(photo.id)
                         }
                     }

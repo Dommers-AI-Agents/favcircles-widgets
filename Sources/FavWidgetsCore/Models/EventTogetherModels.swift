@@ -55,7 +55,13 @@ public struct EventSong: Decodable, Identifiable, Equatable, Hashable, Sendable 
 }
 
 public struct EventRecap: Decodable, Equatable, Sendable {
-    public struct Photo: Decodable, Equatable, Hashable, Sendable { public let imageUrl: String; public let uploaderName: String; public let likes: Int }
+    public struct Photo: Decodable, Equatable, Hashable, Sendable {
+        public let imageUrl: String
+        public let thumbUrl: String?
+        public let uploaderName: String
+        public let likes: Int
+        public var gridURL: String { thumbUrl ?? imageUrl }
+    }
     public struct Spot: Decodable, Equatable, Hashable, Sendable { public let name: String; public let lat: Double; public let lng: Double }
     public struct Photographer: Decodable, Equatable, Sendable { public let name: String; public let photos: Int }
     public struct Challenges: Decodable, Equatable, Sendable { public let total: Int; public let done: Int }

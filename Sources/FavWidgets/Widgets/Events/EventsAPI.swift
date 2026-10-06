@@ -43,10 +43,11 @@ struct EventsClient {
     func invite(_ id: String, userIds: [String]) async throws -> EventSummary? {
         let r: InviteResponse = try await context.api(.post, "widgets/events/\(id)/invite", body: ["userIds": userIds]); return r.event
     }
-    func addPhotos(_ id: String, urls: [URL], challengeId: String? = nil) async throws -> [EventPhoto] {
+    func addPhotos(_ id: String, urls: [(full: URL, thumb: URL?)], challengeId: String? = nil) async throws -> [EventPhoto] {
         let r: PhotosResponse = try await context.api(.post, "widgets/events/\(id)/photos",
-                                                      body: ["photos": urls.map { url -> [String: Any] in
-                                                          var p: [String: Any] = ["imageUrl": url.absoluteString]
+                                                      body: ["photos": urls.map { pair -> [String: Any] in
+                                                          var p: [String: Any] = ["imageUrl": pair.full.absoluteString]
+                                                          if let thumb = pair.thumb { p["thumbUrl"] = thumb.absoluteString }
                                                           if let challengeId { p["challengeId"] = challengeId }
                                                           return p
                                                       }])

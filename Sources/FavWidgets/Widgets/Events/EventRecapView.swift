@@ -33,7 +33,7 @@ struct EventRecapView: View {
                             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 3), spacing: 4) {
                                 ForEach(recap.topPhotos, id: \.self) { p in
                                     Color.gray.opacity(0.15).aspectRatio(1, contentMode: .fit)
-                                        .overlay(AsyncImage(url: URL(string: p.imageUrl)) { $0.resizable().scaledToFill() } placeholder: { ProgressView() })
+                                        .overlay(CachedRemoteImage(url: URL(string: p.gridURL)) { $0.resizable().scaledToFill() } placeholder: { ProgressView() })
                                         .clipped()
                                 }
                             }
@@ -72,8 +72,7 @@ struct EventRecapView: View {
             var images: [String: PostcardPlatformImage] = [:]
             let urls = ([recap.photoOfTheNight?.imageUrl] + recap.topPhotos.prefix(3).map(\.imageUrl)).compactMap { $0 }
             for u in Set(urls) {
-                if let url = URL(string: u), let (data, _) = try? await URLSession.shared.data(from: url),
-                   let image = PostcardPlatformImage(data: data) { images[u] = image }
+                if let url = URL(string: u), let image = await RemoteImageCache.image(for: url) { images[u] = image }
             }
             let card = EventRecapCard(recap: recap, images: images, accent: context.accent, live: false)
                 .frame(width: 390).padding(20).background(Color.black)
@@ -158,7 +157,7 @@ struct EventRecapCard: View {
         if let image = images[url] {
             Image(postcardImage: image).resizable().scaledToFill().frame(maxWidth: .infinity).clipped()
         } else if live {
-            Color.white.opacity(0.15).overlay(AsyncImage(url: URL(string: url)) { $0.resizable().scaledToFill() } placeholder: { ProgressView() }).clipped()
+            Color.white.opacity(0.15).overlay(CachedRemoteImage(url: URL(string: url)) { $0.resizable().scaledToFill() } placeholder: { ProgressView() }).clipped()
         } else {
             Color.white.opacity(0.15)
         }

@@ -46,4 +46,11 @@ struct EventTogetherTests {
         let recap = try JSONDecoder().decode(EventRecap.self, from: Data(r.utf8))
         #expect(recap.photoOfTheNight?.likes == 2 && recap.topSong?.title == "Mr. Brightside" && recap.topShoutout == nil)
     }
+
+    @Test func photosUseTheirPreviewInTheGridAndOldOnesStillWork() throws {
+        let with = #"{"id":"p","imageUrl":"full","thumbUrl":"thumb","uploaderId":"u","uploaderName":"U","caption":"","createdAt":null,"likeCount":0,"likedByMe":false,"canDelete":false}"#
+        let without = #"{"id":"p","imageUrl":"full","uploaderId":"u","uploaderName":"U","caption":"","createdAt":null,"likeCount":0,"likedByMe":false,"canDelete":false}"#
+        #expect(try JSONDecoder().decode(EventPhoto.self, from: Data(with.utf8)).gridURL == "thumb")
+        #expect(try JSONDecoder().decode(EventPhoto.self, from: Data(without.utf8)).gridURL == "full")
+    }
 }

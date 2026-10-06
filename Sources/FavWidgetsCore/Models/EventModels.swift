@@ -54,12 +54,18 @@ public struct EventPhoto: Decodable, Identifiable, Equatable, Hashable, Sendable
     public let canDelete: Bool
     /// The challenge this photo was taken for, if any
     public let challengeId: String?
+    /// ~25 KB preview for the album grid (older photos have none)
+    public let thumbUrl: String?
+
+    /// What the grid loads: the preview, or the photo when there's none.
+    public var gridURL: String { thumbUrl ?? imageUrl }
 
     public init(id: String, imageUrl: String, uploaderId: String, uploaderName: String, caption: String, createdAt: String?,
-                likeCount: Int, likedByMe: Bool, canDelete: Bool, challengeId: String? = nil) {
+                likeCount: Int, likedByMe: Bool, canDelete: Bool, challengeId: String? = nil, thumbUrl: String? = nil) {
         self.id = id; self.imageUrl = imageUrl; self.uploaderId = uploaderId; self.uploaderName = uploaderName
         self.caption = caption; self.createdAt = createdAt; self.likeCount = likeCount; self.likedByMe = likedByMe; self.canDelete = canDelete
         self.challengeId = challengeId
+        self.thumbUrl = thumbUrl
     }
 }
 
