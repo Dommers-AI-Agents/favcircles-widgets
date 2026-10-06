@@ -1,7 +1,7 @@
 import SwiftUI
 import FavWidgetsCore
 
-/// Map My Run (Wes, 2026-10-06): GPS-tracked runs with a live map,
+/// FavRun (Wes, 2026-10-06): GPS-tracked runs with a live map,
 /// distance, time and pace (also on the lock screen via the app's Live
 /// Activity), mile/km splits, history and personal bests. Runs are kept by
 /// month and never pruned.
@@ -10,7 +10,7 @@ public struct RunWidget: FavWidget {
 
     public let descriptor = FavWidgetDescriptor(
         id: "run",
-        title: "Map My Run",
+        title: "FavRun",
         subtitle: "Track your runs on a map",
         symbolName: "figure.run",
         accentHex: "#DD6B20",
@@ -128,7 +128,7 @@ struct RunFullView: View {
         }
     }
 
-    /// A "watch my run" push, a feed row or a link opened Map My Run.
+    /// A "watch my run" push, a feed row or a link opened FavRun.
     private func openLaunchedRun() async {
         if let id = context.launchRunId {
             context.launchRunId = nil

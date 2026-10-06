@@ -1,6 +1,6 @@
 import Foundation
 
-/// Map My Run documents: settings (single) + runs by month (never pruned).
+/// FavRun documents: settings (single) + runs by month (never pruned).
 
 public struct RunSettings: WidgetModel {
     public static let schemaVersion = 1

@@ -1,6 +1,6 @@
 import Foundation
 
-/// A run someone is sharing (Map My Run, 2026-10-06): live while they run —
+/// A run someone is sharing (FavRun, 2026-10-06): live while they run —
 /// watchers see the route, the pace, a ping every mile and can cheer — then
 /// finished, kept for everyone who watched. As the server sends it.
 public struct SharedRun: Decodable, Identifiable, Equatable, Sendable {

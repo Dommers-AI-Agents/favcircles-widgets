@@ -111,7 +111,7 @@ public final class WidgetContext: ObservableObject {
     /// An event to open (a "joined" or "new photos" push).
     public var launchEventId: String?
 
-    /// A shared run to open in Map My Run (a "watch my run" push or feed row),
+    /// A shared run to open in FavRun (a "watch my run" push or feed row),
     /// or the link token of one to join. The Run page reads and clears them.
     public var launchRunId: String?
     public var launchRunToken: String?

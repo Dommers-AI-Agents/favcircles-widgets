@@ -1,6 +1,6 @@
 import Foundation
 
-/// Map My Run: turning GPS fixes into a run (Wes, 2026-10-06). Pure, so the
+/// FavRun: turning GPS fixes into a run (Wes, 2026-10-06). Pure, so the
 /// rules that decide distance, time and records are tested on a Mac.
 
 /// One GPS reading.

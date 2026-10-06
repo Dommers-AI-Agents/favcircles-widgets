@@ -213,7 +213,7 @@ public protocol FavWidgetHost: AnyObject {
     /// saved places — tagging the bar a party bus just pulled up to.
     func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate]
 
-    /// Map My Run's lock-screen / Dynamic Island display (a Live Activity in
+    /// FavRun's lock-screen / Dynamic Island display (a Live Activity in
     /// the app). Called on start, every few seconds while running, on
     /// pause/resume; nil ends it. Default: nothing.
     func runLiveActivity(_ update: WidgetRunLiveUpdate?)
