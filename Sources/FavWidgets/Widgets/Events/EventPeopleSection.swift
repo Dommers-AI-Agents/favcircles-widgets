@@ -62,7 +62,7 @@ struct EventPeopleSection: View {
             Divider().overlay(theme.separator)
             if event.isHost {
                 Button(role: .destructive) { confirmEnd = true } label: { Text("End event").font(.system(size: 15, weight: .semibold)) }
-                Text("Ending it removes the album and places for everyone. Circles people saved stay theirs.")
+                Text("Ending it closes joining and makes the recap. Everyone keeps the album, the places and the wall.")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             } else {
                 Button(role: .destructive) { confirmLeave = true } label: { Text("Leave \(event.name)").font(.system(size: 15, weight: .semibold)) }
@@ -98,7 +98,11 @@ struct EventPeopleSection: View {
 
     private func end() {
         Task { @MainActor in
-            if (try? await EventsClient(context: context).end(model.eventId)) != nil { onGone() }
+            // Ended, not gone: the event stays with its recap (2026-10-06)
+            if (try? await EventsClient(context: context).end(model.eventId)) != nil {
+                context.host.haptic(.success)
+                await model.load()
+            }
         }
     }
 

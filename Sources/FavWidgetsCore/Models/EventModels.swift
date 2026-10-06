@@ -25,9 +25,16 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
     public let invited: [Invitee]?
     public let inviteUrl: String
     public let myCircleId: String?
+    /// 2026-10-06 (older servers omit them): ended events stay with a recap;
+    /// the coordinator's photo challenges; a roll call in progress.
+    public let endedAt: String?
+    public let challenges: [EventChallenge]?
+    public let rollCall: EventRollCall?
 
     public var inviteURL: URL? { URL(string: inviteUrl) }
     public var invitedPeople: [Invitee] { invited ?? [] }
+    public var hasEnded: Bool { endedAt != nil }
+    public var challengeList: [EventChallenge] { challenges ?? [] }
 
     public struct Invitee: Decodable, Identifiable, Equatable, Hashable, Sendable {
         public let id: String
@@ -45,11 +52,14 @@ public struct EventPhoto: Decodable, Identifiable, Equatable, Hashable, Sendable
     public let likeCount: Int
     public let likedByMe: Bool
     public let canDelete: Bool
+    /// The challenge this photo was taken for, if any
+    public let challengeId: String?
 
     public init(id: String, imageUrl: String, uploaderId: String, uploaderName: String, caption: String, createdAt: String?,
-                likeCount: Int, likedByMe: Bool, canDelete: Bool) {
+                likeCount: Int, likedByMe: Bool, canDelete: Bool, challengeId: String? = nil) {
         self.id = id; self.imageUrl = imageUrl; self.uploaderId = uploaderId; self.uploaderName = uploaderName
         self.caption = caption; self.createdAt = createdAt; self.likeCount = likeCount; self.likedByMe = likedByMe; self.canDelete = canDelete
+        self.challengeId = challengeId
     }
 }
 

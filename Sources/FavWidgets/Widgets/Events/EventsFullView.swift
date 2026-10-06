@@ -90,7 +90,7 @@ struct EventsFullView: View {
                 .background(Circle().fill(context.accent.opacity(0.15)))
             VStack(alignment: .leading, spacing: 3) {
                 Text(event.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
-                Text("\(EventCopy.memberCount(event.members.count)) · \(event.photoCount) photos · \(event.placeCount) places")
+                Text("\(event.hasEnded ? "Ended · " : "")\(EventCopy.memberCount(event.members.count)) · \(event.photoCount) photos · \(event.placeCount) places")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                 if event.isHost {
                     Text("You're the coordinator").font(.system(size: 12, weight: .medium)).foregroundStyle(context.accent)

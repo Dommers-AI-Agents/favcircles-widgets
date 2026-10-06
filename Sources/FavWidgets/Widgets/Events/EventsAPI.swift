@@ -43,9 +43,13 @@ struct EventsClient {
     func invite(_ id: String, userIds: [String]) async throws -> EventSummary? {
         let r: InviteResponse = try await context.api(.post, "widgets/events/\(id)/invite", body: ["userIds": userIds]); return r.event
     }
-    func addPhotos(_ id: String, urls: [URL]) async throws -> [EventPhoto] {
+    func addPhotos(_ id: String, urls: [URL], challengeId: String? = nil) async throws -> [EventPhoto] {
         let r: PhotosResponse = try await context.api(.post, "widgets/events/\(id)/photos",
-                                                      body: ["photos": urls.map { ["imageUrl": $0.absoluteString] }])
+                                                      body: ["photos": urls.map { url -> [String: Any] in
+                                                          var p: [String: Any] = ["imageUrl": url.absoluteString]
+                                                          if let challengeId { p["challengeId"] = challengeId }
+                                                          return p
+                                                      }])
         return r.photos
     }
     func deletePhoto(_ id: String, photo: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/photos/\(photo)") }
@@ -63,6 +67,66 @@ struct EventsClient {
         try await context.api(.post, "widgets/events/\(id)/places/\(place)/save")
     }
     func connect(userId: String) async throws { let _: OK = try await context.api(.post, "widgets/connect", body: ["targetUserId": userId]) }
+
+    // MARK: Doing things together (2026-10-06)
+
+    private struct WallResponse: Decodable { let posts: [EventWallPost]; let reactions: [String] }
+    private struct PostResponse: Decodable { let post: EventWallPost }
+    private struct SongsResponse: Decodable { let songs: [EventSong] }
+    private struct SongResponse: Decodable { let song: EventSong }
+    private struct ChallengesResponse: Decodable { let challenges: [EventChallenge] }
+    private struct RecapResponse: Decodable { let recap: EventRecap }
+    private struct PingResponse: Decodable { let pinged: Int }
+
+    func wall(_ id: String) async throws -> (posts: [EventWallPost], reactions: [String]) {
+        let r: WallResponse = try await context.api(.get, "widgets/events/\(id)/wall"); return (r.posts, r.reactions)
+    }
+    func post(_ id: String, text: String) async throws -> EventWallPost {
+        let r: PostResponse = try await context.api(.post, "widgets/events/\(id)/wall", body: ["text": text]); return r.post
+    }
+    func deletePost(_ id: String, post: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/wall/\(post)") }
+    func react(_ id: String, post: String, emoji: String) async throws -> EventWallPost {
+        let r: PostResponse = try await context.api(.post, "widgets/events/\(id)/wall/\(post)/react", body: ["emoji": emoji]); return r.post
+    }
+    func songs(_ id: String) async throws -> [EventSong] {
+        let r: SongsResponse = try await context.api(.get, "widgets/events/\(id)/songs"); return r.songs
+    }
+    func requestSong(_ id: String, title: String, artist: String?) async throws -> EventSong {
+        var body: [String: Any] = ["title": title]
+        if let artist, !artist.isEmpty { body["artist"] = artist }
+        let r: SongResponse = try await context.api(.post, "widgets/events/\(id)/songs", body: body); return r.song
+    }
+    func vote(_ id: String, song: String) async throws -> EventSong {
+        let r: SongResponse = try await context.api(.post, "widgets/events/\(id)/songs/\(song)/vote"); return r.song
+    }
+    func markPlayed(_ id: String, song: String, played: Bool) async throws -> EventSong {
+        let r: SongResponse = try await context.api(.post, "widgets/events/\(id)/songs/\(song)/played", body: ["played": played]); return r.song
+    }
+    func deleteSong(_ id: String, song: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/songs/\(song)") }
+    func addChallenges(_ id: String, _ list: [(emoji: String, text: String)]) async throws -> [EventChallenge] {
+        let r: ChallengesResponse = try await context.api(.post, "widgets/events/\(id)/challenges",
+                                                          body: ["challenges": list.map { ["emoji": $0.emoji, "text": $0.text] }])
+        return r.challenges
+    }
+    func removeChallenge(_ id: String, challenge: String) async throws -> [EventChallenge] {
+        let r: ChallengesResponse = try await context.api(.delete, "widgets/events/\(id)/challenges/\(challenge)"); return r.challenges
+    }
+    func startRollCall(_ id: String) async throws -> EventSummary {
+        let r: EventResponse = try await context.api(.post, "widgets/events/\(id)/rollcall"); return r.event
+    }
+    func answerRollCall(_ id: String, spot: WidgetCoordinate?) async throws -> EventSummary {
+        var body: [String: Any] = [:]
+        if let spot { body["lat"] = spot.latitude; body["lng"] = spot.longitude }
+        let r: EventResponse = try await context.api(.post, "widgets/events/\(id)/rollcall/here", body: body); return r.event
+    }
+    func pingMissing(_ id: String, userId: String? = nil) async throws -> Int {
+        let r: PingResponse = try await context.api(.post, "widgets/events/\(id)/rollcall/ping",
+                                                    body: userId.map { ["userId": $0] } ?? [:]); return r.pinged
+    }
+    func closeRollCall(_ id: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/rollcall") }
+    func recap(_ id: String) async throws -> EventRecap {
+        let r: RecapResponse = try await context.api(.get, "widgets/events/\(id)/recap"); return r.recap
+    }
 }
 
 /// The user's events, shared by the card and the full view.

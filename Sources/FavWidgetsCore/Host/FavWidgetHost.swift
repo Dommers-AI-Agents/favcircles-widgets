@@ -217,6 +217,12 @@ public protocol FavWidgetHost: AnyObject {
     /// the app). Called on start, every few seconds while running, on
     /// pause/resume; nil ends it. Default: nothing.
     func runLiveActivity(_ update: WidgetRunLiveUpdate?)
+
+    /// An event on the lock screen / Dynamic Island, kept current by the
+    /// server's pushes. Returns false when the phone has Live Activities off.
+    func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool
+    func stopEventLiveActivity(eventId: String) async
+    func isEventLiveActivityOn(eventId: String) -> Bool
 }
 
 public extension FavWidgetHost {
@@ -226,6 +232,21 @@ public extension FavWidgetHost {
     }
     func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate] { [] }
     func runLiveActivity(_ update: WidgetRunLiveUpdate?) {}
+    func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool { false }
+    func stopEventLiveActivity(eventId: String) async {}
+    func isEventLiveActivityOn(eventId: String) -> Bool { false }
+}
+
+/// What an event's lock-screen display starts with (the server updates it).
+public struct WidgetEventLiveStart: Equatable, Sendable {
+    public let eventId: String
+    public let name: String
+    public let emoji: String
+    public let members: Int
+    public let photos: Int
+    public init(eventId: String, name: String, emoji: String, members: Int, photos: Int) {
+        self.eventId = eventId; self.name = name; self.emoji = emoji; self.members = members; self.photos = photos
+    }
 }
 
 /// What the lock screen shows for a run in progress.
