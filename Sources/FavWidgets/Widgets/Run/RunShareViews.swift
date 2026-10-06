@@ -23,27 +23,32 @@ struct RunInviteSheet: View {
         let shown = contacts.filter { query.isEmpty || $0.displayName.localizedCaseInsensitiveContains(query) }
         WidgetSheet(title: "Watch my run", theme: theme,
                     confirm: (label: sending ? "Inviting…" : (picked.isEmpty ? "Invite" : "Invite \(picked.count)"), enabled: !sending && !picked.isEmpty, action: send)) {
-            Text("They follow your route on a map, get a ping every mile, and can cheer you on. They keep the run when you're done.")
-                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
-            Button { shareLink() } label: {
-                Label("Share a link instead", systemImage: "link").font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
-            }
-            .buttonStyle(.plain)
-            WidgetUI.textField("Search your connections", text: $query, theme: theme, height: 40)
-            if loading { ProgressView().frame(maxWidth: .infinity).padding() }
-            ForEach(shown) { person in
-                Button {
-                    if picked.contains(person.id) { picked.remove(person.id) } else { picked.insert(person.id) }
-                } label: {
-                    HStack {
-                        Text(person.displayName).font(.system(size: 16)).foregroundStyle(theme.label)
-                        Spacer()
-                        Image(systemName: picked.contains(person.id) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(picked.contains(person.id) ? context.accent : theme.secondaryLabel)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("They follow your route on a map, get a ping every mile, and can cheer you on. They keep the run when you're done.")
+                        .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    Button { shareLink() } label: {
+                        Label("Share a link instead", systemImage: "link").font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
                     }
-                    .padding(.vertical, 6).contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    WidgetUI.textField("Search your connections", text: $query, theme: theme, height: 40)
+                    if loading { ProgressView().frame(maxWidth: .infinity).padding() }
+                    ForEach(shown) { person in
+                        Button {
+                            if picked.contains(person.id) { picked.remove(person.id) } else { picked.insert(person.id) }
+                        } label: {
+                            HStack {
+                                Text(person.displayName).font(.system(size: 16)).foregroundStyle(theme.label)
+                                Spacer()
+                                Image(systemName: picked.contains(person.id) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(picked.contains(person.id) ? context.accent : theme.secondaryLabel)
+                            }
+                            .padding(.vertical, 6).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
+                .padding(16)
             }
         }
         .task {
@@ -289,14 +294,19 @@ struct RunPostSheet: View {
         let theme = context.theme
         WidgetSheet(title: "Post your run", theme: theme,
                     confirm: (label: posting ? "Posting…" : "Post", enabled: !posting, action: post)) {
-            RunMapView(coordinates: record.coordinates, followsUser: false, tint: context.accent)
-                .frame(height: 180).clipShape(RoundedRectangle(cornerRadius: 14)).allowsHitTesting(false)
-            Text("\(RunMath.distanceText(record.distanceMeters, unit: unit)) \(unit.label) · \(RunMath.clock(record.movingSeconds)) · \(RunMath.paceText(record.pace(unit)))/\(unit.label)")
-                .font(.system(size: 17, weight: .bold)).foregroundStyle(theme.label)
-            Text("Who sees it").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
-            choice("My connections", selected: listId == nil) { listId = nil }
-            ForEach(audience.lists) { list in
-                choice("\(list.name) (\(list.count))", selected: listId == list.id) { listId = list.id }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    RunMapView(coordinates: record.coordinates, followsUser: false, tint: context.accent)
+                        .frame(height: 180).clipShape(RoundedRectangle(cornerRadius: 14)).allowsHitTesting(false)
+                    Text("\(RunMath.distanceText(record.distanceMeters, unit: unit)) \(unit.label) · \(RunMath.clock(record.movingSeconds)) · \(RunMath.paceText(record.pace(unit)))/\(unit.label)")
+                        .font(.system(size: 17, weight: .bold)).foregroundStyle(theme.label)
+                    Text("Who sees it").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                    choice("My connections", selected: listId == nil) { listId = nil }
+                    ForEach(audience.lists) { list in
+                        choice("\(list.name) (\(list.count))", selected: listId == list.id) { listId = list.id }
+                    }
+                }
+                .padding(16)
             }
         }
         .task { await audience.loadIfStale(context: context) }

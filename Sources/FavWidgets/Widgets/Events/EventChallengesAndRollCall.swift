@@ -71,22 +71,27 @@ struct EventAddChallengesSheet: View {
         let suggestions = EventTogether.suggestedChallenges.filter { !existing.contains($0.text.lowercased()) }
         WidgetSheet(title: "Photo challenges", theme: theme,
                     confirm: (label: saving ? "Adding…" : "Add", enabled: !saving && (!picked.isEmpty || !custom.trimmingCharacters(in: .whitespaces).isEmpty), action: save)) {
-            Text("Everyone sees them above the album. Each one someone completes earns them a FavCoin 🌵.")
-                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
-            WidgetUI.textField("Your own (e.g. Photo with the bride)", text: $custom, theme: theme, height: 44)
-            ForEach(suggestions, id: \.text) { s in
-                Button {
-                    if picked.contains(s.text) { picked.remove(s.text) } else { picked.insert(s.text) }
-                } label: {
-                    HStack {
-                        Text(s.emoji); Text(s.text).foregroundStyle(theme.label)
-                        Spacer()
-                        Image(systemName: picked.contains(s.text) ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(picked.contains(s.text) ? context.accent : theme.secondaryLabel)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Everyone sees them above the album. Each one someone completes earns them a FavCoin 🌵.")
+                        .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    WidgetUI.textField("Your own (e.g. Photo with the bride)", text: $custom, theme: theme, height: 44)
+                    ForEach(suggestions, id: \.text) { s in
+                        Button {
+                            if picked.contains(s.text) { picked.remove(s.text) } else { picked.insert(s.text) }
+                        } label: {
+                            HStack {
+                                Text(s.emoji); Text(s.text).foregroundStyle(theme.label)
+                                Spacer()
+                                Image(systemName: picked.contains(s.text) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(picked.contains(s.text) ? context.accent : theme.secondaryLabel)
+                            }
+                            .font(.system(size: 16)).padding(.vertical, 6)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .font(.system(size: 16)).padding(.vertical, 6)
                 }
-                .buttonStyle(.plain)
+                .padding(16)
             }
         }
     }
