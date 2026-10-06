@@ -17,9 +17,22 @@ struct RunInviteSheet: View {
     @State private var contacts: [WidgetContact] = []
     @State private var picked: Set<String> = []
     @State private var query = ""
+    /// Inner Circle lists: one tap picks everyone on it (Wes, 2026-10-06)
+    @ObservedObject private var lists: WorkoutAudienceStore
     @State private var loading = true
     @State private var sending = false
     @Environment(\.dismiss) private var dismiss
+
+    init(context: WidgetContext, choosing: (initial: [RunFollower], onDone: ([RunFollower]) -> Void)? = nil) {
+        self.context = context
+        self.choosing = choosing
+        self.lists = WorkoutAudienceStore.shared(context)
+    }
+
+    /// A list's members who are your connections (the only people you can invite).
+    private func members(_ list: WorkoutFeedAPI.AudienceList) -> Set<String> {
+        Set(list.userIds).intersection(contacts.map(\.id))
+    }
 
     var body: some View {
         let theme = context.theme
@@ -39,6 +52,32 @@ struct RunInviteSheet: View {
                             Label("Share a link instead", systemImage: "link").font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
                         }
                         .buttonStyle(.plain)
+                    }
+                    let usable = lists.lists.filter { !members($0).isEmpty }
+                    if !usable.isEmpty {
+                        Text("Your Inner Circle lists").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(usable) { list in
+                                    let ids = members(list)
+                                    let all = ids.isSubset(of: picked)
+                                    Button {
+                                        if all { picked.subtract(ids) } else { picked.formUnion(ids) }
+                                        context.host.haptic(.selection)
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: all ? "checkmark.circle.fill" : "person.3.fill")
+                                            Text("\(list.name) (\(ids.count))").lineLimit(1)
+                                        }
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(all ? .white : context.accent)
+                                        .padding(.horizontal, 12).padding(.vertical, 8)
+                                        .background(Capsule().fill(all ? context.accent : context.accent.opacity(0.15)))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
                     }
                     WidgetUI.textField("Search your connections", text: $query, theme: theme, height: 40)
                     if loading { ProgressView().frame(maxWidth: .infinity).padding() }
@@ -67,6 +106,7 @@ struct RunInviteSheet: View {
                 .filter { seen.insert($0.id).inserted }
                 .sorted { $0.displayName < $1.displayName }
             if let choosing, picked.isEmpty { picked = Set(choosing.initial.map(\.id)) }
+            await lists.loadIfStale(context: context)
             loading = false
         }
     }
