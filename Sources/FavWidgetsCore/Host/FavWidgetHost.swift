@@ -212,6 +212,11 @@ public protocol FavWidgetHost: AnyObject {
     /// Any venue matching `text` near a point (Apple Maps search), not only
     /// saved places — tagging the bar a party bus just pulled up to.
     func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate]
+
+    /// Map My Run's lock-screen / Dynamic Island display (a Live Activity in
+    /// the app). Called on start, every few seconds while running, on
+    /// pause/resume; nil ends it. Default: nothing.
+    func runLiveActivity(_ update: WidgetRunLiveUpdate?)
 }
 
 public extension FavWidgetHost {
@@ -220,6 +225,28 @@ public extension FavWidgetHost {
         throw NSError(domain: "FavWidgetHost", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saving photos isn't available"])
     }
     func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate] { [] }
+    func runLiveActivity(_ update: WidgetRunLiveUpdate?) {}
+}
+
+/// What the lock screen shows for a run in progress.
+public struct WidgetRunLiveUpdate: Equatable, Sendable {
+    /// "3.12"
+    public let distance: String
+    /// "mi" / "km"
+    public let unit: String
+    /// "8:42" per unit
+    public let pace: String
+    /// Moving time so far (the clock to show while paused).
+    public let movingSeconds: Double
+    /// When running: the date the moving clock counts up from (now − moving
+    /// time), so the lock screen ticks by itself between updates.
+    public let clockStart: Date?
+    public let isPaused: Bool
+
+    public init(distance: String, unit: String, pace: String, movingSeconds: Double, clockStart: Date?, isPaused: Bool) {
+        self.distance = distance; self.unit = unit; self.pace = pace
+        self.movingSeconds = movingSeconds; self.clockStart = clockStart; self.isPaused = isPaused
+    }
 }
 
 /// A daily window, in minutes since local midnight; may cross midnight

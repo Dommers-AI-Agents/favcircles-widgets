@@ -10,12 +10,12 @@ public struct EventsWidget: FavWidget {
     public let descriptor = FavWidgetDescriptor(
         id: "events",
         title: "Events",
-        subtitle: "Party Bus photos only your group sees",
+        subtitle: "Photos and plans only your group sees",
         symbolName: "party.popper.fill",
         accentHex: "#7B2FF7",
         category: .social,
         storage: .single,
-        shareBlurb: "Start a Party Bus: everyone joins with one link, shares photos only the group can see, and saves the places you went."
+        shareBlurb: "Start an event (a party bus, a trip, a night out): everyone joins with one link, shares photos only the group can see, and saves the places you went."
     )
 
     public func makeCardView(context: WidgetContext) -> AnyView {
@@ -47,7 +47,7 @@ struct EventsCardView: View {
                         .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                 }
             } else {
-                WidgetUI.summary("Start a Party Bus 🚌 and share photos with just your group", theme: theme)
+                WidgetUI.summary("Start an event 🎉 and share photos with just your group", theme: theme)
             }
         }
         .task { await store.refresh(context) }

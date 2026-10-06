@@ -1,0 +1,177 @@
+import Foundation
+import FavWidgetsCore
+#if os(iOS)
+import CoreLocation
+import UIKit
+#endif
+
+/// The run in progress. One per app, so a run keeps going while you leave
+/// the widget, lock the phone (background location; the blue pill shows
+/// it's on) or use the rest of the app. The lock-screen Live Activity can
+/// pause, resume and finish it (`togglePause()` / `requestFinish()`).
+@MainActor
+public final class RunSession: NSObject, ObservableObject {
+    public static let shared = RunSession()
+
+    public enum Phase: Equatable { case idle, running, paused, finished }
+    public enum Problem: Equatable { case locationDenied, locationOff }
+
+    @Published public private(set) var phase: Phase = .idle
+    @Published public private(set) var track: RunTrack?
+    @Published public private(set) var now = Date()
+    @Published public private(set) var problem: Problem?
+    /// Set by the lock screen's Finish: the run page opens the summary.
+    @Published public var finishRequested = false
+    @Published public private(set) var waitingForGPS = false
+
+    public var unit: RunUnit = .localeDefault
+    private weak var host: FavWidgetHost?
+    private var ticker: Timer?
+    private var lastLivePush = Date.distantPast
+    #if os(iOS)
+    private let manager = CLLocationManager()
+    #endif
+
+    private override init() {
+        super.init()
+        #if os(iOS)
+        manager.delegate = self
+        manager.activityType = .fitness
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.distanceFilter = 5
+        manager.pausesLocationUpdatesAutomatically = false
+        #endif
+    }
+
+    public var isActive: Bool { phase == .running || phase == .paused }
+    public var movingSeconds: Double { track?.movingSeconds(at: now) ?? 0 }
+    public var distance: Double { track?.distance ?? 0 }
+    public var currentPace: Double? {
+        // Last ~400 m when there's that much, else the whole run
+        guard let samples = track?.samples, let last = samples.last else { return nil }
+        if let from = samples.last(where: { last.meters - $0.meters >= 400 }) {
+            return RunMath.pace(seconds: last.seconds - from.seconds, meters: last.meters - from.meters, unit: unit)
+        }
+        return RunMath.pace(seconds: movingSeconds, meters: distance, unit: unit)
+    }
+
+    // MARK: - Control
+
+    public func start(host: FavWidgetHost, unit: RunUnit) {
+        guard !isActive else { return }
+        self.host = host
+        self.unit = unit
+        problem = nil
+        #if os(iOS)
+        switch manager.authorizationStatus {
+        case .denied, .restricted: problem = .locationDenied; return
+        case .notDetermined: manager.requestWhenInUseAuthorization()
+        default: break
+        }
+        guard CLLocationManager.locationServicesEnabled() else { problem = .locationOff; return }
+        manager.allowsBackgroundLocationUpdates = true
+        manager.showsBackgroundLocationIndicator = true
+        manager.startUpdatingLocation()
+        UIApplication.shared.isIdleTimerDisabled = true
+        #endif
+        track = RunTrack(startedAt: Date())
+        waitingForGPS = true
+        phase = .running
+        startTicker()
+        pushLive(force: true)
+    }
+
+    public func togglePause() {
+        guard var t = track else { return }
+        if phase == .running { t.pause(at: Date()); phase = .paused } else if phase == .paused { t.resume(at: Date()); phase = .running }
+        track = t
+        now = Date()
+        pushLive(force: true)
+    }
+
+    /// From the lock screen: pause and let the run page show the summary.
+    public func requestFinish() {
+        if phase == .running { togglePause() }
+        finishRequested = true
+    }
+
+    /// Stops tracking and hands back the run to save (nil if nothing moved).
+    public func finish() -> RunTrack? {
+        guard var t = track else { return nil }
+        if !t.isPaused { t.pause(at: Date()) }
+        stopHardware()
+        phase = .finished
+        finishRequested = false
+        host?.runLiveActivity(nil)
+        let done = t
+        track = nil
+        phase = .idle
+        return done.distance > 0 || done.movingSeconds(at: Date()) > 0 ? done : nil
+    }
+
+    public func discard() {
+        stopHardware()
+        track = nil
+        phase = .idle
+        finishRequested = false
+        host?.runLiveActivity(nil)
+    }
+
+    private func stopHardware() {
+        ticker?.invalidate(); ticker = nil
+        #if os(iOS)
+        manager.stopUpdatingLocation()
+        manager.allowsBackgroundLocationUpdates = false
+        UIApplication.shared.isIdleTimerDisabled = false
+        #endif
+    }
+
+    private func startTicker() {
+        ticker?.invalidate()
+        ticker = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.now = Date()
+                self.pushLive(force: false)
+            }
+        }
+    }
+
+    /// The lock screen: on changes, and every 5 s while running (its clock
+    /// ticks by itself in between).
+    private func pushLive(force: Bool) {
+        guard let host, isActive else { return }
+        guard force || Date().timeIntervalSince(lastLivePush) >= 5 else { return }
+        lastLivePush = Date()
+        let moving = movingSeconds
+        host.runLiveActivity(WidgetRunLiveUpdate(
+            distance: RunMath.distanceText(distance, unit: unit), unit: unit.label,
+            pace: RunMath.paceText(currentPace), movingSeconds: moving,
+            clockStart: phase == .running ? Date().addingTimeInterval(-moving) : nil,
+            isPaused: phase == .paused))
+    }
+
+    fileprivate func received(_ fix: RunFix) {
+        guard var t = track else { return }
+        if t.add(fix) { waitingForGPS = false }
+        track = t
+    }
+}
+
+#if os(iOS)
+extension RunSession: CLLocationManagerDelegate {
+    nonisolated public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        let fixes = locations.map {
+            RunFix(latitude: $0.coordinate.latitude, longitude: $0.coordinate.longitude, time: $0.timestamp, accuracy: $0.horizontalAccuracy)
+        }
+        Task { @MainActor in fixes.forEach { self.received($0) } }
+    }
+
+    nonisolated public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor in
+            if status == .denied || status == .restricted, self.isActive { self.problem = .locationDenied }
+        }
+    }
+}
+#endif

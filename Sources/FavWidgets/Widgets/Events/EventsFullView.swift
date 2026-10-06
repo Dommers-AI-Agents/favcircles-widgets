@@ -139,13 +139,13 @@ extension View {
     }
 }
 
-/// Name it (default Party Bus) and pick an emoji.
+/// Name it (a Party Bus, a trip, a night out) and pick an emoji.
 struct EventCreateSheet: View {
     let context: WidgetContext
     let onCreated: (EventSummary) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var name = EventCopy.defaultName
-    @State private var emoji = "🚌"
+    @State private var name = ""
+    @State private var emoji = "🎉"
     @State private var busy = false
 
     var body: some View {
@@ -155,7 +155,7 @@ struct EventCreateSheet: View {
                     cancelDisabled: busy) {
             VStack(alignment: .leading, spacing: 18) {
                 Text(emoji).font(.system(size: 64)).frame(maxWidth: .infinity)
-                WidgetUI.textField("Event name", text: $name, theme: theme)
+                WidgetUI.textField("Event name (Party Bus, Beach weekend…)", text: $name, theme: theme)
                 Text("Pick an emoji").font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 10) {
                     ForEach(EventCopy.emojiChoices, id: \.self) { e in
