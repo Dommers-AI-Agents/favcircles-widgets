@@ -52,7 +52,11 @@ struct RunInviteSheet: View {
             }
         }
         .task {
-            contacts = ((try? await context.host.fetchConnections()) ?? []).sorted { $0.displayName < $1.displayName }
+            // One row per person (the connections list can repeat someone)
+            var seen = Set<String>()
+            contacts = ((try? await context.host.fetchConnections()) ?? [])
+                .filter { seen.insert($0.id).inserted }
+                .sorted { $0.displayName < $1.displayName }
             loading = false
         }
     }
