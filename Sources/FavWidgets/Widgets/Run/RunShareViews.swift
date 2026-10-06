@@ -11,6 +11,9 @@ import UIKit
 /// link. The run becomes watchable on the first invite.
 struct RunInviteSheet: View {
     let context: WidgetContext
+    /// Before a run: choose followers (saved; invited when the run starts)
+    /// instead of inviting right now.
+    var choosing: (initial: [RunFollower], onDone: ([RunFollower]) -> Void)?
     @State private var contacts: [WidgetContact] = []
     @State private var picked: Set<String> = []
     @State private var query = ""
@@ -21,16 +24,22 @@ struct RunInviteSheet: View {
     var body: some View {
         let theme = context.theme
         let shown = contacts.filter { query.isEmpty || $0.displayName.localizedCaseInsensitiveContains(query) }
-        WidgetSheet(title: "Watch my run", theme: theme,
-                    confirm: (label: sending ? "Inviting…" : (picked.isEmpty ? "Invite" : "Invite \(picked.count)"), enabled: !sending && !picked.isEmpty, action: send)) {
+        WidgetSheet(title: choosing == nil ? "Watch my run" : "Who follows your runs", theme: theme,
+                    confirm: choosing != nil
+                        ? (label: "Done", enabled: true, action: saveChoice)
+                        : (label: sending ? "Inviting…" : (picked.isEmpty ? "Invite" : "Invite \(picked.count)"), enabled: !sending && !picked.isEmpty, action: send)) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("They follow your route on a map, get a ping every mile, and can cheer you on. They keep the run when you're done.")
+                    Text(choosing != nil
+                         ? "When you start a run they get \"watch live\" automatically: your route on a map, a ping every mile, and they can cheer you on. Saved for next time."
+                         : "They follow your route on a map, get a ping every mile, and can cheer you on. They keep the run when you're done.")
                         .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
-                    Button { shareLink() } label: {
-                        Label("Share a link instead", systemImage: "link").font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                    if choosing == nil {
+                        Button { shareLink() } label: {
+                            Label("Share a link instead", systemImage: "link").font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     WidgetUI.textField("Search your connections", text: $query, theme: theme, height: 40)
                     if loading { ProgressView().frame(maxWidth: .infinity).padding() }
                     ForEach(shown) { person in
@@ -57,8 +66,16 @@ struct RunInviteSheet: View {
             contacts = ((try? await context.host.fetchConnections()) ?? [])
                 .filter { seen.insert($0.id).inserted }
                 .sorted { $0.displayName < $1.displayName }
+            if let choosing, picked.isEmpty { picked = Set(choosing.initial.map(\.id)) }
             loading = false
         }
+    }
+
+    private func saveChoice() {
+        let chosen = contacts.filter { picked.contains($0.id) }.map { RunFollower(id: $0.id, name: $0.displayName) }
+        context.track("run_followers_chosen", ["count": "\(chosen.count)"])
+        choosing?.onDone(chosen)
+        dismiss()
     }
 
     private func send() {

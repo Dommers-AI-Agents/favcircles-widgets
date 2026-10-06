@@ -3,15 +3,34 @@ import Foundation
 /// FavRun documents: settings (single) + runs by month (never pruned).
 
 public struct RunSettings: WidgetModel {
-    public static let schemaVersion = 1
+    /// 2 (2026-10-06): followers chosen before a run (`followers`).
+    public static let schemaVersion = 2
     public var unit: RunUnit
     /// For the calorie estimate; nil = 70 kg.
     public var weightKg: Double?
+    /// Who gets "watch live" when a run starts — picked before running,
+    /// remembered for next time (Wes: you're running, not tapping the app).
+    public var followers: [RunFollower]?
 
-    public init(unit: RunUnit = .localeDefault, weightKg: Double? = nil) {
-        self.unit = unit; self.weightKg = weightKg
+    public init(unit: RunUnit = .localeDefault, weightKg: Double? = nil, followers: [RunFollower]? = nil) {
+        self.unit = unit; self.weightKg = weightKg; self.followers = followers
+    }
+
+    public var followerList: [RunFollower] { followers ?? [] }
+
+    /// "Brittany, Sal" / "Brittany, Sal +2"
+    public var followersLine: String? {
+        let names = followerList.map(\.name)
+        guard !names.isEmpty else { return nil }
+        return names.prefix(2).joined(separator: ", ") + (names.count > 2 ? " +\(names.count - 2)" : "")
     }
     public static let empty = RunSettings()
+}
+
+public struct RunFollower: Codable, Equatable, Hashable, Sendable {
+    public let id: String
+    public let name: String
+    public init(id: String, name: String) { self.id = id; self.name = name }
 }
 
 public struct RunRecord: Codable, Equatable, Identifiable, Sendable {

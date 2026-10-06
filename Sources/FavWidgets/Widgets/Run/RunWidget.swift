@@ -100,7 +100,7 @@ struct RunFullView: View {
     private func start() {
         context.track("run_start")
         context.host.haptic(.success)
-        RunSession.shared.start(context: context, unit: settings.model.unit)
+        RunSession.shared.start(context: context, unit: settings.model.unit, followers: settings.model.followerList)
     }
 
     private func finish() {
@@ -219,13 +219,7 @@ struct ActiveRunView: View {
             .background(theme.secondaryBackground)
         }
         .sheet(isPresented: $showInvite) { RunInviteSheet(context: context) }
-        .task {
-            // "Start & invite people to follow"
-            guard session.wantsInviteOnStart else { return }
-            session.wantsInviteOnStart = false
-            await context.waitForPageToSettle()
-            showInvite = true
-        }
+
         .confirmationDialog("Finish this run?", isPresented: $confirmEnd, titleVisibility: .visible) {
             Button("Finish and review") { onFinish() }
             Button("Discard run", role: .destructive) { RunSession.shared.cancelLive(); RunSession.shared.discard() }
@@ -261,6 +255,7 @@ struct RunHomeView: View {
     @State private var opened: RunRecord?
     @State private var shared: [SharedRun] = []
     @State private var watchingId: String?
+    @State private var choosingFollowers = false
 
     var body: some View {
         let theme = context.theme
@@ -276,11 +271,19 @@ struct RunHomeView: View {
                     .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(context.accent))
                 }
                 .buttonStyle(.plain)
-                Button { RunSession.shared.wantsInviteOnStart = true; onStart() } label: {
-                    Label("Start & invite people to follow", systemImage: "person.2.wave.2.fill")
-                        .font(.system(size: 16, weight: .bold)).foregroundStyle(context.accent)
-                        .frame(maxWidth: .infinity).frame(height: 50)
-                        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(context.accent, lineWidth: 2))
+                Button { choosingFollowers = true } label: {
+                    HStack(spacing: 12) {
+                        Text("👀").font(.system(size: 26))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Followers").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                            Text(settings.model.followersLine.map { "\($0) will follow this run" } ?? "Nobody yet — choose who can follow")
+                                .font(.system(size: 16, weight: .bold)).foregroundStyle(theme.label).lineLimit(1)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(theme.secondaryLabel)
+                    }
+                    .padding(14)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.secondaryBackground))
                 }
                 .buttonStyle(.plain)
                 Text("Your route, distance and pace show on the lock screen while you run. Friends you invite follow along on a map, get a ping every mile and can cheer you on.")
@@ -353,6 +356,11 @@ struct RunHomeView: View {
         }
         .sheet(item: Binding(get: { watchingId.map { RunFullView.WatchTarget(id: $0) } }, set: { watchingId = $0?.id })) { t in
             RunWatchView(context: context, runId: t.id)
+        }
+        .sheet(isPresented: $choosingFollowers) {
+            RunInviteSheet(context: context, choosing: (initial: settings.model.followerList, onDone: { chosen in
+                settings.update { $0.followers = chosen }
+            }))
         }
         .sheet(item: $opened) { run in
             RunSummaryView(context: context, run: run, unit: unit, isNew: false, onSave: {}, onDiscard: { opened = nil })

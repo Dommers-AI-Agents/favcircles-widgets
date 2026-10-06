@@ -88,3 +88,18 @@ struct RunMathTests {
         #expect(merged.runs.count == 2)
     }
 }
+
+struct RunFollowersTests {
+    @Test func olderSettingsWithoutFollowersStillLoad() throws {
+        let s = try JSONDecoder().decode(RunSettings.self, from: Data(#"{"unit":"mi"}"#.utf8))
+        #expect(s.followerList.isEmpty && s.followersLine == nil)
+    }
+
+    @Test func followersLine() {
+        var s = RunSettings(unit: .miles)
+        s.followers = [RunFollower(id: "b", name: "Brittany"), RunFollower(id: "s", name: "Sal")]
+        #expect(s.followersLine == "Brittany, Sal")
+        s.followers?.append(contentsOf: [RunFollower(id: "j", name: "Joe"), RunFollower(id: "r", name: "Renee")])
+        #expect(s.followersLine == "Brittany, Sal +2")
+    }
+}

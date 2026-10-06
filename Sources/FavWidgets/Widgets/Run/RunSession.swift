@@ -34,8 +34,8 @@ public final class RunSession: NSObject, ObservableObject {
     @Published public var newCheer: SharedRun.Cheer?
     /// Who's following along right now ("Sal, Brit")
     @Published public private(set) var watcherNames: [String] = []
-    /// Started with "Start & invite people to follow": the run screen opens the invite list
-    @Published public var wantsInviteOnStart = false
+    /// Followers chosen before the run: invited as soon as it starts
+    private var followersToInvite: [String] = []
     private var seenCheers = Set<String>()
     private var lastLiveSync = Date.distantPast
     private var lastSyncedSplits = 0
@@ -71,8 +71,9 @@ public final class RunSession: NSObject, ObservableObject {
 
     // MARK: - Control
 
-    public func start(context: WidgetContext, unit: RunUnit) {
+    public func start(context: WidgetContext, unit: RunUnit, followers: [RunFollower] = []) {
         guard !isActive else { return }
+        followersToInvite = followers.map(\.id)
         self.context = context
         self.host = context.host
         liveRun = nil; newCheer = nil; seenCheers = []; lastSyncedSplits = 0; watcherNames = []
@@ -95,6 +96,20 @@ public final class RunSession: NSObject, ObservableObject {
         phase = .running
         startTicker()
         pushLive(force: true)
+        inviteChosenFollowers()
+    }
+
+    /// The run is live for the followers picked before it: their "watch
+    /// live" push goes out now, nothing to tap mid-run.
+    private func inviteChosenFollowers() {
+        let ids = followersToInvite
+        followersToInvite = []
+        guard !ids.isEmpty, let context else { return }
+        Task { @MainActor in
+            guard let run = try? await shareLive() else { return }
+            _ = try? await RunShareClient(context: context).invite(run.id, userIds: ids)
+            context.track("run_followers_invited", ["count": "\(ids.count)"])
+        }
     }
 
     public func togglePause() {
