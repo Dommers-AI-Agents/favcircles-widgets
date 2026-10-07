@@ -100,7 +100,8 @@ struct RunFullView: View {
     private func start() {
         context.track("run_start")
         context.host.haptic(.success)
-        RunSession.shared.start(context: context, unit: settings.model.unit, followers: settings.model.followerList)
+        RunSession.shared.start(context: context, unit: settings.model.unit, followers: settings.model.followerList,
+                                coach: settings.model.coachOn, coachIntensity: settings.model.coachLevel)
     }
 
     private func finish() {
@@ -172,6 +173,22 @@ struct ActiveRunView: View {
                     }
                 }
                 .animation(.spring(), value: session.newCheer)
+                .overlay(alignment: .topTrailing) {
+                    // Coach Mane on/off mid-run
+                    Button {
+                        session.coachOn.toggle()
+                        context.host.haptic(.light)
+                        if !session.coachOn { CoachVoice.shared.stop() }
+                    } label: {
+                        Text(session.coachOn ? "📣" : "🔇").font(.system(size: 22))
+                            .frame(width: 46, height: 46)
+                            .background(Circle().fill(theme.background.opacity(0.9)))
+                            .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(session.coachOn ? "Mute Coach Mane" : "Turn on Coach Mane")
+                    .padding(.top, 60).padding(.trailing, 14)
+                }
             VStack(spacing: 14) {
                 Button { showInvite = true } label: {
                     Text(inviteLabel)
@@ -257,6 +274,46 @@ struct RunHomeView: View {
     @State private var watchingId: String?
     @State private var choosingFollowers = false
 
+    /// Coach Mane yells after every mile (2026-10-07)
+    @ViewBuilder private func coachRow(_ theme: WidgetTheme) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: Binding(get: { settings.model.coachOn }, set: { on in
+                settings.update { $0.coach = on }
+                context.host.haptic(.light)
+                context.track("run_coach_toggle", ["on": on ? "1" : "0"])
+                if on { CoachVoice.shared.say(Self.coachHello(settings.model.coachLevel, unit: settings.model.unit)) } else { CoachVoice.shared.stop() }
+            })) {
+                HStack(spacing: 12) {
+                    Text("📣").font(.system(size: 26))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Coach Mane").font(.system(size: 16, weight: .bold)).foregroundStyle(theme.label)
+                        Text("Yells at you after every \(settings.model.unit == .miles ? "mile" : "kilometer")")
+                            .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                    }
+                }
+            }
+            .tint(context.accent)
+            if settings.model.coachOn {
+                Picker("Coach", selection: Binding(get: { settings.model.coachLevel }, set: { level in
+                    settings.update { $0.coachIntensity = level }
+                    CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit))
+                })) {
+                    ForEach(MotivationIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    static func coachHello(_ level: MotivationIntensity, unit: RunUnit) -> String {
+        let word = unit == .miles ? "mile" : "K"
+        return level == .savage
+            ? "Coach Mane here. Every \(word), I'll tell you how slow you were. Don't make me sad."
+            : "Coach Mane here. Every \(word), I'll tell you how you did and keep you going."
+    }
+
     var body: some View {
         let theme = context.theme
         let unit = settings.model.unit
@@ -286,6 +343,7 @@ struct RunHomeView: View {
                     .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.secondaryBackground))
                 }
                 .buttonStyle(.plain)
+                coachRow(theme)
                 Text("Your route, distance and pace show on the lock screen while you run. Friends you invite follow along on a map, get a ping every mile and can cheer you on.")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
 

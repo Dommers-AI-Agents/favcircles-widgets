@@ -4,17 +4,26 @@ import Foundation
 
 public struct RunSettings: WidgetModel {
     /// 2 (2026-10-06): followers chosen before a run (`followers`).
-    public static let schemaVersion = 2
+    /// 3 (2026-10-07): Coach Mane yells at every mile (`coach`, `coachIntensity`).
+    public static let schemaVersion = 3
     public var unit: RunUnit
     /// For the calorie estimate; nil = 70 kg.
     public var weightKg: Double?
     /// Who gets "watch live" when a run starts — picked before running,
     /// remembered for next time (Wes: you're running, not tapping the app).
     public var followers: [RunFollower]?
+    /// Coach Mane speaks after every mile/km (off unless turned on)
+    public var coach: Bool?
+    public var coachIntensity: MotivationIntensity?
 
-    public init(unit: RunUnit = .localeDefault, weightKg: Double? = nil, followers: [RunFollower]? = nil) {
+    public init(unit: RunUnit = .localeDefault, weightKg: Double? = nil, followers: [RunFollower]? = nil,
+                coach: Bool? = nil, coachIntensity: MotivationIntensity? = nil) {
         self.unit = unit; self.weightKg = weightKg; self.followers = followers
+        self.coach = coach; self.coachIntensity = coachIntensity
     }
+
+    public var coachOn: Bool { coach ?? false }
+    public var coachLevel: MotivationIntensity { coachIntensity ?? .savage }
 
     public var followerList: [RunFollower] { followers ?? [] }
 

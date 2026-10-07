@@ -25,6 +25,10 @@ public final class RunSession: NSObject, ObservableObject {
     @Published public private(set) var waitingForGPS = false
 
     public var unit: RunUnit = .localeDefault
+    /// Coach Mane yells after every mile/km (can be muted mid-run)
+    @Published public var coachOn = false
+    public var coachIntensity: MotivationIntensity = .savage
+    private var coachedSplits = 0
     private weak var host: FavWidgetHost?
     private var context: WidgetContext?
 
@@ -71,8 +75,10 @@ public final class RunSession: NSObject, ObservableObject {
 
     // MARK: - Control
 
-    public func start(context: WidgetContext, unit: RunUnit, followers: [RunFollower] = []) {
+    public func start(context: WidgetContext, unit: RunUnit, followers: [RunFollower] = [],
+                      coach: Bool = false, coachIntensity: MotivationIntensity = .savage) {
         guard !isActive else { return }
+        coachOn = coach; self.coachIntensity = coachIntensity; coachedSplits = 0
         followersToInvite = followers.map(\.id)
         self.context = context
         self.host = context.host
@@ -150,6 +156,7 @@ public final class RunSession: NSObject, ObservableObject {
 
     private func stopHardware() {
         ticker?.invalidate(); ticker = nil
+        CoachVoice.shared.stop()
         #if os(iOS)
         manager.stopUpdatingLocation()
         manager.allowsBackgroundLocationUpdates = false
@@ -249,6 +256,19 @@ public final class RunSession: NSObject, ObservableObject {
         guard var t = track else { return }
         if t.add(fix) { waitingForGPS = false }
         track = t
+        coachIfMileDone()
+    }
+
+    /// A mile (or km) just ticked over: Coach Mane says how it went, then
+    /// gives you grief. Only the newest one, never a backlog.
+    private func coachIfMileDone() {
+        guard phase == .running, let track, Int(track.distance / unit.meters) > coachedSplits else { return }
+        let splits = RunMath.splits(track.samples, unit: unit)
+        guard splits.count > coachedSplits else { return }
+        coachedSplits = splits.count
+        guard coachOn else { return }
+        CoachVoice.shared.say(CoachRunCalls.call(splits: splits, index: splits.count - 1, unit: unit, intensity: coachIntensity))
+        context?.track("run_coach_spoke", ["split": "\(splits.count)"])
     }
 }
 
