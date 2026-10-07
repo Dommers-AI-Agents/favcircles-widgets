@@ -223,6 +223,21 @@ public protocol FavWidgetHost: AnyObject {
     func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool
     func stopEventLiveActivity(eventId: String) async
     func isEventLiveActivityOn(eventId: String) -> Bool
+
+    // MARK: Notification permission (added in 0.33.0)
+
+    /// Whether this phone lets FavCircles send pushes.
+    func notificationPermission() async -> WidgetNotificationPermission
+    /// Shows the iPhone prompt (only possible while `.notDetermined`) and
+    /// registers for pushes when allowed. Returns whether they're on now.
+    func requestNotificationPermission() async -> Bool
+    /// FavCircles in iPhone Settings, for someone who said no before.
+    func openNotificationSettings()
+}
+
+/// Push permission as a widget needs to know it.
+public enum WidgetNotificationPermission: String, Sendable {
+    case notDetermined, denied, allowed
 }
 
 public extension FavWidgetHost {
@@ -235,6 +250,10 @@ public extension FavWidgetHost {
     func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool { false }
     func stopEventLiveActivity(eventId: String) async {}
     func isEventLiveActivityOn(eventId: String) -> Bool { false }
+    // An app that doesn't report permission counts as allowed: no nagging
+    func notificationPermission() async -> WidgetNotificationPermission { .allowed }
+    func requestNotificationPermission() async -> Bool { false }
+    func openNotificationSettings() {}
 }
 
 /// What an event's lock-screen display starts with (the server updates it).

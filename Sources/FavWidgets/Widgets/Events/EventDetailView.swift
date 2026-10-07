@@ -58,6 +58,7 @@ struct EventDetailView: View {
                                   systemImage: "archivebox")
                                 .font(.system(size: 13, weight: .medium)).foregroundStyle(theme.secondaryLabel)
                         }
+                        EventNotificationNudge(context: context, event: event)
                         header(event, theme: theme)
                         if event.hasEnded { recapCard(event, theme: theme) }
                         if let rollCall = event.rollCall {

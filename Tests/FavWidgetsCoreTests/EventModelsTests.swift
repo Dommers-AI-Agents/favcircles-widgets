@@ -57,3 +57,17 @@ struct EventArchiveTests {
         #expect(archived.isArchived && archived.isArchivedForEveryone)
     }
 }
+
+struct EventNotificationNudgeTests {
+    @Test func nudgeByPermission() {
+        #expect(EventCopy.notificationNudge(.allowed, eventName: "Party Bus") == nil)
+        #expect(EventCopy.notificationNudge(.notDetermined, eventName: "Party Bus")?.button == "Turn on notifications")
+        #expect(EventCopy.notificationNudge(.denied, eventName: "Party Bus")?.button == "Open Settings")
+    }
+
+    @Test func coordinatorSummary() {
+        #expect(EventCopy.pushOffSummary(count: 0) == nil)
+        #expect(EventCopy.pushOffSummary(count: 1)?.hasPrefix("1 person") == true)
+        #expect(EventCopy.pushOffSummary(count: 3)?.hasPrefix("3 people") == true)
+    }
+}

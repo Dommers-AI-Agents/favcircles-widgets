@@ -26,6 +26,8 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
     /// Out of the viewer's list (by them, or by the coordinator for everyone)
     public let archived: Bool?
     public let archivedForEveryone: Bool?
+    /// Coordinator only: members pushes can't reach (notifications off / no device)
+    public let pushOffMemberIds: [String]?
     public let inviteUrl: String
     public let myCircleId: String?
     /// 2026-10-06 (older servers omit them): ended events stay with a recap;
@@ -38,6 +40,7 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
     public var invitedPeople: [Invitee] { invited ?? [] }
     public var isArchived: Bool { archived ?? false }
     public var isArchivedForEveryone: Bool { archivedForEveryone ?? false }
+    public var pushOffIds: Set<String> { Set(pushOffMemberIds ?? []) }
     public var hasEnded: Bool { endedAt != nil }
     public var challengeList: [EventChallenge] { challenges ?? [] }
 
@@ -123,6 +126,26 @@ public enum EventCopy {
     /// The text that rides with the invite link in a group message.
     public static func inviteText(_ event: EventSummary) -> String {
         "\(event.emoji) Join \(event.name) on FavCircles! Tap to join, share photos and save the places we go: \(event.inviteUrl)"
+    }
+
+    /// The "turn on notifications" card on an event. nil = nothing to show.
+    public static func notificationNudge(_ permission: WidgetNotificationPermission, eventName: String) -> (message: String, button: String)? {
+        switch permission {
+        case .allowed: return nil
+        case .notDetermined:
+            return ("Turn on notifications so you don't miss roll call and new photos in \(eventName).", "Turn on notifications")
+        case .denied:
+            return ("Notifications are off for FavCircles, so you'll miss roll call and new photos in \(eventName).", "Open Settings")
+        }
+    }
+
+    /// The coordinator's line in People: who pushes won't reach.
+    public static func pushOffSummary(count: Int) -> String? {
+        switch count {
+        case 0: return nil
+        case 1: return "1 person can't get notifications. Text them about roll call."
+        default: return "\(count) people can't get notifications. Text them about roll call."
+        }
     }
 
     /// The invite sheet's send button: names how many are ticked, never "0".

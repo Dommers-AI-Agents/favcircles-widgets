@@ -30,6 +30,10 @@ struct EventPeopleSection: View {
                 Text("Connections land in your \(event.name) Inner Circle, so sharing with this crew later is one tap.")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             }
+            if event.isHost, let summary = EventCopy.pushOffSummary(count: event.pushOffIds.count) {
+                Label(summary, systemImage: "bell.slash")
+                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+            }
             ForEach(event.members) { member in
                 HStack(spacing: 12) {
                     EventAvatar(member: member, size: 40)
@@ -40,6 +44,10 @@ struct EventPeopleSection: View {
                         else if requested.contains(member.id) { Text("Request sent").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel) }
                     }
                     Spacer()
+                    if event.isHost && event.pushOffIds.contains(member.id) {
+                        Image(systemName: "bell.slash").foregroundStyle(theme.secondaryLabel)
+                            .accessibilityLabel("Can't get notifications")
+                    }
                     if event.isHost && member.id != myId {
                         Menu {
                             Button(role: .destructive) { remove(member) } label: { Label("Remove from \(event.name)", systemImage: "person.fill.xmark") }
