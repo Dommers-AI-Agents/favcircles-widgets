@@ -29,6 +29,7 @@ public extension FavWidget {
 public enum FavWidgetRegistry {
     public static let all: [any FavWidget] = [
         WaterWidget(),
+        WeatherWidget(),
         HabitWidget(),
         CalorieWidget(),
         WorkoutWidget(),
