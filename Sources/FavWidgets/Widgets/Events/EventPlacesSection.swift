@@ -7,6 +7,7 @@ struct EventPlacesSection: View {
     let context: WidgetContext
     @ObservedObject var model: EventDetailModel
     let event: EventSummary
+    var onShowMap: () -> Void = {}
     @State private var tagging = false
     @State private var saving: String?
 
@@ -21,6 +22,21 @@ struct EventPlacesSection: View {
                     .foregroundStyle(context.accent)
             }
             .buttonStyle(.plain)
+            if !model.places.isEmpty {
+                // A peek at the map; tap for the full one
+                Button(action: onShowMap) {
+                    EventPlacesMap(places: model.places, selectedId: .constant(nil), accent: context.accent, interactive: false)
+                        .frame(height: 170)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(alignment: .bottomTrailing) {
+                            Label("See the map", systemImage: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 13, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(Capsule().fill(Color.black.opacity(0.7))).padding(8)
+                        }
+                }
+                .buttonStyle(.plain)
+            }
             if model.places.isEmpty {
                 Text("Tag the spots you hit tonight. Anyone can add them to their own \(event.name) circle with one tap.")
                     .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)

@@ -33,6 +33,7 @@ struct EventDetailView: View {
     @State private var pendingChallengeId: String?
     @State private var toast: String?
     @State private var onLockScreen = false
+    @State private var showMap = false
     @Environment(\.dismiss) private var dismiss
 
     enum Tab: String, CaseIterable { case photos = "Photos", wall = "Wall", songs = "Songs", places = "Places", people = "People" }
@@ -79,7 +80,7 @@ struct EventDetailView: View {
                             photosSection(event, theme: theme)
                         case .wall: EventWallSection(context: context, event: event)
                         case .songs: EventSongsSection(context: context, event: event)
-                        case .places: EventPlacesSection(context: context, model: model, event: event)
+                        case .places: EventPlacesSection(context: context, model: model, event: event, onShowMap: { showMap = true })
                         case .people: EventPeopleSection(context: context, model: model, event: event, onGone: { dismiss(); onGone() })
                         }
                     } else if let error = model.error {
@@ -163,6 +164,11 @@ struct EventDetailView: View {
             Button("Choose from library") { pendingChallengeId = challengeForPhoto?.id; showChallengeLibrary = true }
         }
         .sheet(isPresented: $showRecap) { EventRecapView(context: context, eventId: eventId) }
+        .sheet(isPresented: $showMap) {
+            if let event = model.detail?.event {
+                EventMapSheet(context: context, model: model, event: event) { circleId in openCircle(circleId) }
+            }
+        }
         .sheet(isPresented: $showAddChallenges) {
             if let event = model.detail?.event {
                 EventAddChallengesSheet(context: context, event: event) { _ in Task { await model.load() } }
@@ -229,6 +235,9 @@ struct EventDetailView: View {
             Button { showInvite = true } label: { actionLabel("Invite", "person.badge.plus", theme: theme) }
                 .buttonStyle(.plain)
                 .disabled(!event.joinOpen)
+            // Every place the group tagged, on a map (Wes, 2026-10-07)
+            Button { showMap = true; context.track("event_map_opened") } label: { actionLabel("Map", "map.fill", theme: theme) }
+                .buttonStyle(.plain)
             if !event.hasEnded {
                 Button { toggleLockScreen(event) } label: {
                     actionLabel(onLockScreen ? "On Lock Screen" : "Lock Screen", onLockScreen ? "checkmark.circle.fill" : "iphone.gen3", theme: theme)
@@ -475,6 +484,18 @@ struct EventDetailView: View {
                 context.host.presentAlert(WidgetAlert(title: "Live Activities are off",
                                                       message: "Turn on Live Activities for FavCircles in Settings to keep the event on your Lock Screen."))
             }
+        }
+    }
+
+    /// The event circle on the profile: close the event, then open it there.
+    private func openCircle(_ circleId: String) {
+        showMap = false
+        context.track("event_circle_opened")
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            dismiss()
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            if let url = URL(string: "circles://circle/\(circleId)") { context.host.openURL(url) }
         }
     }
 

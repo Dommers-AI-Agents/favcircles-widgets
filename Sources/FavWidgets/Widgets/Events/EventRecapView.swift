@@ -179,7 +179,12 @@ struct EventRecapMap: View {
     private struct IndexedSpot: Identifiable { let i: Int; let spot: EventRecap.Spot; var id: Int { i } }
 
     static func region(_ spots: [EventRecap.Spot]) -> MKCoordinateRegion {
-        let lats = spots.map(\.lat), lngs = spots.map(\.lng)
+        region(coordinates: spots.map { ($0.lat, $0.lng) })
+    }
+
+    /// The smallest region showing every point (with a margin).
+    static func region(coordinates: [(lat: Double, lng: Double)]) -> MKCoordinateRegion {
+        let lats = coordinates.map(\.lat), lngs = coordinates.map(\.lng)
         guard let minLat = lats.min(), let maxLat = lats.max(), let minLng = lngs.min(), let maxLng = lngs.max() else {
             return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: 35.2, longitude: -80.8), span: MKCoordinateSpan(latitudeDelta: 0.2, longitudeDelta: 0.2))
         }
