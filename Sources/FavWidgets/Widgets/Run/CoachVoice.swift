@@ -72,7 +72,7 @@ final class CoachVoice: NSObject {
     // Lines kept on the phone (Caches: the system may clear them; they're refetched)
     private static func cacheFile(_ text: String, _ intensity: MotivationIntensity) -> URL? {
         guard let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("CoachMane", isDirectory: true) else { return nil }
+            .appendingPathComponent("CoachMane-v2", isDirectory: true) else { return nil } // v2: one voice for both levels
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let name = (intensity.rawValue + "|" + text).utf8.reduce(into: UInt64(14_695_981_039_346_656_037)) { h, b in
             h = (h ^ UInt64(b)) &* 1_099_511_628_211
