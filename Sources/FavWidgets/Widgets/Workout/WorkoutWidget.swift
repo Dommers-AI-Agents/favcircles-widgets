@@ -36,6 +36,17 @@ public struct WorkoutWidget: FavWidget {
     public func makeFullView(context: WidgetContext) -> AnyView {
         AnyView(WorkoutFullView(context: context, settings: context.state(WorkoutSettings.self)))
     }
+
+    /// Someone's shared workout on its own — the activity feed opens it over
+    /// the feed instead of switching tabs and pushing the Workouts page
+    /// first (that took three animations before the fetch even started).
+    /// `previewTitle`/`previewDetail` show while it loads; `onStarted` runs
+    /// after "Start this workout" so the host can show the live session.
+    public func makePostView(context: WidgetContext, postId: String, previewTitle: String? = nil,
+                             previewDetail: String? = nil, onStarted: (() -> Void)? = nil) -> AnyView {
+        AnyView(WorkoutPostView(context: context, settings: context.state(WorkoutSettings.self), postId: postId,
+                                previewTitle: previewTitle, previewDetail: previewDetail, onStarted: onStarted))
+    }
 }
 
 // MARK: - History for prefill

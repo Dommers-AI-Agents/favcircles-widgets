@@ -10,6 +10,12 @@ struct WorkoutPostView: View {
     let postId: String
     /// Already in hand (the Inner Circle list has it); skips the fetch
     var initialPost: WorkoutFeedAPI.Post?
+    /// What the feed row already knows, shown while the workout loads
+    var previewTitle: String?
+    var previewDetail: String?
+    /// Opened from outside the widget (the activity feed): after Start, the
+    /// host opens the Workouts page so the live workout is on screen
+    var onStarted: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var post: WorkoutFeedAPI.Post?
@@ -31,6 +37,19 @@ struct WorkoutPostView: View {
                         Text("This workout isn't available.").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
                         Text("It may have been shared with a smaller group.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let previewTitle {
+                    // The row's own words straight away, the details a moment later
+                    VStack(spacing: 10) {
+                        Image(systemName: "dumbbell.fill").font(.system(size: 34)).foregroundStyle(context.accent)
+                        Text(previewTitle).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.label)
+                            .multilineTextAlignment(.center)
+                        if let previewDetail, !previewDetail.isEmpty {
+                            Text(previewDetail).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
+                        }
+                        ProgressView().padding(.top, 6)
+                    }
+                    .padding(24)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -155,6 +174,7 @@ struct WorkoutPostView: View {
         context.host.haptic(.light)
         context.track("workout_started", ["routine": "copied"])
         dismiss()
+        onStarted?()
     }
 
     private func avatar(_ post: WorkoutFeedAPI.Post) -> some View {
