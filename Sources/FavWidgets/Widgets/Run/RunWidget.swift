@@ -406,6 +406,11 @@ struct RunHomeView: View {
             .padding(16)
         }
         .task {
+            // Coach Mane's hello ready before the toggle is touched
+            await settings.loadIfNeeded()
+            for level in MotivationIntensity.allCases {
+                CoachVoice.shared.prefetch(Self.coachHello(level, unit: settings.model.unit), intensity: level, context: context)
+            }
             if loadedMonths.isEmpty {
                 await load(context.currentMonth)
                 await load(context.currentMonth.previous)

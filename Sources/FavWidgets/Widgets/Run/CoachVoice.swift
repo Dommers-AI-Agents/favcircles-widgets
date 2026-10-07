@@ -32,6 +32,8 @@ final class CoachVoice: NSObject {
         guard !text.isEmpty else { return }
         let line = UUID()
         currentLine = line
+        // Heard before (or fetched ahead): instant
+        if let audio = Self.cached(text, intensity), play(audio) { return }
         guard let context else { speakOnDevice(text); return }
         Task { @MainActor in
             let audio = await Self.fetch(text, intensity: intensity, context: context)
@@ -48,14 +50,41 @@ final class CoachVoice: NSObject {
         releaseAudio()
     }
 
+    /// Fetches a line ahead of time (the hello, when FavRun opens) so
+    /// turning him on speaks at once instead of after the ~6 s it takes.
+    func prefetch(_ text: String, intensity: MotivationIntensity, context: WidgetContext) {
+        guard Self.cached(text, intensity) == nil else { return }
+        Task { _ = await Self.fetch(text, intensity: intensity, context: context) }
+    }
+
     private static func fetch(_ text: String, intensity: MotivationIntensity, context: WidgetContext) async -> Data? {
-        await withTaskGroup(of: Data?.self) { group in
+        let audio = await withTaskGroup(of: Data?.self) { group in
             group.addTask { try? await RunShareClient(context: context).coachVoice(text, intensity: intensity) }
             group.addTask { try? await Task.sleep(nanoseconds: cloudTimeout); return nil }
             let first = await group.next() ?? nil
             group.cancelAll()
             return first
         }
+        if let audio { store(audio, text, intensity) }
+        return audio
+    }
+
+    // Lines kept on the phone (Caches: the system may clear them; they're refetched)
+    private static func cacheFile(_ text: String, _ intensity: MotivationIntensity) -> URL? {
+        guard let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("CoachMane", isDirectory: true) else { return nil }
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let name = (intensity.rawValue + "|" + text).utf8.reduce(into: UInt64(14_695_981_039_346_656_037)) { h, b in
+            h = (h ^ UInt64(b)) &* 1_099_511_628_211
+        }
+        return dir.appendingPathComponent(String(name, radix: 16) + ".mp3")
+    }
+    private static func cached(_ text: String, _ intensity: MotivationIntensity) -> Data? {
+        cacheFile(text, intensity).flatMap { try? Data(contentsOf: $0) }
+    }
+    private static func store(_ audio: Data, _ text: String, _ intensity: MotivationIntensity) {
+        guard let url = cacheFile(text, intensity) else { return }
+        try? audio.write(to: url, options: .atomic)
     }
 
     private func claimAudio() {
@@ -93,6 +122,7 @@ final class CoachVoice: NSObject {
     }()
     #else
     func say(_ text: String, intensity: MotivationIntensity = .savage, context: WidgetContext?) {}
+    func prefetch(_ text: String, intensity: MotivationIntensity, context: WidgetContext) {}
     func stop() {}
     #endif
 }
