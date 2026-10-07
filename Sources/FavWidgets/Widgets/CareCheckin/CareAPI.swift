@@ -7,6 +7,18 @@ enum CareAPI {
     private struct AsksResponse: Decodable { let asks: [CareAsk]; let hasMore: Bool? }
     private struct AskResponse: Decodable { let ask: CareAsk }
 
+    // Family support (2026-10-07)
+    static func react(context: WidgetContext, askId: String, kind: String?) async throws -> CareAsk {
+        let r: AskResponse = try await context.api(.post, "widgets/care/asks/\(askId)/react", body: ["kind": kind ?? NSNull()]); return r.ask
+    }
+    static func respondToAlert(context: WidgetContext, askId: String, action: String) async throws -> CareAsk {
+        let r: AskResponse = try await context.api(.post, "widgets/care/asks/\(askId)/respond", body: ["action": action]); return r.ask
+    }
+    static func setReactionPushes(context: WidgetContext, planId: String, on: Bool) async throws {
+        struct OK: Decodable { let success: Bool }
+        let _: OK = try await context.api(.put, "widgets/care/plans/\(planId)/reaction-pushes", body: ["on": on])
+    }
+
     static func plans(context: WidgetContext) async throws -> CarePlans {
         try WidgetJSON.decode(CarePlans.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/care/plans")))
     }
@@ -174,6 +186,14 @@ final class CareStore: RemoteStore {
             return page.asks
         }
         return histories[planId] ?? []
+    }
+
+    /// An answer came back with new reactions/responses: swap it in wherever shown.
+    func replaceAsk(_ ask: CareAsk) {
+        if var list = histories[ask.planId], let i = list.firstIndex(where: { $0.askId == ask.askId }) {
+            list[i] = ask
+            histories[ask.planId] = list
+        }
     }
 
     /// The next 60 older answers, appended. Returns the whole list.

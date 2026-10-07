@@ -28,6 +28,7 @@ struct CareScaleBar: View {
 struct CareAnswerRow: View {
     let context: WidgetContext
     let ask: CareAsk
+    var support: CareSupportMode = .none
 
     var body: some View {
         let theme = context.theme
@@ -43,6 +44,13 @@ struct CareAnswerRow: View {
                 }
                 if !ask.note.isEmpty { Text("“\(ask.note)”").font(.system(size: 13)).foregroundStyle(theme.label) }
                 Text(CareCopy.relative(ask.askedAt, calendar: context.calendar)).font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
+                if ask.isAnswered {
+                    switch support {
+                    case .family(let store): CareFamilySupportBar(context: context, ask: ask, store: store).padding(.top, 4)
+                    case .parent: CareParentSupportLines(context: context, ask: ask).padding(.top, 2)
+                    case .none: EmptyView()
+                    }
+                }
             }
         }
         .padding(.vertical, 6)
@@ -119,7 +127,7 @@ struct CareMyWeekView: View {
             if !answered.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
                     WidgetUI.header("Your answers", theme: theme)
-                    ForEach(showAll ? answered : Array(answered.prefix(6))) { CareAnswerRow(context: context, ask: $0) }
+                    ForEach(showAll ? answered : Array(answered.prefix(6))) { CareAnswerRow(context: context, ask: $0, support: .parent) }
                     if answered.count > 6 {
                         Button(showAll ? "Show fewer" : "Show all \(answered.count)") { showAll.toggle() }
                             .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)

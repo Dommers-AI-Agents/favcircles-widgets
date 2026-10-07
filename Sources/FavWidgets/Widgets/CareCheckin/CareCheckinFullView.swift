@@ -292,6 +292,7 @@ struct CareCheckinFullView: View {
             // Their own answers looked back on — the week, the trends, the habits
             Divider().padding(.vertical, 4)
             CareMyWeekView(context: context, history: store.histories[plan.planId] ?? [])
+            CareReactionPushesToggle(context: context, plan: plan)
             Divider().padding(.vertical, 4)
             whoSeesMyAnswers(plan: plan)
             Button("Stop these check-ins") {

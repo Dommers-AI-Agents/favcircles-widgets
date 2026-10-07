@@ -134,6 +134,9 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     public var note: String
     public var answeredAt: Date?
     public var pushDelivered: Bool
+    /// Family support on this answer (2026-10-07)
+    public var reactions: [CareReaction] = []
+    public var responses: [CareResponse] = []
 
     public var id: String { askId }
     public var isOpen: Bool { status == "open" }
@@ -170,6 +173,7 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case askId, planId, questionText, kind, short, low, high, slot, dateKey, askedAt, dueBy, status
         case answer, answerValue, answerScore, answerText, alert, note, answeredAt, pushDelivered
+        case reactions, responses
     }
 
     public init(from decoder: Decoder) throws {
@@ -196,6 +200,73 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
         answeredAt = try c.decodeIfPresent(Date.self, forKey: .answeredAt)
         pushDelivered = try c.decodeIfPresent(Bool.self, forKey: .pushDelivered) ?? true
+        reactions = (try? c.decodeIfPresent([CareReaction].self, forKey: .reactions)) ?? []
+        responses = (try? c.decodeIfPresent([CareResponse].self, forKey: .responses)) ?? []
+    }
+}
+
+/// A family member's one-tap reaction on an answer.
+public struct CareReaction: Decodable, Equatable, Hashable, Sendable {
+    public let userId: String
+    public let name: String
+    public let kind: String
+    public init(userId: String, name: String, kind: String) { self.userId = userId; self.name = name; self.kind = kind }
+}
+
+/// A family member's response to a heads-up answer.
+public struct CareResponse: Decodable, Equatable, Hashable, Sendable {
+    public let userId: String
+    public let name: String
+    public let action: String
+    public init(userId: String, name: String, action: String) { self.userId = userId; self.name = name; self.action = action }
+}
+
+/// The words and symbols for family support. Pure, tested on a Mac.
+public enum CareSupportCopy {
+    public struct Choice: Equatable, Sendable { public let key: String; public let emoji: String; public let label: String }
+
+    public static let reactions: [Choice] = [
+        Choice(key: "love", emoji: "❤️", label: "Love you"),
+        Choice(key: "glad", emoji: "🙏", label: "Glad to hear it"),
+        Choice(key: "proud", emoji: "💪", label: "Proud of you"),
+        Choice(key: "thinking", emoji: "🤗", label: "Thinking of you")
+    ]
+
+    public static let responses: [Choice] = [
+        Choice(key: "calling", emoji: "📞", label: "I'll call"),
+        Choice(key: "on_my_way", emoji: "🚗", label: "I'm on my way"),
+        Choice(key: "got_it", emoji: "👍", label: "Got it")
+    ]
+
+    public static func emoji(_ kind: String) -> String { reactions.first { $0.key == kind }?.emoji ?? "❤️" }
+
+    /// "❤️ Wes · 💪 Sal"
+    public static func reactionSummary(_ reactions: [CareReaction]) -> String? {
+        guard !reactions.isEmpty else { return nil }
+        return reactions.map { "\(emoji($0.kind)) \($0.name)" }.joined(separator: " · ")
+    }
+
+    /// What the parent reads under their answer: who's calling or coming.
+    public static func parentLines(_ responses: [CareResponse]) -> [String] {
+        responses.compactMap { r in
+            switch r.action {
+            case "calling": return "\(r.name) is going to call you soon"
+            case "on_my_way": return "\(r.name) is on the way"
+            default: return nil
+            }
+        }
+    }
+
+    /// What the family reads: who has it.
+    public static func familyLines(_ responses: [CareResponse], myId: String?) -> [String] {
+        responses.map { r in
+            let who = r.userId == myId ? "You" : r.name
+            switch r.action {
+            case "calling": return "\(who) \(who == "You" ? "are" : "is") calling"
+            case "on_my_way": return "\(who) \(who == "You" ? "are" : "is") on the way"
+            default: return "\(who) \(who == "You" ? "have" : "has") it"
+            }
+        }
     }
 }
 
@@ -346,6 +417,8 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
     public var openAsk: CareAsk?
     public var lastAnswer: CareAsk?
     public var watchers: [CareWatcher]
+    /// The parent hushed pushes about family reactions (still shown)
+    public var reactionPushesOff: Bool = false
 
     public var id: String { planId }
     public var isOwner: Bool { role == "owner" }
@@ -409,6 +482,7 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         case usesDefaultQuestions, defaultQuestions, times, timezone, createdAt, lastInvitedAt, acceptedAt
         case lastAskedAt, lastAnsweredAt, openAsk, lastAnswer, watchers
         case profile, profileFields, mutedQuestionIds, rotation, parentCanAnswerRich
+        case reactionPushesOff
     }
 
     // Hand-written so a field the server has not shipped yet is a default
@@ -441,6 +515,7 @@ public struct CarePlan: Decodable, Equatable, Identifiable, Sendable {
         openAsk = try c.decodeIfPresent(CareAsk.self, forKey: .openAsk)
         lastAnswer = try c.decodeIfPresent(CareAsk.self, forKey: .lastAnswer)
         watchers = try c.decodeIfPresent([CareWatcher].self, forKey: .watchers) ?? []
+        reactionPushesOff = try c.decodeIfPresent(Bool.self, forKey: .reactionPushesOff) ?? false
     }
 }
 

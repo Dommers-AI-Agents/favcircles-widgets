@@ -273,3 +273,22 @@ struct CareQuestionKindTests {
         #expect(rate.asked == 5) // the undelivered one doesn't count against them
     }
 }
+
+struct CareSupportTests {
+    @Test func summaryAndLines() {
+        #expect(CareSupportCopy.reactionSummary([]) == nil)
+        let r = [CareReaction(userId: "wes", name: "Wes", kind: "love"), CareReaction(userId: "sal", name: "Sal", kind: "proud")]
+        #expect(CareSupportCopy.reactionSummary(r) == "❤️ Wes · 💪 Sal")
+        let responses = [CareResponse(userId: "wes", name: "Wes", action: "calling"), CareResponse(userId: "sal", name: "Sal", action: "got_it")]
+        #expect(CareSupportCopy.parentLines(responses) == ["Wes is going to call you soon"])
+        #expect(CareSupportCopy.familyLines(responses, myId: "wes") == ["You are calling", "Sal has it"])
+    }
+
+    @Test func askDecodesSupportOrDefaultsEmpty() throws {
+        let base = #"{"askId":"a1","planId":"p1","questionText":"How are you?","askedAt":"2026-10-07T12:00:00Z","status":"answered","answer":"great""#
+        let old = try WidgetJSON.decode(CareAsk.self, from: Data((base + "}").utf8))
+        #expect(old.reactions.isEmpty && old.responses.isEmpty)
+        let new = try WidgetJSON.decode(CareAsk.self, from: Data((base + #","reactions":[{"userId":"wes","name":"Wes","kind":"love","at":null}],"responses":[]}"#).utf8))
+        #expect(new.reactions.first?.kind == "love")
+    }
+}

@@ -363,7 +363,11 @@ struct CarePlanDetailView: View {
             if history.isEmpty {
                 Text("Nothing asked yet.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
             }
-            ForEach(history) { CareAnswerRow(context: context, ask: $0) }
+            // Family (owner or a watcher) can react and respond; reads the
+            // store so a reaction shows at once
+            ForEach(store.histories[plan.planId] ?? history) {
+                CareAnswerRow(context: context, ask: $0, support: plan.isParent ? .none : .family(store: store))
+            }
             if store.moreHistory[plan.planId] == true {
                 Button {
                     Task {
