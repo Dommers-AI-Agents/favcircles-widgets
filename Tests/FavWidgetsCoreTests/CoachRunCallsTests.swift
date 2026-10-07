@@ -25,7 +25,7 @@ struct CoachRunCallsTests {
 
     @Test func withinFiveSecondsIsSteady() {
         let s = CoachRunCalls.call(splits: [480, 483], index: 1, unit: .miles, intensity: .clean, pick: { _ in 0 })
-        #expect(s.contains("Same as the last one. Steady."))
+        #expect(s.contains("Same as the last one."))
     }
 
     @Test func kilometersSayKAndMark5K() {

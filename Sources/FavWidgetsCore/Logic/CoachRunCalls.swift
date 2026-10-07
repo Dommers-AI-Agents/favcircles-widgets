@@ -17,7 +17,7 @@ public enum CoachRunCalls {
             let delta = splits[index] - splits[index - 1]
             let faster = delta < 0
             if abs(delta) < 5 {
-                about += " Same as the last one. Steady."
+                about += " Same as the last one."
             } else {
                 about += " \(spoken(abs(delta))) \(faster ? "faster" : "slower") than the last one."
             }
@@ -37,8 +37,8 @@ public enum CoachRunCalls {
         if unit == .kilometers && (index == 4 || index == 9) {
             let race = index == 4 ? "5K" : "10K"
             return [intensity == .savage
-                ? "That's a \(race). Don't you dare stop and post about it yet. Keep going."
-                : "That's a \(race). Strong work. See how far you can take it."]
+                ? "That's a \(race). Don't you dare stop now, weakling. Keep going!"
+                : "That's a \(race). Strong work. Now go further!"]
         }
         switch (intensity, slower, faster) {
         case (.savage, true, _): return slowerSavage
@@ -68,45 +68,45 @@ public enum CoachRunCalls {
     }
 
     static let slowerSavage = [
-        "You slowed down. Did you stop to smell the flowers? Pick it up.",
-        "That was slower. My grandma walks faster, and she's got a bad hip.",
-        "You're fading. The couch can't hear you begging. Move.",
-        "Slower? Seriously? Your legs filed a complaint and you accepted it.",
-        "That mile was a crime scene. Go faster before someone reports it.",
-        "Are you jogging or window shopping? Speed up.",
-        "You got slower. The finish line is not going to come pick you up."
+        "You slowed down, weakling. Did your legs ask for permission to quit? Denied. Move!",
+        "Slower? Pathetic. My grandma runs faster carrying groceries. Pick it up!",
+        "You're fading. Nobody's coming to carry you. Push!",
+        "That mile was soft. I don't coach soft. Faster!",
+        "Are you jogging or sightseeing? Speed up, weakling!",
+        "You got slower. The finish line doesn't care how tired you are. Neither do I. Go!",
+        "Is that all you've got? I've seen toddlers with more fight. Dig in!"
     ]
     static let fasterSavage = [
-        "Faster. Finally. Don't get cocky, keep it going.",
-        "Look at you, almost athletic. Do it again.",
-        "That's more like it. Now prove it wasn't a fluke.",
-        "Faster mile. I'm shocked. Keep shocking me.",
-        "Good. Now stop smiling and hold that pace."
+        "Faster. Finally. Don't you dare get comfortable. Again!",
+        "That's more like it. Now prove it wasn't luck. Push!",
+        "Good. Now do it again, and harder. No rest!",
+        "Faster mile. I'm not impressed yet. Impress me!",
+        "There's the beast. Keep him out of the cage. Go!"
     ]
     static let steadySavage = [
-        "Steady is fine. Boring, but fine. Push a little.",
-        "Same pace. Great, you're a metronome. Now be a faster one.",
-        "You're cruising. Cruising is for boats. Run.",
-        "Not bad. Not good either. Give me more.",
-        "Your excuses are slower than you are. Keep moving.",
-        "A turtle just lapped you. From its couch. Pick it up."
+        "Same pace? Comfortable is for weaklings. Push harder!",
+        "You're cruising. Cruising is for boats. Run!",
+        "Not bad. Not good either. Give me more!",
+        "Your excuses are slower than you are. Keep moving!",
+        "Steady? I don't want steady. I want savage. Pick it up!",
+        "You think the road's tired? Run it down!"
     ]
     static let slowerClean = [
-        "You slowed a little. Shake out your arms and pick it back up.",
-        "Little slower that time. Short steps, quick feet. You've got this.",
-        "Tired is temporary. Find your rhythm and go.",
-        "Slower mile. That's okay. The next one is yours."
+        "You slowed down. Shake it off and attack the next one. Go!",
+        "Little slower. Short steps, quick feet. Fight for it!",
+        "Tired is temporary. Strong is forever. Push!",
+        "Slower mile. Doesn't matter. The next one is yours. Take it!"
     ]
     static let fasterClean = [
-        "Faster than the last one. That's how it's done.",
-        "Nice negative split. Keep that energy.",
-        "You're getting stronger as you go. Love it.",
-        "Faster mile. Stay relaxed and hold it."
+        "Faster than the last one. That's how a beast runs!",
+        "Negative split. Keep hunting!",
+        "You're getting stronger. Don't let up now!",
+        "Faster mile. Hold it. Own it!"
     ]
     static let steadyClean = [
-        "Nice and steady. Keep breathing, keep moving.",
-        "Good rhythm. Stay tall and keep it rolling.",
-        "Locked in. One more, then one more after that.",
-        "Solid work. The hard part is starting, and you already did that."
+        "Steady and strong. Now give me a little more!",
+        "Good rhythm. Stand tall and drive those legs!",
+        "Locked in. One more, then one more after that. Go!",
+        "Solid. Champions keep going when it gets hard. Move!"
     ]
 }

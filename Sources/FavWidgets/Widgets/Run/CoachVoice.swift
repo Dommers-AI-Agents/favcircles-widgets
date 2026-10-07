@@ -5,7 +5,9 @@ import AVFoundation
 #endif
 
 /// Coach Mane's voice during a FavRun (2026-10-07). His lines are spoken by a
-/// natural cloud voice (`/widgets/run/coach-voice`, Google Chirp 3 HD); with
+/// directed cloud voice (`/widgets/run/coach-voice`, a gravelly drill
+/// sergeant via Google's Gemini TTS — it takes ~6–10 s, fine a few seconds
+/// after the mile ticks); with
 /// no signal, or if that's slow, the phone's own voice says it instead. He
 /// speaks over (ducks) your music, then hands the audio back. Works with the
 /// phone locked: the run's background location keeps the app awake and the
@@ -14,7 +16,7 @@ import AVFoundation
 final class CoachVoice: NSObject {
     static let shared = CoachVoice()
     /// How long to wait for the cloud voice before the phone's voice speaks
-    static let cloudTimeout: UInt64 = 6_000_000_000
+    static let cloudTimeout: UInt64 = 20_000_000_000
 
     #if os(iOS)
     private let synth = AVSpeechSynthesizer()
@@ -26,13 +28,13 @@ final class CoachVoice: NSObject {
         synth.delegate = self
     }
 
-    func say(_ text: String, context: WidgetContext?) {
+    func say(_ text: String, intensity: MotivationIntensity = .savage, context: WidgetContext?) {
         guard !text.isEmpty else { return }
         let line = UUID()
         currentLine = line
         guard let context else { speakOnDevice(text); return }
         Task { @MainActor in
-            let audio = await Self.fetch(text, context: context)
+            let audio = await Self.fetch(text, intensity: intensity, context: context)
             guard self.currentLine == line else { return }   // muted or replaced meanwhile
             if let audio, self.play(audio) { return }
             self.speakOnDevice(text)
@@ -46,9 +48,9 @@ final class CoachVoice: NSObject {
         releaseAudio()
     }
 
-    private static func fetch(_ text: String, context: WidgetContext) async -> Data? {
+    private static func fetch(_ text: String, intensity: MotivationIntensity, context: WidgetContext) async -> Data? {
         await withTaskGroup(of: Data?.self) { group in
-            group.addTask { try? await RunShareClient(context: context).coachVoice(text) }
+            group.addTask { try? await RunShareClient(context: context).coachVoice(text, intensity: intensity) }
             group.addTask { try? await Task.sleep(nanoseconds: cloudTimeout); return nil }
             let first = await group.next() ?? nil
             group.cancelAll()
@@ -90,7 +92,7 @@ final class CoachVoice: NSObject {
         return candidates.max { $0.quality.rawValue < $1.quality.rawValue } ?? AVSpeechSynthesisVoice(language: lang)
     }()
     #else
-    func say(_ text: String, context: WidgetContext?) {}
+    func say(_ text: String, intensity: MotivationIntensity = .savage, context: WidgetContext?) {}
     func stop() {}
     #endif
 }

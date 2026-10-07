@@ -281,7 +281,7 @@ struct RunHomeView: View {
                 settings.update { $0.coach = on }
                 context.host.haptic(.light)
                 context.track("run_coach_toggle", ["on": on ? "1" : "0"])
-                if on { CoachVoice.shared.say(Self.coachHello(settings.model.coachLevel, unit: settings.model.unit), context: context) } else { CoachVoice.shared.stop() }
+                if on { CoachVoice.shared.say(Self.coachHello(settings.model.coachLevel, unit: settings.model.unit), intensity: settings.model.coachLevel, context: context) } else { CoachVoice.shared.stop() }
             })) {
                 HStack(spacing: 12) {
                     Text("📣").font(.system(size: 26))
@@ -296,7 +296,7 @@ struct RunHomeView: View {
             if settings.model.coachOn {
                 Picker("Coach", selection: Binding(get: { settings.model.coachLevel }, set: { level in
                     settings.update { $0.coachIntensity = level }
-                    CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit), context: context)
+                    CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit), intensity: level, context: context)
                 })) {
                     ForEach(MotivationIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
@@ -310,8 +310,8 @@ struct RunHomeView: View {
     static func coachHello(_ level: MotivationIntensity, unit: RunUnit) -> String {
         let word = unit == .miles ? "mile" : "K"
         return level == .savage
-            ? "Coach Mane here. Every \(word), I'll tell you how slow you were. Don't make me sad."
-            : "Coach Mane here. Every \(word), I'll tell you how you did and keep you going."
+            ? "Run, weakling! Why are you still standing there? Every \(word), I'll be in your ear. Move!"
+            : "Coach Mane here. Every \(word), I'll be in your ear. Now get moving!"
     }
 
     var body: some View {

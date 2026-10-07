@@ -39,8 +39,8 @@ struct RunShareClient {
     }
     func finish(_ id: String, body: [String: Any]) async throws { let _: OK = try await context.api(.post, "widgets/run/\(id)/finish", body: body) }
     /// Coach Mane's line as an MP3, in a natural (cloud) voice
-    func coachVoice(_ text: String) async throws -> Data {
-        let r: VoiceResponse = try await context.api(.post, "widgets/run/coach-voice", body: ["text": text])
+    func coachVoice(_ text: String, intensity: MotivationIntensity) async throws -> Data {
+        let r: VoiceResponse = try await context.api(.post, "widgets/run/coach-voice", body: ["text": text, "intensity": intensity.rawValue])
         guard let data = Data(base64Encoded: r.audio) else { throw URLError(.cannotDecodeContentData) }
         return data
     }
