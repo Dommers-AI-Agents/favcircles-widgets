@@ -57,7 +57,8 @@ struct WeatherCardView: View {
                     }
                 }
             } else {
-                WidgetUI.summary(weather.locationUnavailable ? "Turn on Location, or pick a place" : "Getting the weather…", theme: theme)
+                WidgetUI.summary(weather.locationUnavailable ? "Turn on Location, or pick a place"
+                                 : weather.unavailable ? "Weather isn't available right now" : "Getting the weather…", theme: theme)
             }
         }
         .task { await weather.refresh { await context.host.currentLocation() } }
@@ -85,7 +86,7 @@ struct WeatherFullView: View {
                 } else {
                     Text(weather.locationUnavailable
                          ? "We can't see where you are. Turn on Location for FavCircles, or pick a place."
-                         : "Getting the weather…")
+                         : weather.unavailable ? "Weather isn't available right now. Pull down to try again." : "Getting the weather…")
                         .font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
                         .frame(maxWidth: .infinity, minHeight: 160)
                 }

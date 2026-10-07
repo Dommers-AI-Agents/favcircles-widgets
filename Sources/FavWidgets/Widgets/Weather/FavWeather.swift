@@ -23,6 +23,8 @@ public final class FavWeather: ObservableObject {
     @Published public private(set) var latest: WeatherForecast?
     /// Current location was asked for but isn't available
     @Published public private(set) var locationUnavailable = false
+    /// The last fetch failed and there's nothing cached to show
+    @Published public private(set) var unavailable = false
 
     private var cache: [String: WeatherForecast] = [:]
     private var inFlight: [String: Task<WeatherForecast, Error>] = [:]
@@ -55,9 +57,11 @@ public final class FavWeather: ObservableObject {
         do {
             let forecast = try await forecast(latitude: target.lat, longitude: target.lon, name: target.name, force: force)
             latest = forecast
+            unavailable = false
             publishHeader(forecast)
             return forecast
         } catch {
+            unavailable = latest == nil
             return latest
         }
     }
