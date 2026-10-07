@@ -281,7 +281,7 @@ struct RunHomeView: View {
                 settings.update { $0.coach = on }
                 context.host.haptic(.light)
                 context.track("run_coach_toggle", ["on": on ? "1" : "0"])
-                if on { CoachVoice.shared.say(Self.coachHello(settings.model.coachLevel, unit: settings.model.unit)) } else { CoachVoice.shared.stop() }
+                if on { CoachVoice.shared.say(Self.coachHello(settings.model.coachLevel, unit: settings.model.unit), context: context) } else { CoachVoice.shared.stop() }
             })) {
                 HStack(spacing: 12) {
                     Text("📣").font(.system(size: 26))
@@ -296,7 +296,7 @@ struct RunHomeView: View {
             if settings.model.coachOn {
                 Picker("Coach", selection: Binding(get: { settings.model.coachLevel }, set: { level in
                     settings.update { $0.coachIntensity = level }
-                    CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit))
+                    CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit), context: context)
                 })) {
                     ForEach(MotivationIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
                 }

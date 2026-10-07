@@ -11,6 +11,7 @@ struct RunShareClient {
     private struct ProgressResponse: Decodable { let cheers: [SharedRun.Cheer]?; let watchers: [String]? }
     private struct PostResponse: Decodable { let runId: String }
     private struct OK: Decodable { let success: Bool }
+    private struct VoiceResponse: Decodable { let audio: String }
 
     func startLive(unit: RunUnit, startedAt: Date) async throws -> SharedRun {
         let r: RunResponse = try await context.api(.post, "widgets/run/live", body: [
@@ -37,6 +38,12 @@ struct RunShareClient {
         let r: ProgressResponse = try await context.api(.post, "widgets/run/\(id)/progress", body: body); return (r.cheers ?? [], r.watchers ?? [])
     }
     func finish(_ id: String, body: [String: Any]) async throws { let _: OK = try await context.api(.post, "widgets/run/\(id)/finish", body: body) }
+    /// Coach Mane's line as an MP3, in a natural (cloud) voice
+    func coachVoice(_ text: String) async throws -> Data {
+        let r: VoiceResponse = try await context.api(.post, "widgets/run/coach-voice", body: ["text": text])
+        guard let data = Data(base64Encoded: r.audio) else { throw URLError(.cannotDecodeContentData) }
+        return data
+    }
     func cancel(_ id: String) async throws { let _: OK = try await context.api(.delete, "widgets/run/\(id)") }
     func cheer(_ id: String, emoji: String) async throws { let _: OK = try await context.api(.post, "widgets/run/\(id)/cheer", body: ["emoji": emoji]) }
     func post(runId: String?, record: RunRecord, unit: RunUnit, audience: String, listId: String?, mapImageUrl: URL?) async throws -> String {

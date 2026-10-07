@@ -267,7 +267,7 @@ public final class RunSession: NSObject, ObservableObject {
         guard splits.count > coachedSplits else { return }
         coachedSplits = splits.count
         guard coachOn else { return }
-        CoachVoice.shared.say(CoachRunCalls.call(splits: splits, index: splits.count - 1, unit: unit, intensity: coachIntensity))
+        CoachVoice.shared.say(CoachRunCalls.call(splits: splits, index: splits.count - 1, unit: unit, intensity: coachIntensity), context: context)
         context?.track("run_coach_spoke", ["split": "\(splits.count)"])
     }
 }
