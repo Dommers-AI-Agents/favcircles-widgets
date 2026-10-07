@@ -15,7 +15,11 @@ public enum MotivationLines {
                 "Future you is watching. Don't let them down. Lift.",
                 "Thirty minutes. That's all. Stop negotiating and go.",
                 "Bags packed? Shoes on? Then why are you still reading this?",
-                "Soreness is temporary. Quitting lasts. Get under the bar."
+                "Soreness is temporary. Quitting lasts. Get under the bar.",
+                "Warm up, show up, finish up. That's the whole plan.",
+                "The hardest lift is getting out the door. You've got this one.",
+                "Strong is built one boring rep at a time. Go collect some.",
+                "You don't need a perfect workout. You need today's workout."
             ]
         case (.clean, .run):
             return [
@@ -24,7 +28,12 @@ public enum MotivationLines {
                 "Rain, cold, tired — the run doesn't care. Go.",
                 "Your legs work. Use them. Go run.",
                 "Slow miles still beat no miles. Out the door.",
-                "Stop checking the weather. Start checking your pace."
+                "Stop checking the weather. Start checking your pace.",
+                "Two minutes in, you'll be glad you went. Go find out.",
+                "Easy pace still counts. Out the door.",
+                "The best runners started as people who just kept showing up.",
+                "Fresh air, clear head, better day. Go run.",
+                "Shoes on is half the battle. Win the other half."
             ]
         case (.clean, .discipline):
             return [
@@ -35,7 +44,39 @@ public enum MotivationLines {
                 "Excuses don't burn calories.",
                 "Hard now, easy later. Easy now, hard later. Pick one.",
                 "Stop waiting for Monday. It's today.",
-                "Do it tired. Do it sore. Just do it."
+                "Do it tired. Do it sore. Just do it.",
+                "Small promises kept make big results. Keep one today.",
+                "You don't have to feel like it. You just have to do it.",
+                "Do the hard thing first. The rest of the day gets easier.",
+                "Progress, not perfection. Go make some."
+            ]
+        // Legends: Coach Mane quoting real champions. Only lines widely
+        // attributed to them; the rest is the coach talking.
+        case (.clean, .legends):
+            return [
+                "Muhammad Ali: “Don't quit. Suffer now and live the rest of your life as a champion.” Champ's orders.",
+                "Ali didn't count his sit-ups until they started hurting. That's when they count. Go.",
+                "Michael Jordan: “I've failed over and over and over again in my life. And that is why I succeed.” Go fail forward.",
+                "Wayne Gretzky: “You miss 100% of the shots you don't take.” Take the shot. Go train.",
+                "Steve Prefontaine: “To give anything less than your best is to sacrifice the gift.” Don't waste yours.",
+                "Eliud Kipchoge: “No human is limited.” That includes you. Lace up.",
+                "Babe Ruth: “It's hard to beat a person who never gives up.” Be that person today.",
+                "Billie Jean King: “Champions keep playing until they get it right.” Keep playing.",
+                "David Goggins: “Who's gonna carry the boats?” You are. Go.",
+                "Every champion you admire had a day they didn't feel like it. They went anyway. Your turn."
+            ]
+        case (.savage, .legends):
+            return [
+                "Ali said: “Suffer now and live the rest of your life as a champion.” You picked suffer later. Bad trade.",
+                "Ali only started counting sit-ups when they hurt. You stop when they hurt. See the problem?",
+                "Jordan failed over and over and kept going. You failed once and took a nap.",
+                "Gretzky: “You miss 100% of the shots you don't take.” You haven't taken one all week.",
+                "Prefontaine said anything less than your best sacrifices the gift. You're returning yours unopened.",
+                "Kipchoge says no human is limited. You found a way anyway. Prove him right instead.",
+                "Babe Ruth said it's hard to beat a person who never gives up. You're easy to beat. Fix that.",
+                "Billie Jean King said champions keep playing until they get it right. You quit before you got it wrong.",
+                "Goggins wants to know who's gonna carry the boats. Not you, apparently. Get up.",
+                "Rocky got knocked down and got back up. You got comfortable and stayed down. Up."
             ]
         case (.savage, .gym):
             return [

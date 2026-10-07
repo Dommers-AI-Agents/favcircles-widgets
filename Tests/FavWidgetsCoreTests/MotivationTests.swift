@@ -33,8 +33,8 @@ struct MotivationTests {
     @Test func savageHasAHundredDifferentLines() {
         // Wes 2026-10-02: 100 mean lines, no curses.
         let all = MotivationLines.pool(intensity: .savage, focus: MotivationFocus.allCases)
-        #expect(all.count == 100)
-        #expect(Set(all).count == 100)
+        #expect(all.count >= 100)
+        #expect(Set(all).count == all.count)
     }
 
     @Test func everyLineHasAStableUniqueId() {
@@ -134,5 +134,15 @@ struct MotivationTests {
         let sparse = try JSONDecoder().decode(MotivationLog.self, from: Data(#"{"intensity":"nonsense"}"#.utf8))
         #expect(sparse.intensity == .clean)
         #expect(!sparse.reminders.enabled)
+    }
+
+    @Test func legendsSectionAndOlderDocs() throws {
+        #expect(MotivationLines.bank(.clean, .legends).contains { $0.contains("Suffer now and live the rest of your life as a champion") })
+        #expect(MotivationLines.bank(.savage, .legends).count >= 10)
+        // A doc saved by an older build (no legends) still decodes, and a
+        // section this build doesn't know is skipped instead of resetting the list
+        let old = try JSONDecoder().decode(MotivationLog.self, from: Data(#"{"intensity":"savage","focus":["gym","someday"]}"#.utf8))
+        #expect(old.focus == [.gym])
+        #expect(old.intensity == .savage)
     }
 }

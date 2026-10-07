@@ -162,14 +162,15 @@ struct MotivationFullView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             WidgetUI.header("Yell at me about", theme: theme)
-            HStack(spacing: 8) {
+            // A grid, so four sections fit a small phone
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], alignment: .leading, spacing: 8) {
                 ForEach(MotivationFocus.allCases, id: \.self) { focus in
                     let on = model.focus.contains(focus)
                     Button { toggle(focus) } label: {
                         Text(focus.title)
                             .font(.system(size: 14, weight: .semibold))
                             .padding(.horizontal, 14)
-                            .frame(minHeight: 36)
+                            .frame(maxWidth: .infinity, minHeight: 36)
                             .background(Capsule().fill(on ? context.accent : theme.tertiaryBackground))
                             .foregroundStyle(on ? .white : theme.label)
                     }

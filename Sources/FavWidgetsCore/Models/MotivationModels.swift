@@ -15,13 +15,14 @@ public enum MotivationIntensity: String, Codable, CaseIterable, Sendable {
 
 /// What the coach yells about.
 public enum MotivationFocus: String, Codable, CaseIterable, Sendable {
-    case gym, run, discipline
+    case gym, run, discipline, legends
 
     public var title: String {
         switch self {
         case .gym: return "Gym"
         case .run: return "Running"
         case .discipline: return "No excuses"
+        case .legends: return "Legends"
         }
     }
 }
@@ -29,7 +30,8 @@ public enum MotivationFocus: String, Codable, CaseIterable, Sendable {
 /// The Motivation widget's document: what kind of lines, when they ring, and
 /// the days you told the coach you did it. Days are never pruned.
 public struct MotivationLog: WidgetModel, Sendable {
-    public static let schemaVersion = 1
+    /// 2: the Legends focus (2026-10-07) — older packages can't decode it.
+    public static let schemaVersion = 2
     public static let documentId = "motivation"
 
     public var intensity: MotivationIntensity
@@ -58,7 +60,9 @@ public struct MotivationLog: WidgetModel, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let fallback = MotivationLog()
         intensity = (try? c.decodeIfPresent(MotivationIntensity.self, forKey: .intensity)) ?? fallback.intensity
-        focus = (try? c.decodeIfPresent([MotivationFocus].self, forKey: .focus)) ?? fallback.focus
+        // Unknown values (a newer section) are skipped, not the whole list
+        let known = ((try? c.decodeIfPresent([String].self, forKey: .focus)) ?? nil)?.compactMap(MotivationFocus.init(rawValue:))
+        focus = (known?.isEmpty == false ? known : nil) ?? fallback.focus
         reminders = try c.decodeIfPresent(WaterReminders.self, forKey: .reminders) ?? fallback.reminders
         doneDays = try c.decodeIfPresent(Set<String>.self, forKey: .doneDays) ?? []
     }
