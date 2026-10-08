@@ -16,7 +16,9 @@ struct EventsClient {
     private struct OK: Decodable { let success: Bool }
 
     func list() async throws -> [EventSummary] {
-        let r: ListResponse = try await context.api(.get, "widgets/events"); return r.events
+        // `archived=1`: this build files archived events in their own section;
+        // without it the server leaves them out (older apps showed them as live)
+        let r: ListResponse = try await context.api(.get, "widgets/events?archived=1"); return r.events
     }
     func create(name: String, emoji: String) async throws -> EventSummary {
         let r: EventResponse = try await context.api(.post, "widgets/events", body: ["name": name, "emoji": emoji]); return r.event
