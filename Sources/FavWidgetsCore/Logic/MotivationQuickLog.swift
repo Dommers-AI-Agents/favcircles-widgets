@@ -1,7 +1,7 @@
 import Foundation
 
 /// "Did it 💪" from the coach's notification, with no widget on screen:
-/// loads the motivation document, marks today done, saves with the
+/// loads the motivation document, counts one more for today, saves with the
 /// optimistic version, and retries once on a conflict. Returns the saved
 /// log so the caller can re-plan today's remaining reminders.
 public enum MotivationQuickLog {
@@ -16,7 +16,7 @@ public enum MotivationQuickLog {
         var document = try await store.load(id: MotivationLog.documentId)
         for attempt in 0..<2 {
             var log = try document.map { try WidgetDocumentCodec.decode(MotivationLog.self, from: $0.payload) } ?? MotivationLog()
-            log.setDone(true, on: DayKey(now, calendar: calendar))
+            log.logDidIt(on: DayKey(now, calendar: calendar))
             let next = WidgetDocument(version: document?.version ?? 0, payload: try WidgetDocumentCodec.encode(log), schemaVersion: MotivationLog.schemaVersion)
             do {
                 _ = try await store.save(id: MotivationLog.documentId, document: next)

@@ -101,11 +101,12 @@ struct MotivationTests {
         #expect(slots.count <= MotivationPlan.maxPending)
     }
 
-    @Test func didItTodaySkipsTodaysRest() {
+    @Test func didItTodayKeepsTodaysRemindersComing() {
+        // Wes, 2026-10-08: Did it counts progress; the coach keeps pushing
         var log = MotivationLog(reminders: WaterReminders(enabled: true, intervalHours: 4, startMinutes: 7 * 60, endMinutes: 19 * 60))
-        log.setDone(true, on: DayKey(rawValue: "2026-10-02"))
+        log.logDidIt(on: DayKey(rawValue: "2026-10-02"))
         let slots = MotivationPlan.slots(log, now: date("2026-10-02", 12, 0), calendar: calendar)
-        #expect(slots.first?.day.rawValue == "2026-10-03")
+        #expect(slots.first?.day.rawValue == "2026-10-02")
     }
 
     @Test func hourlyStaysUnderTheCap() {

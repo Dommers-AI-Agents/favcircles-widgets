@@ -36,11 +36,15 @@ public enum MotivationReminderScheduler {
         guard allowed else { return false }
 
         let calendar = Calendar.current
-        let streak = log.streak(endingOn: DayKey(Date(), calendar: calendar), calendar: calendar)
+        let today = DayKey(Date(), calendar: calendar)
+        let streak = log.streak(endingOn: today, calendar: calendar)
+        let doneToday = log.doneCount(on: today)
         for slot in MotivationPlan.slots(log, now: Date(), quietHours: quietHours, calendar: calendar) {
             let content = UNMutableNotificationContent()
             content.title = MotivationNotificationCopy.title
-            content.subtitle = MotivationNotificationCopy.subtitle(streak: streak)
+            content.subtitle = slot.day == today
+                ? MotivationNotificationCopy.subtitle(streak: streak, doneToday: doneToday)
+                : MotivationNotificationCopy.subtitle(streak: streak)
             content.body = slot.line
             // Coach Mane himself, shouting (moves when pressed open)
             if let art = await CoachNotificationArt.attachment() { content.attachments = [art] }

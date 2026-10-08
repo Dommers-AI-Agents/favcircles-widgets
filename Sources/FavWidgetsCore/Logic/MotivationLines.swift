@@ -265,8 +265,7 @@ public enum MotivationPlan {
         var out: [Slot] = []
         for offset in 0..<days {
             let day = today.adding(days: offset, calendar: calendar)
-            // Already went today: the coach leaves you alone until tomorrow.
-            if offset == 0, log.isDone(day) { continue }
+            // "Did it" no longer quiets him: there's always one more (Wes, 2026-10-08)
             let dayNumber = Int(day.date(calendar: calendar).timeIntervalSince1970 / 86_400)
             for (slot, minutes) in times.enumerated() {
                 if offset == 0, minutes <= nowMinutes { continue }

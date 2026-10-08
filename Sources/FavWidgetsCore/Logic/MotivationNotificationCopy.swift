@@ -6,6 +6,12 @@ import Foundation
 public enum MotivationNotificationCopy {
     public static let title = "Coach Mane 📣"
 
+    /// Today's reminders after a "Did it": count it, then ask for another
+    public static func subtitle(streak: Int, doneToday: Int) -> String {
+        guard doneToday > 0 else { return subtitle(streak: streak) }
+        return doneToday == 1 ? "💪 1 done today. Go again." : "💪 \(doneToday) done today. One more."
+    }
+
     public static func subtitle(streak: Int) -> String {
         switch streak {
         case ...0: return "Day 1 starts now. Move."

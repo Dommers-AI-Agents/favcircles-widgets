@@ -65,7 +65,8 @@ struct MotivationFullView: View {
     private func coachSection(theme: WidgetTheme) -> some View {
         let model = state.model
         let today = context.today
-        let done = model.isDone(today)
+        let count = model.doneCount(on: today)
+        let done = count > 0
         let streak = model.streak(endingOn: today, calendar: context.calendar)
 
         VStack(spacing: 14) {
@@ -81,15 +82,16 @@ struct MotivationFullView: View {
                         .foregroundStyle(theme.label)
                 }
                 .buttonStyle(.plain)
-                Button { setDone(!done) } label: {
-                    Label(done ? "Done today" : "Did it", systemImage: done ? "checkmark.circle.fill" : "checkmark")
+                // Every tap counts; there's always one more
+                Button { didIt() } label: {
+                    Label(done ? "Did it again" : "Did it", systemImage: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
                         .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(done ? theme.tertiaryBackground : context.accent))
-                        .foregroundStyle(done ? context.accent : .white)
+                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent))
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
-                .accessibilityHint(done ? "Tap to undo" : "Marks today done and quiets today's reminders")
+                .accessibilityHint("Counts one more for today")
             }
 
             Button { sending = SendTarget(line: shownLine, source: "page") } label: {
@@ -103,18 +105,27 @@ struct MotivationFullView: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "flame.fill").foregroundStyle(streak > 0 ? theme.warning : theme.secondaryLabel)
-                Text(streakText(streak: streak, done: done))
+                Text(streakText(streak: streak, count: count))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(theme.label)
                 Spacer()
+                if done {
+                    Button("Undo") { undoDidIt() }
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.secondaryLabel)
+                        .buttonStyle(.plain)
+                }
             }
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous).fill(theme.secondaryBackground))
     }
 
-    private func streakText(streak: Int, done: Bool) -> String {
-        if done { return streak == 1 ? "Done today · 1-day streak" : "Done today · \(streak)-day streak" }
+    private func streakText(streak: Int, count: Int) -> String {
+        if count > 0 {
+            let times = count == 1 ? "1 done today" : "\(count) done today"
+            return streak > 1 ? "\(times) · \(streak)-day streak" : "\(times) · keep going"
+        }
         if streak == 0 { return "Go do it, then tap Did it" }
         return "\(streak)-day streak — don't you dare break it"
     }
@@ -126,11 +137,20 @@ struct MotivationFullView: View {
         context.track("motivation_hit_me_again")
     }
 
-    private func setDone(_ done: Bool) {
+    private func didIt() {
         let today = context.today
-        state.update { $0.setDone(done, on: today) }
-        context.host.haptic(done ? .success : .light)
-        context.track("motivation_did_it", ["on": done ? "1" : "0"])
+        state.update { $0.logDidIt(on: today) }
+        context.host.haptic(.success)
+        context.track("motivation_did_it", ["on": "1"])
+        hitMeAgain()   // a fresh line: he wants another
+        resync()
+    }
+
+    private func undoDidIt() {
+        let today = context.today
+        state.update { $0.undoDidIt(on: today) }
+        context.host.haptic(.light)
+        context.track("motivation_did_it", ["on": "0"])
         resync()
     }
 
@@ -283,7 +303,7 @@ struct MotivationFullView: View {
     }
 
     private var reminderFootnote: String {
-        var text = "Push notifications on this phone, a different line each time. Tap Did it (or press and hold a notification) and he leaves you alone until tomorrow."
+        var text = "Push notifications on this phone, a different line each time. Tap Did it (or press and hold a notification) to count it — he keeps going all day, because there's always one more."
         if let quiet = context.host.quietHours {
             text += " None during your quiet hours (\(WaterReminderPlan.clock(quiet.startMinutes)) – \(WaterReminderPlan.clock(quiet.endMinutes)))."
         }
