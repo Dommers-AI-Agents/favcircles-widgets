@@ -25,9 +25,7 @@ struct PostcardMailForm: View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(isOn: $isOn) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Mail a printed postcard · \(PostcardMailOrder.price(cents: config.priceCents))")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(theme.label)
+                    priceLine
                     Text("We print it and put it in the mail.")
                         .font(.system(size: 12))
                         .foregroundStyle(theme.secondaryLabel)
@@ -48,5 +46,29 @@ struct PostcardMailForm: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// "Mail a printed postcard · ~~$3.99~~ $1.99 · Today only" during a special
+    @ViewBuilder private var priceLine: some View {
+        let now = PostcardPriceCopy.now(priceCents: config.priceCents)
+        if let was = PostcardPriceCopy.was(priceCents: config.priceCents, regularPriceCents: config.regularPriceCents) {
+            VStack(alignment: .leading, spacing: 4) {
+                (Text("Mail a printed postcard · ").foregroundColor(theme.label)
+                 + Text(was).strikethrough().foregroundColor(theme.secondaryLabel)
+                 + Text(" \(now)").foregroundColor(accent))
+                    .font(.system(size: 14, weight: .semibold))
+                if let label = config.special?.label, !label.isEmpty {
+                    Text(label.uppercased())
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Capsule().fill(accent))
+                }
+            }
+        } else {
+            Text("Mail a printed postcard · \(now)")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(theme.label)
+        }
     }
 }

@@ -12,9 +12,19 @@ import FavWidgetsCore
 enum PostcardMail {
     // MARK: Wire types
 
+    struct Special: Decodable, Equatable {
+        let label: String
+        let endsAt: String
+    }
+
     struct Config: Decodable {
         let enabled: Bool
-        let priceCents: Int
+        /// The price now (a running special, else regular) and the signed
+        /// quote that holds it; both refreshed by the address check
+        var priceCents: Int
+        var regularPriceCents: Int?
+        var special: Special?
+        var priceQuote: String?
         let currency: String
         let cancelWindowMinutes: Int
         let messageMaxChars: Int
@@ -34,6 +44,9 @@ enum PostcardMail {
         let deliverable: Bool
         let standardized: Standardized
         let priceCents: Int
+        let regularPriceCents: Int?
+        let special: Special?
+        let priceQuote: String?
 
         struct Standardized: Decodable {
             let name: String?
@@ -169,6 +182,8 @@ enum PostcardMail {
                 "imageUrl": prepared.printImageURL.absoluteString,
                 "message": message,
                 "templateId": templateId,
+                // Holds the price they were shown (a special that ends mid-card still applies)
+                "priceQuote": prepared.config.priceQuote ?? "",
                 "recipient": [
                     "name": address.name, "line1": address.line1, "line2": address.line2,
                     "city": address.city, "state": address.state, "zip": address.zip

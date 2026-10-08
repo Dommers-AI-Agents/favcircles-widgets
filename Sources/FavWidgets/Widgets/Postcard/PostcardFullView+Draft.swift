@@ -102,6 +102,14 @@ extension PostcardFullView {
                 let quote = try await PostcardMail.quote(context: context, address: address)
                 guard !Task.isCancelled else { return }
                 mailQuote = quote
+                // The last step before Send: take its fresh price and quote
+                if var config = mailConfig {
+                    config.priceCents = quote.priceCents
+                    config.regularPriceCents = quote.regularPriceCents
+                    config.special = quote.special
+                    if let fresh = quote.priceQuote { config.priceQuote = fresh }
+                    mailConfig = config
+                }
             } catch {
                 guard !Task.isCancelled else { return }
                 mailQuoteError = error.localizedDescription
