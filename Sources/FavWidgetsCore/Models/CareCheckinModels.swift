@@ -137,6 +137,8 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     /// Family support on this answer (2026-10-07)
     public var reactions: [CareReaction] = []
     public var responses: [CareResponse] = []
+    /// Comments under the answer, oldest first (2026-10-08)
+    public var comments: [CareComment] = []
 
     public var id: String { askId }
     public var isOpen: Bool { status == "open" }
@@ -173,7 +175,7 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case askId, planId, questionText, kind, short, low, high, slot, dateKey, askedAt, dueBy, status
         case answer, answerValue, answerScore, answerText, alert, note, answeredAt, pushDelivered
-        case reactions, responses
+        case reactions, responses, comments
     }
 
     public init(from decoder: Decoder) throws {
@@ -202,6 +204,19 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
         pushDelivered = try c.decodeIfPresent(Bool.self, forKey: .pushDelivered) ?? true
         reactions = (try? c.decodeIfPresent([CareReaction].self, forKey: .reactions)) ?? []
         responses = (try? c.decodeIfPresent([CareResponse].self, forKey: .responses)) ?? []
+        comments = (try? c.decodeIfPresent([CareComment].self, forKey: .comments)) ?? []
+    }
+}
+
+/// A comment on an answer: family to the person checked on, or their reply.
+public struct CareComment: Decodable, Equatable, Hashable, Identifiable, Sendable {
+    public let id: String
+    public let userId: String
+    public let name: String
+    public let text: String
+    public let at: Date?
+    public init(id: String, userId: String, name: String, text: String, at: Date?) {
+        self.id = id; self.userId = userId; self.name = name; self.text = text; self.at = at
     }
 }
 

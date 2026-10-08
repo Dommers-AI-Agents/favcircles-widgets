@@ -17,6 +17,8 @@ struct CarePlanDetailView: View {
     @State private var showProfile = false
     @State private var showAllRotation = false
     @State private var showFamilyPicker = false
+    /// One answer, tapped: its reactions, comments and history
+    @State private var openAnswer: CareAnswerRef?
 
     /// Owned or watched — a family member opens the same screen, read-only.
     private var plan: CarePlan? { store.plans?.following.first { $0.planId == planId } }
@@ -66,6 +68,7 @@ struct CarePlanDetailView: View {
             .sheet(isPresented: $showProfile) {
                 if let plan { CareProfileSheet(context: context, store: store, plan: plan) }
             }
+            .sheet(item: $openAnswer) { ref in CareAnswerDetailView(context: context, store: store, askId: ref.id) }
             .sheet(isPresented: $showFamilyPicker) {
                 if let plan { CareFamilyPicker(context: context, store: store, plan: plan) }
             }
@@ -365,8 +368,10 @@ struct CarePlanDetailView: View {
             }
             // Family (owner or a watcher) can react and respond; reads the
             // store so a reaction shows at once
-            ForEach(store.histories[plan.planId] ?? history) {
-                CareAnswerRow(context: context, ask: $0, support: plan.isParent ? .none : .family(store: store))
+            ForEach(store.histories[plan.planId] ?? history) { ask in
+                CareAnswerRow(context: context, ask: ask, support: plan.isParent ? .none : .family(store: store))
+                    .contentShape(Rectangle())
+                    .onTapGesture { if !ask.isOpen { openAnswer = CareAnswerRef(id: ask.askId) } }
             }
             if store.moreHistory[plan.planId] == true {
                 Button {

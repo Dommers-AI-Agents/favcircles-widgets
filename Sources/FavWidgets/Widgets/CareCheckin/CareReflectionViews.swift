@@ -43,7 +43,14 @@ struct CareAnswerRow: View {
                     if ask.kind == .scale, let score = ask.answerScore { CareScaleBar(context: context, value: score, warn: ask.alert) }
                 }
                 if !ask.note.isEmpty { Text("“\(ask.note)”").font(.system(size: 13)).foregroundStyle(theme.label) }
-                Text(CareCopy.relative(ask.askedAt, calendar: context.calendar)).font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
+                HStack(spacing: 8) {
+                    Text(CareCopy.relative(ask.askedAt, calendar: context.calendar)).font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
+                    if !ask.comments.isEmpty {
+                        Label("\(ask.comments.count)", systemImage: "bubble.left.fill")
+                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(context.accent)
+                            .accessibilityLabel("\(ask.comments.count) comment\(ask.comments.count == 1 ? "" : "s")")
+                    }
+                }
                 if ask.isAnswered {
                     switch support {
                     case .family(let store): CareFamilySupportBar(context: context, ask: ask, store: store).padding(.top, 4)

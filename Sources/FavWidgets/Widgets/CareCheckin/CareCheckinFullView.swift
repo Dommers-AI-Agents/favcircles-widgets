@@ -13,6 +13,8 @@ struct CareCheckinFullView: View {
     @State private var showPicker = false
     @State private var detailPlan: CarePlan?
     @State private var profilePlan: CarePlan?
+    /// An answer opened from its push (or the answers list)
+    @State private var openAnswer: CareAnswerRef?
     @State private var bannerStyle: CareBannerTip.BannerStyle = .unknown
     @AppStorage("care.bannerTip.dismissed") private var bannerTipDismissed = false
     @Environment(\.scenePhase) private var scenePhase
@@ -57,6 +59,7 @@ struct CareCheckinFullView: View {
         .background(theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await store.loadIfNeeded(context: context) }
+        .task { await openLaunchedAnswer() }
         .task { bannerStyle = await Self.readBannerStyle() }
         // Back from Settings: the tip goes once banners are Persistent
         .onChange(of: scenePhase) { phase in
@@ -70,6 +73,16 @@ struct CareCheckinFullView: View {
         .sheet(isPresented: $showPicker, onDismiss: offerProfileIfJustCreated) { CareInvitePicker(context: context, store: store) }
         .sheet(item: $detailPlan) { plan in CarePlanDetailView(context: context, store: store, planId: plan.planId) }
         .sheet(item: $profilePlan) { plan in CareProfileSheet(context: context, store: store, plan: plan) }
+        .sheet(item: $openAnswer) { ref in CareAnswerDetailView(context: context, store: store, askId: ref.id) }
+    }
+
+    /// "Sal: Sleep 6/10" (or a reaction/comment on it) was tapped: open that
+    /// answer, not this page (Wes, 2026-10-08)
+    private func openLaunchedAnswer() async {
+        guard let askId = context.launchCareAskId else { return }
+        context.launchCareAskId = nil
+        await context.waitForPageToSettle()
+        openAnswer = CareAnswerRef(id: askId)
     }
 
     private var me: String { context.host.currentUserId ?? "" }
@@ -416,3 +429,5 @@ struct CareCheckinFullView: View {
     }
 }
 
+
+struct CareAnswerRef: Identifiable, Hashable { let id: String }

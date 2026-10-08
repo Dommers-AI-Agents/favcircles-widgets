@@ -116,6 +116,10 @@ public final class WidgetContext: ObservableObject {
     public var launchRunId: String?
     public var launchRunToken: String?
 
+    /// A How Are You? answer to open (its answer, reaction or comment push):
+    /// the answer, reactions and comments, and that question's history.
+    public var launchCareAskId: String?
+
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still
     /// being pushed, and a sheet presented mid-push flashed blank and closed;

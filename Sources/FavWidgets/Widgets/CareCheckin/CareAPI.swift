@@ -6,6 +6,15 @@ enum CareAPI {
     private struct PlanResponse: Decodable { let plan: CarePlan }
     private struct AsksResponse: Decodable { let asks: [CareAsk]; let hasMore: Bool? }
     private struct AskResponse: Decodable { let ask: CareAsk }
+    struct AskDetail: Decodable { let ask: CareAsk; let history: [CareAsk]; let parentName: String?; let role: String? }
+
+    /// One answer and the same question's earlier answers (a push tap lands here)
+    static func askDetail(context: WidgetContext, askId: String) async throws -> AskDetail {
+        try await context.api(.get, "widgets/care/asks/\(askId)")
+    }
+    static func comment(context: WidgetContext, askId: String, text: String) async throws -> CareAsk {
+        let r: AskResponse = try await context.api(.post, "widgets/care/asks/\(askId)/comment", body: ["text": text]); return r.ask
+    }
 
     // Family support (2026-10-07)
     static func react(context: WidgetContext, askId: String, kind: String?) async throws -> CareAsk {
@@ -189,7 +198,12 @@ final class CareStore: RemoteStore {
     }
 
     /// An answer came back with new reactions/responses: swap it in wherever shown.
+    /// The newest copy of an answer someone changed (a reaction, a comment),
+    /// so an open answer screen updates too
+    @Published private(set) var lastChangedAsk: CareAsk?
+
     func replaceAsk(_ ask: CareAsk) {
+        lastChangedAsk = ask
         if var list = histories[ask.planId], let i = list.firstIndex(where: { $0.askId == ask.askId }) {
             list[i] = ask
             histories[ask.planId] = list
