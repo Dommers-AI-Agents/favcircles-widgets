@@ -1,4 +1,5 @@
 import SwiftUI
+import FavWidgetsCore
 
 /// The postcard itself, drawn identically for the on-screen preview, the
 /// template thumbnails, and the JPEG that gets sent. Renders synchronously
@@ -15,6 +16,8 @@ struct PostcardCanvasView: View {
     /// cuts away, so backgrounds and photos still run off the edge while
     /// captions and the stamp stay safely inside the finished card.
     var bleed: CGFloat = 0
+    /// Where the photo sits in its window (drag/pinch on the preview)
+    var crop: PostcardCrop = .centered
 
     private var template: PostcardTemplate { PostcardTemplate.resolve(templateId) }
     /// 1.0 at the 600pt design width.
@@ -135,13 +138,17 @@ struct PostcardCanvasView: View {
     @ViewBuilder
     private var photo: some View {
         if let image {
-            Color.clear
-                .overlay(
-                    Image(postcardImage: image)
-                        .resizable()
-                        .scaledToFill()
-                )
-                .clipped()
+            // Placed by the crop, in this window's own size, so the preview,
+            // the thumbnails and both rendered cards agree exactly
+            GeometryReader { proxy in
+                let placed = crop.layout(image: image.size, frame: proxy.size)
+                Image(postcardImage: image)
+                    .resizable()
+                    .frame(width: placed.size.width, height: placed.size.height)
+                    .position(x: proxy.size.width / 2 + placed.offset.width,
+                              y: proxy.size.height / 2 + placed.offset.height)
+            }
+            .clipped()
         } else {
             ZStack {
                 LinearGradient(colors: [accent.opacity(0.55), accent.opacity(0.2)], startPoint: .topLeading, endPoint: .bottomTrailing)

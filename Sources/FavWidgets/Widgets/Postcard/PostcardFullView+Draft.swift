@@ -125,9 +125,10 @@ extension PostcardFullView {
         guard let photo, printImageURL == nil else { return }
         let templateId = templateId
         let caption = caption
+        let crop = photoCrop
         printUploadTask = Task {
             guard let jpeg = try? PostcardRendering.printJPEG(
-                image: photo, templateId: templateId, caption: caption, accent: context.accent) else { return }
+                image: photo, templateId: templateId, caption: caption, accent: context.accent, crop: crop) else { return }
             guard !Task.isCancelled else { return }
             printImageURL = try? await PostcardMail.prepareArtwork(context: context, jpeg: jpeg)
         }

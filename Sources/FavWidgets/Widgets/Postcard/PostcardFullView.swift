@@ -14,6 +14,11 @@ struct PostcardFullView: View {
 
     // Compose state (photo never leaves memory).
     @State var photo: PostcardPlatformImage?
+    /// Where the photo sits on the card; the drag/pinch in progress is
+    /// `photoCropLive` (preview only) until the gesture ends
+    @State var photoCrop: PostcardCrop = .centered
+    @State var photoCropLive: PostcardCrop?
+    @State var cropGestureStart: PostcardCrop?
     @State var photoItem: PhotosPickerItem?
     @State var showCamera = false
     @State var templateId = PostcardTemplate.classic.rawValue
@@ -104,7 +109,9 @@ struct PostcardFullView: View {
             // presented after an await.
             if on { schedulePrintUpload() }
         }
-        .onChange(of: photo) { _ in
+        .onChange(of: photo) { newPhoto in
+            // A new photo starts on its faces (or a little above center)
+            photoCrop = newPhoto.map { PostcardPhotoFraming.initialCrop(for: $0) } ?? .centered
             printImageURL = nil
             if mailOn { schedulePrintUpload() }
         }

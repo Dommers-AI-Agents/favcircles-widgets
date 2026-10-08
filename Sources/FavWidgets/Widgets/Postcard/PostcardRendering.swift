@@ -1,4 +1,5 @@
 import SwiftUI
+import FavWidgetsCore
 
 enum PostcardRenderError: LocalizedError {
     case unsupportedPlatform
@@ -39,21 +40,25 @@ enum PostcardRendering {
     /// The bleed itself, in render points: 0.125in at 100pt/in.
     static let printBleed: CGFloat = 12.5
 
-    static func jpeg(image: PostcardPlatformImage, templateId: String, caption: String, accent: Color) throws -> Data {
-        let canvas = PostcardCanvasView(image: image, templateId: templateId, caption: caption, size: renderSize, accent: accent)
+    static func jpeg(image: PostcardPlatformImage, templateId: String, caption: String, accent: Color,
+                     crop: PostcardCrop = .centered) throws -> Data {
+        let canvas = PostcardCanvasView(image: image, templateId: templateId, caption: caption, size: renderSize, accent: accent,
+                                        crop: crop)
         return try render(canvas, size: renderSize, scale: scale, quality: jpegQuality)
     }
 
     /// The print-resolution JPEG: 1875x1275, full bleed, content held inside
     /// the trim. Only for cards that are actually going to be printed.
-    static func printJPEG(image: PostcardPlatformImage, templateId: String, caption: String, accent: Color) throws -> Data {
+    static func printJPEG(image: PostcardPlatformImage, templateId: String, caption: String, accent: Color,
+                          crop: PostcardCrop = .centered) throws -> Data {
         let canvas = PostcardCanvasView(
             image: image,
             templateId: templateId,
             caption: caption,
             size: printRenderSize,
             accent: accent,
-            bleed: printBleed
+            bleed: printBleed,
+            crop: crop
         )
         return try render(canvas, size: printRenderSize, scale: printScale, quality: printJPEGQuality)
     }

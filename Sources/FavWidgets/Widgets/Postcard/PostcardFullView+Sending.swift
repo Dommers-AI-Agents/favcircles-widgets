@@ -21,7 +21,7 @@ extension PostcardFullView {
         Task {
             defer { isSharing = false }
             do {
-                let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
+                let jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent, crop: photoCrop)
                 let note = message.trimmingCharacters(in: .whitespacesAndNewlines)
                 let link = await PostcardShareLink.create(context: context, jpeg: jpeg, message: note, templateId: templateId, place: placeForHost)
                 shareCard(jpeg: jpeg, note: note, link: link)
@@ -55,7 +55,7 @@ extension PostcardFullView {
         let emails = emailAddresses.valid
         let jpeg: Data
         do {
-            jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent)
+            jpeg = try PostcardRendering.jpeg(image: photo, templateId: templateId, caption: caption, accent: context.accent, crop: photoCrop)
         } catch {
             context.host.presentAlert(WidgetAlert(title: "Couldn't send", message: error.localizedDescription))
             return

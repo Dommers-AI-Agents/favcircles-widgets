@@ -25,14 +25,68 @@ extension PostcardFullView {
     }
 
     var preview: some View {
-        GeometryReader { proxy in
-            PostcardCanvasView(image: photo, templateId: templateId, caption: caption,
-                               size: CGSize(width: proxy.size.width, height: proxy.size.width / PostcardTemplate.aspectRatio),
-                               accent: context.accent)
+        VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { proxy in
+                let size = CGSize(width: proxy.size.width, height: proxy.size.width / PostcardTemplate.aspectRatio)
+                PostcardCanvasView(image: photo, templateId: templateId, caption: caption,
+                                   size: size, accent: context.accent, crop: photoCropLive ?? photoCrop)
+                    .contentShape(Rectangle())
+                    .gesture(photo == nil ? nil : cropGesture(window: size))
+            }
+            .aspectRatio(PostcardTemplate.aspectRatio, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+            if photo != nil {
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.draw")
+                    Text("Drag or pinch the photo to fit")
+                    Spacer()
+                    if photoCrop != .centered {
+                        Button("Reset") {
+                            withAnimation(.easeOut(duration: 0.2)) { photoCrop = .centered }
+                            cropChanged()
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(context.accent)
+                        .buttonStyle(.plain)
+                    }
+                }
+                .font(.system(size: 12))
+                .foregroundStyle(context.theme.secondaryLabel)
+            }
         }
-        .aspectRatio(PostcardTemplate.aspectRatio, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 3)
+    }
+
+    /// Drag slides the photo, pinch zooms it; one gesture can do both.
+    /// The preview follows live; the card (and the print upload) is
+    /// updated when the fingers lift.
+    private func cropGesture(window: CGSize) -> some Gesture {
+        let imageSize = photo?.size ?? .zero
+        let drag = DragGesture(minimumDistance: 1)
+        let pinch = MagnificationGesture()
+        return SimultaneousGesture(drag, pinch)
+            .onChanged { value in
+                let start = cropGestureStart ?? photoCrop
+                if cropGestureStart == nil { cropGestureStart = start }
+                var next = start
+                if let scale = value.second { next = next.zoomed(to: start.zoom * Double(scale), image: imageSize, frame: window) }
+                if let move = value.first?.translation {
+                    next = next.panned(dx: Double(move.width), dy: Double(move.height), image: imageSize, frame: window)
+                }
+                photoCropLive = next
+            }
+            .onEnded { _ in
+                if let live = photoCropLive { photoCrop = live }
+                photoCropLive = nil
+                cropGestureStart = nil
+                cropChanged()
+            }
+    }
+
+    /// The print card is re-rendered once the photo has settled
+    func cropChanged() {
+        printImageURL = nil
+        if mailOn { schedulePrintUpload() }
     }
 
     func templateSection(_ theme: WidgetTheme) -> some View {
@@ -48,7 +102,7 @@ extension PostcardFullView {
                         } label: {
                             VStack(spacing: 6) {
                                 PostcardCanvasView(image: photo, templateId: template.rawValue, caption: caption,
-                                                   size: CGSize(width: 132, height: 88), accent: context.accent)
+                                                   size: CGSize(width: 132, height: 88), accent: context.accent, crop: photoCrop)
                                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6, style: .continuous)
