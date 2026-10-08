@@ -72,13 +72,18 @@ public struct WidgetPostcardSend: Sendable {
     public let message: String
     public let templateId: String
     public let place: WidgetPlaceRef?
+    /// "Sent a postcard to Mom" in the sender's own Activity; off keeps a
+    /// surprise off the record (Wes, 2026-10-08)
+    public let recordActivity: Bool
 
-    public init(recipientId: String, imageJPEG: Data, message: String, templateId: String, place: WidgetPlaceRef?) {
+    public init(recipientId: String, imageJPEG: Data, message: String, templateId: String, place: WidgetPlaceRef?,
+                recordActivity: Bool = true) {
         self.recipientId = recipientId
         self.imageJPEG = imageJPEG
         self.message = message
         self.templateId = templateId
         self.place = place
+        self.recordActivity = recordActivity
     }
 }
 

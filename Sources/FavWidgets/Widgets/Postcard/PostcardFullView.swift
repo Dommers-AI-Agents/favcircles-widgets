@@ -14,6 +14,9 @@ struct PostcardFullView: View {
 
     // Compose state (photo never leaves memory).
     @State var photo: PostcardPlatformImage?
+    /// Add the sent card to the sender's Activity. Off by default: a
+    /// postcard is often a surprise (remembered per phone)
+    @AppStorage("postcard.showInActivity") var showInActivity = false
     /// Where the photo sits on the card; the drag/pinch in progress is
     /// `photoCropLive` (preview only) until the gesture ends
     @State var photoCrop: PostcardCrop = .centered

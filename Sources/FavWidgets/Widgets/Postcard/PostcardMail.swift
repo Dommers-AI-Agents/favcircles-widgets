@@ -158,7 +158,8 @@ enum PostcardMail {
         prepared: Prepared,
         message: String,
         templateId: String,
-        place: WidgetPlaceRef?
+        place: WidgetPlaceRef?,
+        recordActivity: Bool = true
     ) async throws -> PostcardMailOrder? {
         guard let publishableKey = prepared.config.publishableKey,
               let merchantId = prepared.config.applePayMerchantId else {
@@ -182,6 +183,7 @@ enum PostcardMail {
                 "imageUrl": prepared.printImageURL.absoluteString,
                 "message": message,
                 "templateId": templateId,
+                "recordActivity": recordActivity,
                 // Holds the price they were shown (a special that ends mid-card still applies)
                 "priceQuote": prepared.config.priceQuote ?? "",
                 "recipient": [

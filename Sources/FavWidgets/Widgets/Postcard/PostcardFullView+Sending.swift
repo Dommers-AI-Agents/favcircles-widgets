@@ -99,7 +99,8 @@ extension PostcardFullView {
         if let recipient {
             do {
                 let receipt = try await context.host.sendPostcard(WidgetPostcardSend(
-                    recipientId: recipient.id, imageJPEG: jpeg, message: message, templateId: templateId, place: placeForHost
+                    recipientId: recipient.id, imageJPEG: jpeg, message: message, templateId: templateId, place: placeForHost,
+                    recordActivity: showInActivity
                 ))
                 records.append(PostcardRecord(
                     messageId: receipt.messageId, conversationId: receipt.conversationId,
@@ -198,7 +199,8 @@ extension PostcardFullView {
         )
         do {
             return .success(try await PostcardMail.purchase(
-                context: context, prepared: prepared, message: message, templateId: templateId, place: place))
+                context: context, prepared: prepared, message: message, templateId: templateId, place: place,
+                recordActivity: showInActivity))
         } catch {
             return .failure(error)
         }

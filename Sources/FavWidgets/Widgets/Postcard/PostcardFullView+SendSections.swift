@@ -42,6 +42,17 @@ extension PostcardFullView {
 
     func sendSection(_ theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Off by default: a postcard is often a surprise
+            Toggle(isOn: $showInActivity) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Show in my Activity")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.label)
+                    Text("Adds \"Sent a postcard\" to your Activity. Leave off to keep it a surprise.")
+                        .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                }
+            }
+            .tint(context.accent)
+            .padding(.bottom, 4)
             // A printed card is a purchase, so the Send that pays for one is
             // Apple's button, with Apple's wording. Sending only digitally
             // costs nothing and keeps the ordinary button.
