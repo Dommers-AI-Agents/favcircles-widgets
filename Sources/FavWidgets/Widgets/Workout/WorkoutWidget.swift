@@ -42,10 +42,13 @@ public struct WorkoutWidget: FavWidget {
     /// first (that took three animations before the fetch even started).
     /// `previewTitle`/`previewDetail` show while it loads; `onStarted` runs
     /// after "Start this workout" so the host can show the live session.
+    /// `onOpenWorkouts` adds an "Open Workouts" button that goes to the widget.
     public func makePostView(context: WidgetContext, postId: String, previewTitle: String? = nil,
-                             previewDetail: String? = nil, onStarted: (() -> Void)? = nil) -> AnyView {
+                             previewDetail: String? = nil, onStarted: (() -> Void)? = nil,
+                             onOpenWorkouts: (() -> Void)? = nil) -> AnyView {
         AnyView(WorkoutPostView(context: context, settings: context.state(WorkoutSettings.self), postId: postId,
-                                previewTitle: previewTitle, previewDetail: previewDetail, onStarted: onStarted))
+                                previewTitle: previewTitle, previewDetail: previewDetail, onStarted: onStarted,
+                                onOpenWorkouts: onOpenWorkouts))
     }
 }
 

@@ -16,6 +16,9 @@ struct WorkoutPostView: View {
     /// Opened from outside the widget (the activity feed): after Start, the
     /// host opens the Workouts page so the live workout is on screen
     var onStarted: (() -> Void)?
+    /// Opened from outside the widget: "Open Workouts" goes to the widget
+    /// (Wes, 2026-10-08)
+    var onOpenWorkouts: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var post: WorkoutFeedAPI.Post?
@@ -23,6 +26,7 @@ struct WorkoutPostView: View {
     /// The routine this post became on this phone, once copied
     @State private var copied: Routine?
     @State private var notice: String?
+    @State private var sharing = false
 
     private var theme: WidgetTheme { context.theme }
 
@@ -57,7 +61,18 @@ struct WorkoutPostView: View {
             }
             .background(theme.background.ignoresSafeArea())
             .widgetInlineNavigationTitle("Workout")
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
+                if let post, isMine(post) {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { shareOut(post) } label: {
+                            if sharing { ProgressView() } else { Image(systemName: "square.and.arrow.up") }
+                        }
+                        .disabled(sharing)
+                        .accessibilityLabel("Share this workout")
+                    }
+                }
+            }
         }
         .task { await load() }
     }
@@ -124,6 +139,29 @@ struct WorkoutPostView: View {
                     }
                 }
                 if !summary.exercises.isEmpty { copyBlock(post) }
+                if isMine(post) {
+                    Button { shareOut(post) } label: {
+                        Label("Share this workout", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(context.accent)
+                            .frame(maxWidth: .infinity).frame(height: 48)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(sharing)
+                }
+                if let onOpenWorkouts {
+                    Button {
+                        context.track("workout_post_open_widget")
+                        dismiss()
+                        onOpenWorkouts()
+                    } label: {
+                        Label("Open Workouts", systemImage: "dumbbell.fill")
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+                            .frame(maxWidth: .infinity).frame(height: 48)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .padding(20)
         }
@@ -165,6 +203,27 @@ struct WorkoutPostView: View {
         notice = "Saved to your routines as \u{201C}\(result.routine.name)\u{201D}."
         context.host.haptic(.success)
         context.track("workout_post_copied", ["exercises": String(result.routine.items.count)])
+    }
+
+    /// Only your own workout gets a share link: a link opens for anyone
+    /// holding it, so someone else's (shared with a chosen group) never does.
+    private func isMine(_ post: WorkoutFeedAPI.Post) -> Bool {
+        guard let me = context.host.currentUserId else { return false }
+        return post.userId == me
+    }
+
+    /// One bubble: the workout card as a link that opens this workout in
+    /// the app (same as Share after finishing a workout). Offline, the card.
+    private func shareOut(_ post: WorkoutFeedAPI.Post) {
+        guard !sharing else { return }
+        sharing = true
+        let jpeg = WorkoutShareCard.jpeg(summary: post.summary, accent: context.accent)
+        Task {
+            let url = try? await WorkoutFeedAPI.link(context: context, summary: post.summary)
+            sharing = false
+            context.track(url == nil ? "workout_shared" : "workout_shared_link", ["from": "post"])
+            context.host.share(WorkoutShareLink.items(url: url, summary: post.summary, cardJPEG: jpeg, calendar: context.calendar))
+        }
     }
 
     private func start(_ routine: Routine) {
