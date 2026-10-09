@@ -25,7 +25,7 @@ struct WidgetShareCardView: View {
                 Text(content.headline).font(.system(size: 28, weight: .bold, design: .rounded)).foregroundStyle(.white)
                     .lineLimit(2).minimumScaleFactor(0.7)
                 if let detail = content.detail {
-                    Text(detail).font(.system(size: 14)).foregroundStyle(.white.opacity(0.85)).lineLimit(3)
+                    Text(detail).font(.system(size: 15)).foregroundStyle(.white.opacity(0.9)).lineLimit(5)
                 }
             }
             #if os(iOS)
