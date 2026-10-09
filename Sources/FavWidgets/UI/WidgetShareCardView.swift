@@ -10,12 +10,14 @@ struct WidgetShareCardView: View {
     let content: WidgetShareCardContent
 
     private var accent: Color { Color(hex: descriptor.accentHex) }
+    /// The generic card's headline is the widget's name; don't say it twice
+    private var isGeneric: Bool { content.headline == descriptor.title }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: descriptor.symbolName).font(.system(size: 15, weight: .semibold))
-                Text(descriptor.title).font(.system(size: 14, weight: .semibold))
+                Text(isGeneric ? "A FavCircles widget" : descriptor.title).font(.system(size: 14, weight: .semibold))
                 Spacer()
             }
             .foregroundStyle(.white.opacity(0.9))
@@ -44,7 +46,9 @@ struct WidgetShareCardView: View {
                     }
                 }
             }
-            Text("FavCircles").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            if !isGeneric {
+                Text("FavCircles").font(.system(size: 12, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+            }
         }
         .padding(22)
         .frame(width: 400, alignment: .leading)
