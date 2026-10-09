@@ -151,6 +151,7 @@ public enum MotivationLines {
             ]
         case (.savage, .discipline):
             return [
+                "Yesterday? No one cares about what you did yesterday. Do it now.",  // Wes, 2026-10-09
                 "Losers make excuses. Are you a loser?",
                 "Nobody's coming to save you. Get up.",
                 "Quit complaining and do the work.",
