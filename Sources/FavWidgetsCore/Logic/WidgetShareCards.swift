@@ -74,6 +74,32 @@ public extension WidgetShareCardContent {
             linkTitle: "Coach Mane · FavCircles")
     }
 
+    /// Today's NextBar pick: the bar and who in your circles saved it.
+    static func nextBar(name: String, attribution: String?, distance: String?) -> WidgetShareCardContent {
+        WidgetShareCardContent(
+            headline: "Next stop: \(name)",
+            detail: [attribution, distance.map { "\($0) away" }].compactMap { $0 }.joined(separator: " · ").nilIfEmpty,
+            linkTitle: "Next stop: \(name) 🍻")
+    }
+
+    /// Tonight's craving: "🌮 Tacos tonight" · the dish.
+    static func whatToEat(emoji: String, cuisine: String, dish: String?) -> WidgetShareCardContent {
+        WidgetShareCardContent(
+            headline: "\(emoji) \(cuisine) tonight",
+            detail: dish.map { "Craving: \($0)" },
+            linkTitle: "\(cuisine) tonight \(emoji)")
+    }
+
+    /// A split check: "$42.50 each" with the total, tip and people. Amounts
+    /// arrive formatted in the user's currency.
+    static func billSplit(perPerson: String, total: String, tipPercent: Int, people: Int, place: String?) -> WidgetShareCardContent {
+        WidgetShareCardContent(
+            headline: people > 1 ? "\(perPerson) each" : "\(total) total",
+            detail: place,
+            stats: [.init(total, "total"), .init("\(tipPercent)%", "tip"), .init("\(people)", people == 1 ? "person" : "people")],
+            linkTitle: people > 1 ? "\(perPerson) each · \(total) total" : "\(total) total")
+    }
+
     internal static func dayText(_ date: Date, calendar: Calendar) -> String {
         let f = DateFormatter()
         f.calendar = calendar
@@ -82,4 +108,8 @@ public extension WidgetShareCardContent {
         f.dateFormat = "EEE, MMM d"
         return f.string(from: date)
     }
+}
+
+private extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

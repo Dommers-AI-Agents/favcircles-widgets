@@ -282,6 +282,12 @@ struct BillSplitFullView: View {
         let text = BillSplitFormatting.shareText(subtotal: subtotal, tax: tax, tipPercent: tipPercent,
                                                  result: result, people: people)
         context.track("billsplit_shared", ["people": "\(people)", "tip_percent": "\(tipPercent)"])
-        context.host.share([.text(text)])
+        // The split as a card, one bubble (shares rule); the full line is the
+        // text fallback when no card can be drawn
+        let content = WidgetShareCardContent.billSplit(
+            perPerson: BillSplitFormatting.money(result.perPerson), total: BillSplitFormatting.money(result.total),
+            tipPercent: tipPercent, people: max(1, people), place: settings.model.lastPlace?.name)
+        let items = WidgetShareKit.items(descriptor: context.descriptor, content: content)
+        if case .text = items.first { context.host.share([.text(text)]) } else { context.host.share(items) }
     }
 }

@@ -42,4 +42,17 @@ struct WidgetShareCardsTests {
         #expect(WidgetShareCardContent.sleepSounds(mix: "Rain on a tent", nightsThisMonth: 1).stats.first?.label == "night this month")
         #expect(WidgetShareCardContent.motivation(line: "Go.", streak: 3).detail == "Go.")
     }
+
+    @Test func pickedPlacesAndSplits() {
+        let bar = WidgetShareCardContent.nextBar(name: "Sycamore Brewing", attribution: "Saved by Ana", distance: "0.4 mi")
+        #expect(bar.headline == "Next stop: Sycamore Brewing")
+        #expect(bar.detail == "Saved by Ana · 0.4 mi away")
+        #expect(WidgetShareCardContent.nextBar(name: "X", attribution: nil, distance: nil).detail == nil)
+        let food = WidgetShareCardContent.whatToEat(emoji: "🌮", cuisine: "Tacos", dish: "Birria tacos")
+        #expect(food.headline == "🌮 Tacos tonight")
+        let split = WidgetShareCardContent.billSplit(perPerson: "$42.50", total: "$170.00", tipPercent: 20, people: 4, place: "Haberdish")
+        #expect(split.headline == "$42.50 each")
+        #expect(split.stats.map(\.value) == ["$170.00", "20%", "4"])
+        #expect(WidgetShareCardContent.billSplit(perPerson: "$9", total: "$9", tipPercent: 18, people: 1, place: nil).headline == "$9 total")
+    }
 }
