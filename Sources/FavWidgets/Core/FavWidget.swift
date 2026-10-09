@@ -50,7 +50,8 @@ public enum FavWidgetRegistry {
         MedsWidget(),
         SleepWidget(),
         ParkingWidget(),
-        PackagesWidget()
+        PackagesWidget(),
+        NewContactsWidget()
     ]
 
     public static var descriptors: [FavWidgetDescriptor] { all.map(\.descriptor) }
