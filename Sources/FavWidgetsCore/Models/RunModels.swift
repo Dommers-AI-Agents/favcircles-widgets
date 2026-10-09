@@ -5,7 +5,8 @@ import Foundation
 public struct RunSettings: WidgetModel {
     /// 2 (2026-10-06): followers chosen before a run (`followers`).
     /// 3 (2026-10-07): Coach Mane yells at every mile (`coach`, `coachIntensity`).
-    public static let schemaVersion = 3
+    /// 4 (2026-10-09): the last audience a run was posted to (`postListId`).
+    public static let schemaVersion = 4
     public var unit: RunUnit
     /// For the calorie estimate; nil = 70 kg.
     public var weightKg: Double?
@@ -15,11 +16,22 @@ public struct RunSettings: WidgetModel {
     /// Coach Mane speaks after every mile/km (off unless turned on)
     public var coach: Bool?
     public var coachIntensity: MotivationIntensity?
+    /// The Inner Circle list the last run was posted to; nil = My connections.
+    /// "Post your run" opens on it (Wes, 2026-10-09: remember the last choice).
+    public var postListId: String?
 
     public init(unit: RunUnit = .localeDefault, weightKg: Double? = nil, followers: [RunFollower]? = nil,
-                coach: Bool? = nil, coachIntensity: MotivationIntensity? = nil) {
+                coach: Bool? = nil, coachIntensity: MotivationIntensity? = nil, postListId: String? = nil) {
         self.unit = unit; self.weightKg = weightKg; self.followers = followers
-        self.coach = coach; self.coachIntensity = coachIntensity
+        self.coach = coach; self.coachIntensity = coachIntensity; self.postListId = postListId
+    }
+
+    /// The list "Post your run" opens on: the remembered one while it still
+    /// exists. `listIds` nil = the lists haven't loaded; keep it until they have.
+    public func initialPostListId(listIds: [String]?) -> String? {
+        guard let postListId else { return nil }
+        if let listIds, !listIds.contains(postListId) { return nil }
+        return postListId
     }
 
     public var coachOn: Bool { coach ?? false }

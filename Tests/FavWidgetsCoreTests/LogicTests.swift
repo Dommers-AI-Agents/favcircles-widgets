@@ -181,3 +181,21 @@ struct PreferencesTests {
         #expect(merged.seenHints == ["x"] && merged.order == prefs.order)
     }
 }
+
+/// "Post your run" opens on the last run's audience (2026-10-09).
+struct RunPostAudienceMemoryTests {
+    @Test func remembersTheListWhileItExists() {
+        let settings = RunSettings(postListId: "family")
+        #expect(settings.initialPostListId(listIds: nil) == "family")          // lists not loaded yet
+        #expect(settings.initialPostListId(listIds: ["family", "work"]) == "family")
+        #expect(settings.initialPostListId(listIds: ["work"]) == nil)          // deleted or emptied
+        #expect(RunSettings().initialPostListId(listIds: ["family"]) == nil)   // connections
+    }
+
+    @Test func oldDocumentsDecodeWithoutTheField() throws {
+        let old = #"{"unit":"mi","coach":true}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(RunSettings.self, from: old)
+        #expect(decoded.postListId == nil)
+        #expect(decoded.coachOn)
+    }
+}

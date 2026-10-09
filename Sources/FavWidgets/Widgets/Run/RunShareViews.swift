@@ -343,13 +343,18 @@ struct RunPostSheet: View {
     let sharedRunId: String?
     let onPosted: () -> Void
     @ObservedObject private var audience: WorkoutAudienceStore
+    /// Remembers the audience of the last posted run.
+    @ObservedObject private var settings: WidgetStateController<RunSettings>
     @State private var listId: String?          // nil = all connections
     @State private var posting = false
     @Environment(\.dismiss) private var dismiss
 
-    init(context: WidgetContext, record: RunRecord, unit: RunUnit, sharedRunId: String?, onPosted: @escaping () -> Void) {
+    init(context: WidgetContext, record: RunRecord, unit: RunUnit, sharedRunId: String?,
+         settings: WidgetStateController<RunSettings>, onPosted: @escaping () -> Void) {
         self.context = context; self.record = record; self.unit = unit; self.sharedRunId = sharedRunId; self.onPosted = onPosted
         self.audience = WorkoutAudienceStore.shared(context)
+        self.settings = settings
+        _listId = State(initialValue: settings.model.initialPostListId(listIds: nil))
     }
 
     var body: some View {
@@ -371,7 +376,14 @@ struct RunPostSheet: View {
                 .padding(16)
             }
         }
-        .task { await audience.loadIfStale(context: context) }
+        .task {
+            await audience.loadIfStale(context: context)
+            // A remembered list that's gone (deleted, or emptied) → My connections.
+            // Only on a real answer: a failed load says nothing about the lists.
+            if listId != nil, audience.hasLoaded, audience.loadError == nil {
+                listId = settings.model.initialPostListId(listIds: audience.lists.map(\.id))
+            }
+        }
     }
 
     private func choice(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
@@ -397,6 +409,8 @@ struct RunPostSheet: View {
                                                                     audience: listId == nil ? "connections" : "innerCircle",
                                                                     listId: listId, mapImageUrl: mapURL)
                 context.host.haptic(.success)
+                let posted = listId
+                settings.update { $0.postListId = posted }
                 context.track("run_posted", ["audience": listId == nil ? "connections" : "list"])
                 onPosted()
                 dismiss()

@@ -108,7 +108,8 @@ struct RunFullView: View {
         }
         .sheet(item: $watching) { target in RunWatchView(context: context, runId: target.id) }
         .sheet(item: $toPost) { target in
-            RunPostSheet(context: context, record: target.record, unit: settings.model.unit, sharedRunId: target.sharedRunId) {}
+            RunPostSheet(context: context, record: target.record, unit: settings.model.unit, sharedRunId: target.sharedRunId,
+                         settings: settings) {}
         }
     }
 
