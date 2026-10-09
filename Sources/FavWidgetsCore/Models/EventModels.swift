@@ -64,16 +64,31 @@ public struct EventPhoto: Decodable, Identifiable, Equatable, Hashable, Sendable
     public let challengeId: String?
     /// ~25 KB preview for the album grid (older photos have none)
     public let thumbUrl: String?
+    /// Where and when the photo was taken, from its own GPS/EXIF (2026-10-09;
+    /// absent when the photo had none, or on older servers)
+    public let takenAt: String?
+    public let lat: Double?
+    public let lng: Double?
+    /// The tagged place it was taken at, when one is within ~150 m
+    public let placeId: String?
+    public let placeName: String?
 
     /// What the grid loads: the preview, or the photo when there's none.
     public var gridURL: String { thumbUrl ?? imageUrl }
 
+    public var coordinate: WidgetCoordinate? {
+        guard let lat, let lng else { return nil }
+        return WidgetCoordinate(latitude: lat, longitude: lng)
+    }
+
     public init(id: String, imageUrl: String, uploaderId: String, uploaderName: String, caption: String, createdAt: String?,
-                likeCount: Int, likedByMe: Bool, canDelete: Bool, challengeId: String? = nil, thumbUrl: String? = nil) {
+                likeCount: Int, likedByMe: Bool, canDelete: Bool, challengeId: String? = nil, thumbUrl: String? = nil,
+                takenAt: String? = nil, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, placeName: String? = nil) {
         self.id = id; self.imageUrl = imageUrl; self.uploaderId = uploaderId; self.uploaderName = uploaderName
         self.caption = caption; self.createdAt = createdAt; self.likeCount = likeCount; self.likedByMe = likedByMe; self.canDelete = canDelete
         self.challengeId = challengeId
         self.thumbUrl = thumbUrl
+        self.takenAt = takenAt; self.lat = lat; self.lng = lng; self.placeId = placeId; self.placeName = placeName
     }
 }
 

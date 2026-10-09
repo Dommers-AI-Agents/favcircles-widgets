@@ -8,7 +8,9 @@ struct EventModelsTests {
       "createdAt":"2026-10-04T20:00:00Z","photoCount":2,"placeCount":1,
       "members":[{"id":"wes","name":"Wesley","avatarUrl":null,"isHost":true},{"id":"sal","name":"Sal","avatarUrl":"https://x/a.jpg","isHost":false}],
       "inviteUrl":"https://api.favcircles.com/app/event/abcdefghijklmnopqrst","myCircleId":null},
-     "photos":[{"id":"p1","imageUrl":"https://x/1.jpg","uploaderId":"sal","uploaderName":"Sal","caption":"","createdAt":"2026-10-04T21:00:00Z","likeCount":3,"likedByMe":true,"canDelete":false}],
+     "photos":[{"id":"p1","imageUrl":"https://x/1.jpg","uploaderId":"sal","uploaderName":"Sal","caption":"","createdAt":"2026-10-04T21:00:00Z","likeCount":3,"likedByMe":true,"canDelete":false,
+                "takenAt":"2026-10-04T20:40:00Z","lat":35.22,"lng":-80.84,"placeId":"pl1","placeName":"Midnight Diner"},
+               {"id":"p2","imageUrl":"https://x/2.jpg","uploaderId":"wes","uploaderName":"Wes","caption":"","createdAt":"2026-10-04T21:05:00Z","likeCount":0,"likedByMe":false,"canDelete":true}],
      "places":[{"id":"pl1","name":"Midnight Diner","address":"115 Graham St","lat":35.22,"lng":-80.84,"category":"restaurant","taggedById":"sal","taggedByName":"Sal","createdAt":null,"savedCount":1,"savedByMe":false}]}
     """#
 
@@ -18,6 +20,15 @@ struct EventModelsTests {
         #expect(detail.event.inviteURL?.absoluteString.hasSuffix("abcdefghijklmnopqrst") == true)
         #expect(detail.photos.first?.likedByMe == true)
         #expect(detail.places.first?.name == "Midnight Diner")
+    }
+
+    @Test func photosCarryWhereTheyWereTakenWhenTheFileSaid() throws {
+        let photos = try JSONDecoder().decode(EventDetail.self, from: Data(json.utf8)).photos
+        #expect(photos[0].coordinate == WidgetCoordinate(latitude: 35.22, longitude: -80.84))
+        #expect(photos[0].takenAt == "2026-10-04T20:40:00Z")
+        #expect(photos[0].placeName == "Midnight Diner")
+        // A photo without any (or from an older server) still decodes
+        #expect(photos[1].coordinate == nil && photos[1].takenAt == nil && photos[1].placeId == nil)
     }
 
     @Test func copy() throws {

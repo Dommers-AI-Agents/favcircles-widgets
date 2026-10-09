@@ -146,7 +146,11 @@ struct EventDetailView: View {
             cameraImage = nil
             let challenge = pendingChallengeId
             pendingChallengeId = nil
-            Task { await upload(images: [image], challengeId: challenge) }
+            Task {
+                // A camera shot carries no file metadata: it's here and now
+                let spot = await context.host.currentLocation()
+                await upload([PickedPhoto(image: image, metadata: PhotoCaptureMetadata(coordinate: spot, takenAt: Date()))], challengeId: challenge)
+            }
         }
         .onChange(of: challengeItems) { items in
             guard !items.isEmpty else { return }
@@ -155,7 +159,8 @@ struct EventDetailView: View {
             pendingChallengeId = nil
             Task { await uploadPicked(items, challengeId: challenge) }
         }
-        .photosPicker(isPresented: $showChallengeLibrary, selection: $challengeItems, maxSelectionCount: 5, matching: .images)
+        .photosPicker(isPresented: $showChallengeLibrary, selection: $challengeItems, maxSelectionCount: 5, matching: .images,
+                      preferredItemEncoding: .current)
         .confirmationDialog(challengeForPhoto.map { "\($0.emoji) \($0.text)" } ?? "", isPresented: $askChallengeSource, titleVisibility: .visible) {
             #if os(iOS)
             if PostcardCameraPicker.isAvailable {
@@ -225,7 +230,8 @@ struct EventDetailView: View {
 
     private func actions(_ event: EventSummary, theme: WidgetTheme) -> some View {
         HStack(spacing: 10) {
-            PhotosPicker(selection: $pickedItems, maxSelectionCount: 20, matching: .images) {
+            // `.current`: the original file, so its GPS/EXIF come along
+            PhotosPicker(selection: $pickedItems, maxSelectionCount: 20, matching: .images, preferredItemEncoding: .current) {
                 actionLabel("Add photos", "photo.on.rectangle.angled", theme: theme)
             }
             #if os(iOS)
@@ -347,34 +353,41 @@ struct EventDetailView: View {
 
     // MARK: Uploading
 
-    private func uploadPicked(_ items: [PhotosPickerItem], challengeId: String? = nil) async {
-        var images: [PostcardPlatformImage] = []
-        for item in items {
-            if let data = try? await item.loadTransferable(type: Data.self), let image = PostcardPlatformImage(data: data) {
-                images.append(image)
-            }
-        }
-        await upload(images: images, challengeId: challengeId)
+    /// A photo to add, with where/when it was taken (read off the picked
+    /// file before it becomes an image, which keeps none of it).
+    private struct PickedPhoto {
+        let image: PostcardPlatformImage
+        let metadata: PhotoCaptureMetadata
     }
 
-    private func upload(images: [PostcardPlatformImage], challengeId: String? = nil) async {
-        guard !images.isEmpty else { return }
-        var urls: [(full: URL, thumb: URL?)] = []
-        for (i, image) in images.enumerated() {
-            model.uploading = EventCopy.uploadProgress(done: i, total: images.count)
-            guard let full = EventImagePrep.jpeg(image) else { continue }
+    private func uploadPicked(_ items: [PhotosPickerItem], challengeId: String? = nil) async {
+        var photos: [PickedPhoto] = []
+        for item in items {
+            if let data = try? await item.loadTransferable(type: Data.self), let image = PostcardPlatformImage(data: data) {
+                photos.append(PickedPhoto(image: image, metadata: PhotoCaptureMetadata.read(from: data)))
+            }
+        }
+        await upload(photos, challengeId: challengeId)
+    }
+
+    private func upload(_ photos: [PickedPhoto], challengeId: String? = nil) async {
+        guard !photos.isEmpty else { return }
+        var uploads: [EventsClient.PhotoUpload] = []
+        for (i, photo) in photos.enumerated() {
+            model.uploading = EventCopy.uploadProgress(done: i, total: photos.count)
+            guard let full = EventImagePrep.jpeg(photo.image) else { continue }
             guard let fullURL = try? await context.host.uploadImage(full) else { continue }
             // The grid's ~25 KB preview; a failed preview just means the grid loads the photo
-            let thumbURL: URL? = if let thumb = EventImagePrep.thumbnail(image) { try? await context.host.uploadImage(thumb) } else { nil }
-            urls.append((fullURL, thumbURL))
+            let thumbURL: URL? = if let thumb = EventImagePrep.thumbnail(photo.image) { try? await context.host.uploadImage(thumb) } else { nil }
+            uploads.append(EventsClient.PhotoUpload(full: fullURL, thumb: thumbURL, metadata: photo.metadata))
         }
         defer { model.uploading = nil }
-        guard !urls.isEmpty else {
+        guard !uploads.isEmpty else {
             context.host.presentAlert(WidgetAlert(title: "Couldn't add photos", message: "Check your connection and try again."))
             return
         }
         do {
-            let added = try await EventsClient(context: context).addPhotos(eventId, urls: urls, challengeId: challengeId)
+            let added = try await EventsClient(context: context).addPhotos(eventId, uploads: uploads, challengeId: challengeId)
             model.prependPhotos(added)
             tab = .photos
             context.host.haptic(.success)

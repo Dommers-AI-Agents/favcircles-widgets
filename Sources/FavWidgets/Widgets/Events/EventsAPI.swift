@@ -51,12 +51,20 @@ struct EventsClient {
     func invite(_ id: String, userIds: [String]) async throws -> EventSummary? {
         let r: InviteResponse = try await context.api(.post, "widgets/events/\(id)/invite", body: ["userIds": userIds]); return r.event
     }
-    func addPhotos(_ id: String, urls: [(full: URL, thumb: URL?)], challengeId: String? = nil) async throws -> [EventPhoto] {
+    /// One uploaded photo: its URLs, plus where/when it was taken when the
+    /// file said so (the server attaches the tagged place it was taken at).
+    struct PhotoUpload {
+        let full: URL
+        let thumb: URL?
+        var metadata = PhotoCaptureMetadata()
+    }
+    func addPhotos(_ id: String, uploads: [PhotoUpload], challengeId: String? = nil) async throws -> [EventPhoto] {
         let r: PhotosResponse = try await context.api(.post, "widgets/events/\(id)/photos",
-                                                      body: ["photos": urls.map { pair -> [String: Any] in
-                                                          var p: [String: Any] = ["imageUrl": pair.full.absoluteString]
-                                                          if let thumb = pair.thumb { p["thumbUrl"] = thumb.absoluteString }
+                                                      body: ["photos": uploads.map { upload -> [String: Any] in
+                                                          var p: [String: Any] = ["imageUrl": upload.full.absoluteString]
+                                                          if let thumb = upload.thumb { p["thumbUrl"] = thumb.absoluteString }
                                                           if let challengeId { p["challengeId"] = challengeId }
+                                                          p.merge(upload.metadata.requestFields) { current, _ in current }
                                                           return p
                                                       }])
         return r.photos
