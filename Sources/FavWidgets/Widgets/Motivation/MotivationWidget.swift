@@ -9,7 +9,7 @@ public struct MotivationWidget: FavWidget {
 
     public let descriptor = FavWidgetDescriptor(
         id: "motivation",
-        title: "Motivation",
+        title: "Coach Mane",
         subtitle: "A coach who won't let you skip",
         symbolName: "megaphone.fill",
         accentHex: "#E53E3E",
