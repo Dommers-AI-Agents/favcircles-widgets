@@ -43,6 +43,9 @@ public enum WidgetHaptic: Sendable {
     case light, medium, success, warning, selection
 }
 
+/// House rule (Wes, 2026-10-09): EVERY widget has a share card — minimal content that
+/// says what was shared, linking back to the app and that widget
+/// (`FavWidget.shareCard(context:)`, rendered by `WidgetShareKit`; generic card by default).
 /// House rule (Wes, 2026-10-05): a Share is ONE Messages bubble — the card as a
 /// `.link` (see `WidgetShareCard`). Never add text that repeats the card, a
 /// "get it on FavCircles" line or an App Store URL; only words the user typed.

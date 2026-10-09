@@ -13,9 +13,14 @@ public protocol FavWidget {
     func makeFullView(context: WidgetContext) -> AnyView
     /// Pull-to-refresh on the tab. Default: reload every loaded document.
     func refresh(context: WidgetContext) async
+    /// What the Share button's card shows: the widget's latest thing worth
+    /// sharing. Default nil = the generic card (WidgetShareCardContent.generic).
+    func shareCard(context: WidgetContext) async -> WidgetShareCardContent?
 }
 
 public extension FavWidget {
+    func shareCard(context: WidgetContext) async -> WidgetShareCardContent? { nil }
+
     func refresh(context: WidgetContext) async {
         for controller in context.cache.all where controller.documentId.hasPrefix(descriptor.id) {
             await controller.reload()

@@ -138,7 +138,8 @@ struct RunInviteSheet: View {
         Task { @MainActor in
             guard let run = try? await RunSession.shared.shareLive(), let url = URL(string: run.shareUrl) else { return }
             context.track("run_watch_link_shared")
-            context.host.share([.text("I'm out for a run 🏃 Watch live in FavCircles: \(url.absoluteString)")])
+            // One bubble (shares rule): the link, titled
+            context.host.share([.link(url, title: "🏃 I'm out for a run — watch live", imageJPEG: nil)])
         }
     }
 }

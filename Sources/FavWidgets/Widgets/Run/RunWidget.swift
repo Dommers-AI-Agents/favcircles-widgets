@@ -28,6 +28,21 @@ public struct RunWidget: FavWidget {
     public func makeFullView(context: WidgetContext) -> AnyView {
         AnyView(RunFullView(context: context, settings: context.state(RunSettings.self)))
     }
+
+    /// The latest run (this month or last), with its route.
+    @MainActor
+    public func shareCard(context: WidgetContext) async -> WidgetShareCardContent? {
+        let settings = context.state(RunSettings.self)
+        await settings.loadIfNeeded()
+        var latest: RunRecord?
+        for key in [context.currentMonth, context.currentMonth.previous] {
+            let month = context.month(RunMonth.self, key)
+            await month.loadIfNeeded()
+            if let run = month.model.runs.max(by: { $0.startedAt < $1.startedAt }), run.startedAt > (latest?.startedAt ?? .distantPast) { latest = run }
+        }
+        guard let latest else { return nil }
+        return .run(latest, unit: settings.model.unit, mapJPEG: await RunMapSnapshot.jpeg(latest.coordinates), calendar: context.calendar)
+    }
 }
 
 /// "3.1 mi this week · last run Tue, 5K in 26:40" + Start.
@@ -466,6 +481,7 @@ struct RunSummaryView: View {
     let isNew: Bool
     let onSave: () -> Void
     let onDiscard: () -> Void
+    @State private var sharing = false
 
     var body: some View {
         let theme = context.theme
@@ -495,6 +511,12 @@ struct RunSummaryView: View {
                             .font(.system(size: 15))
                         }
                     }
+                    Button { share() } label: {
+                        Label(sharing ? "Making the card…" : "Share this run", systemImage: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                            .frame(maxWidth: .infinity).frame(height: 44)
+                    }
+                    .disabled(sharing)
                     if isNew {
                         WidgetUI.primaryButton("Save run", color: context.accent, action: onSave)
                         Button("Discard", role: .destructive, action: onDiscard)
@@ -508,6 +530,17 @@ struct RunSummaryView: View {
             .toolbar { if !isNew { ToolbarItem(placement: .cancellationAction) { Button("Close", action: onDiscard) } } }
         }
         .interactiveDismissDisabled(isNew)
+    }
+
+    /// One bubble: the route, distance, time and pace, leading to FavRun.
+    private func share() {
+        sharing = true
+        Task { @MainActor in
+            let content = WidgetShareCardContent.run(run, unit: unit, mapJPEG: await RunMapSnapshot.jpeg(run.coordinates), calendar: context.calendar)
+            sharing = false
+            context.track("run_shared")
+            context.host.share(WidgetShareKit.items(descriptor: context.descriptor, content: content))
+        }
     }
 
     private func big(_ value: String, _ label: String) -> some View {
