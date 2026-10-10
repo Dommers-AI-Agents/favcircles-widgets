@@ -241,6 +241,10 @@ public protocol FavWidgetHost: AnyObject {
     func requestNotificationPermission() async -> Bool
     /// FavCircles in iPhone Settings, for someone who said no before.
     func openNotificationSettings()
+
+    /// Opens the app's Premium paywall, for a widget feature Premium unlocks
+    /// (`reason` e.g. "event_video"; contract 0.43.0). Default: nothing.
+    func presentPremiumPaywall(reason: String)
 }
 
 /// Push permission as a widget needs to know it.
@@ -249,6 +253,7 @@ public enum WidgetNotificationPermission: String, Sendable {
 }
 
 public extension FavWidgetHost {
+    func presentPremiumPaywall(reason: String) {}
     var quietHours: WidgetQuietHours? { nil }
     func saveImageToPhotos(_ jpeg: Data) async throws {
         throw NSError(domain: "FavWidgetHost", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saving photos isn't available"])

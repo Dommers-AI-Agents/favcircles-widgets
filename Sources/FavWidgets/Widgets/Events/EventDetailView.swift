@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 import FavWidgetsCore
 
 /// One event: the shared album, the places, the people. Members only.
@@ -34,6 +35,8 @@ struct EventDetailView: View {
     @State private var toast: String?
     @State private var onLockScreen = false
     @State private var showMap = false
+    /// Why a video can't be added and Premium would allow it
+    @State private var premiumPitch: String?
     @Environment(\.dismiss) private var dismiss
 
     enum Tab: String, CaseIterable { case photos = "Photos", wall = "Wall", songs = "Songs", places = "Places", people = "People" }
@@ -169,6 +172,13 @@ struct EventDetailView: View {
             #endif
             Button("Choose from library") { pendingChallengeId = challengeForPhoto?.id; showChallengeLibrary = true }
         }
+        .alert("FavCircles Premium", isPresented: Binding(get: { premiumPitch != nil }, set: { if !$0 { premiumPitch = nil } })) {
+            Button("See Premium") {
+                context.track("event_video_paywall_opened")
+                context.host.presentPremiumPaywall(reason: "event_video")
+            }
+            Button("Not now", role: .cancel) {}
+        } message: { Text(premiumPitch ?? "") }
         .sheet(isPresented: $showRecap) { EventRecapView(context: context, eventId: eventId) }
         .sheet(isPresented: $showMap) {
             if let event = model.detail?.event {
@@ -231,8 +241,10 @@ struct EventDetailView: View {
     private func actions(_ event: EventSummary, theme: WidgetTheme) -> some View {
         HStack(spacing: 10) {
             // `.current`: the original file, so its GPS/EXIF come along
-            PhotosPicker(selection: $pickedItems, maxSelectionCount: 20, matching: .images, preferredItemEncoding: .current) {
-                actionLabel("Add photos", "photo.on.rectangle.angled", theme: theme)
+            // Photos and videos (2026-10-10); videos are checked against the
+            // viewer's limits before anything uploads
+            PhotosPicker(selection: $pickedItems, maxSelectionCount: 20, matching: .any(of: [.images, .videos]), preferredItemEncoding: .current) {
+                actionLabel("Add", "photo.on.rectangle.angled", theme: theme)
             }
             #if os(iOS)
             if PostcardCameraPicker.isAvailable {
@@ -336,6 +348,19 @@ struct EventDetailView: View {
                                 } placeholder: { ProgressView() }
                             )
                             .clipped()
+                            .overlay {
+                                if photo.isVideo {
+                                    Image(systemName: "play.circle.fill").font(.system(size: 28)).foregroundStyle(.white)
+                                        .shadow(color: .black.opacity(0.4), radius: 4)
+                                }
+                            }
+                            .overlay(alignment: .bottomLeading) {
+                                if let length = photo.durationLabel {
+                                    Text(length).font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                                        .padding(.horizontal, 5).padding(.vertical, 2)
+                                        .background(Capsule().fill(Color.black.opacity(0.55))).padding(4)
+                                }
+                            }
                             .overlay(alignment: .bottomTrailing) {
                                 if photo.likeCount > 0 {
                                     Text("♥ \(photo.likeCount)").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
@@ -362,12 +387,89 @@ struct EventDetailView: View {
 
     private func uploadPicked(_ items: [PhotosPickerItem], challengeId: String? = nil) async {
         var photos: [PickedPhoto] = []
+        var movies: [PickedMovie] = []
         for item in items {
-            if let data = try? await item.loadTransferable(type: Data.self), let image = PostcardPlatformImage(data: data) {
+            if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+                model.uploading = "Getting your video…"
+                if let movie = try? await item.loadTransferable(type: PickedMovie.self) { movies.append(movie) }
+            } else if let data = try? await item.loadTransferable(type: Data.self), let image = PostcardPlatformImage(data: data) {
                 photos.append(PickedPhoto(image: image, metadata: PhotoCaptureMetadata.read(from: data)))
             }
         }
-        await upload(photos, challengeId: challengeId)
+        if !photos.isEmpty { await upload(photos, challengeId: challengeId) }
+        if !movies.isEmpty { await uploadVideos(movies) }
+        model.uploading = nil
+    }
+
+    /// Clips go phone → Storage through signed URLs: check the limits, make a
+    /// 720p copy and posters, reserve, upload, then publish.
+    private func uploadVideos(_ movies: [PickedMovie]) async {
+        defer { movies.forEach { try? FileManager.default.removeItem(at: $0.url) } }
+        var clips: [(movie: PickedMovie, seconds: Double)] = []
+        for movie in movies {
+            if let seconds = await EventVideoPrep.duration(movie.url) { clips.append((movie, seconds)) }
+        }
+        guard !clips.isEmpty else {
+            context.host.presentAlert(WidgetAlert(title: "Couldn't add the video", message: "That video couldn't be read. Try another one."))
+            return
+        }
+        let limits = model.detail?.videoLimits
+        if let limits, let message = limits.verdict(durations: clips.map(\.seconds)).message {
+            explain(limits.verdict(durations: clips.map(\.seconds)), message: message)
+            return
+        }
+        let client = EventsClient(context: context)
+        var added: [EventPhoto] = []
+        var failed = 0
+        for (i, clip) in clips.enumerated() {
+            let of = clips.count == 1 ? "" : " \(i + 1) of \(clips.count)"
+            model.uploading = "Preparing video\(of)…"
+            do {
+                let prepared = try await EventVideoPrep.prepare(clip.movie.url)
+                defer { try? FileManager.default.removeItem(at: prepared.video) }
+                let slot = try await client.startVideo(eventId, durationSec: clip.seconds)
+                model.uploading = "Uploading video\(of)…"
+                guard let videoURL = URL(string: slot.uploadUrls.video), let posterURL = URL(string: slot.uploadUrls.poster) else { failed += 1; continue }
+                try await EventVideoPrep.put(prepared.video, to: videoURL, contentType: "video/mp4")
+                try await EventVideoPrep.put(prepared.poster, to: posterURL, contentType: "image/jpeg")
+                if let thumb = prepared.thumb, let thumbURL = URL(string: slot.uploadUrls.thumb) {
+                    try? await EventVideoPrep.put(thumb, to: thumbURL, contentType: "image/jpeg")
+                }
+                added.append(try await client.finishVideo(eventId, video: slot.videoId))
+            } catch let error as WidgetAPIError where error.status == 403 {
+                // The server's limit (it is the authority); Premium when it would help
+                if limits?.isPremium == true {
+                    context.host.presentAlert(WidgetAlert(title: "Couldn't add the video", message: error.message))
+                } else {
+                    premiumPitch = error.message
+                }
+                break
+            } catch {
+                failed += 1
+            }
+        }
+        model.uploading = nil
+        if !added.isEmpty {
+            model.prependPhotos(added)
+            tab = .photos
+            context.host.haptic(.success)
+            context.track("event_videos_added", ["count": "\(added.count)"])
+            // Fresh limits (how many are left)
+            Task { await model.load() }
+        }
+        if failed > 0 {
+            context.host.presentAlert(WidgetAlert(title: failed == 1 ? "Couldn't add a video" : "Couldn't add \(failed) videos",
+                                                  message: "Check your connection and try again."))
+        }
+    }
+
+    private func explain(_ verdict: EventVideoVerdict, message: String) {
+        switch verdict {
+        case .tooMany(_, true), .tooLong(_, true):
+            premiumPitch = message
+        default:
+            context.host.presentAlert(WidgetAlert(title: "Couldn't add the video", message: message))
+        }
     }
 
     private func upload(_ photos: [PickedPhoto], challengeId: String? = nil) async {
@@ -399,7 +501,8 @@ struct EventDetailView: View {
     }
 
     private func downloadAll() async {
-        let photos = model.photos
+        // Videos aren't saved here (their image is just the poster)
+        let photos = model.photos.filter { !$0.isVideo }
         var saved = 0
         for (i, photo) in photos.enumerated() {
             model.uploading = "Saving \(i + 1) of \(photos.count)…"

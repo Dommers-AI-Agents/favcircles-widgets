@@ -72,6 +72,20 @@ public struct EventPhoto: Decodable, Identifiable, Equatable, Hashable, Sendable
     /// The tagged place it was taken at, when one is within ~150 m
     public let placeId: String?
     public let placeName: String?
+    /// "video" for a clip (2026-10-10); absent on photos and older servers.
+    /// A video's imageUrl/thumbUrl are its poster frame.
+    public let kind: String?
+    public let videoUrl: String?
+    public let durationSec: Double?
+
+    public var isVideo: Bool { kind == "video" && videoUrl != nil }
+
+    /// "0:12" for a video's length
+    public var durationLabel: String? {
+        guard isVideo, let durationSec else { return nil }
+        let total = Int(durationSec.rounded())
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
 
     /// What the grid loads: the preview, or the photo when there's none.
     public var gridURL: String { thumbUrl ?? imageUrl }
@@ -83,12 +97,72 @@ public struct EventPhoto: Decodable, Identifiable, Equatable, Hashable, Sendable
 
     public init(id: String, imageUrl: String, uploaderId: String, uploaderName: String, caption: String, createdAt: String?,
                 likeCount: Int, likedByMe: Bool, canDelete: Bool, challengeId: String? = nil, thumbUrl: String? = nil,
-                takenAt: String? = nil, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, placeName: String? = nil) {
+                takenAt: String? = nil, lat: Double? = nil, lng: Double? = nil, placeId: String? = nil, placeName: String? = nil,
+                kind: String? = nil, videoUrl: String? = nil, durationSec: Double? = nil) {
         self.id = id; self.imageUrl = imageUrl; self.uploaderId = uploaderId; self.uploaderName = uploaderName
         self.caption = caption; self.createdAt = createdAt; self.likeCount = likeCount; self.likedByMe = likedByMe; self.canDelete = canDelete
         self.challengeId = challengeId
         self.thumbUrl = thumbUrl
         self.takenAt = takenAt; self.lat = lat; self.lng = lng; self.placeId = placeId; self.placeName = placeName
+        self.kind = kind; self.videoUrl = videoUrl; self.durationSec = durationSec
+    }
+}
+
+/// What the viewer may add as video in one event, from the server (2026-10-10):
+/// free clips up to 15 s and 5 per person; Premium up to 60 s and 20.
+public struct EventVideoLimits: Decodable, Equatable, Sendable {
+    public let isPremium: Bool
+    public let maxSeconds: Double
+    public let perEvent: Int
+    public let used: Int
+    public let premiumMaxSeconds: Double
+
+    public init(isPremium: Bool, maxSeconds: Double, perEvent: Int, used: Int, premiumMaxSeconds: Double = 60) {
+        self.isPremium = isPremium; self.maxSeconds = maxSeconds; self.perEvent = perEvent
+        self.used = used; self.premiumMaxSeconds = premiumMaxSeconds
+    }
+
+    public var remaining: Int { max(0, perEvent - used) }
+
+    /// Whether these clips may be added, and if not why. Pure.
+    public func verdict(durations: [Double]) -> EventVideoVerdict {
+        guard !durations.isEmpty else { return .ok }
+        if durations.count > remaining {
+            return remaining == 0
+                ? .tooMany(allowed: 0, upgrade: !isPremium)
+                : .tooMany(allowed: remaining, upgrade: !isPremium)
+        }
+        // Half a second of slack, matching the server
+        if let longest = durations.max(), longest > maxSeconds + 0.5 {
+            return .tooLong(maxSeconds: Int(maxSeconds), upgrade: !isPremium && longest <= premiumMaxSeconds + 0.5)
+        }
+        return .ok
+    }
+}
+
+public enum EventVideoVerdict: Equatable, Sendable {
+    case ok
+    /// `allowed` more fit; `upgrade` = Premium would allow more
+    case tooMany(allowed: Int, upgrade: Bool)
+    /// Longer than `maxSeconds`; `upgrade` = Premium would fit it
+    case tooLong(maxSeconds: Int, upgrade: Bool)
+
+    /// What to tell the person, in the app's voice
+    public var message: String? {
+        switch self {
+        case .ok: return nil
+        case .tooMany(let allowed, let upgrade):
+            if allowed == 0 {
+                return upgrade
+                    ? "You've added your 5 free videos to this event. Premium lets you add up to 20, up to a minute each."
+                    : "You've added the most videos anyone can to this event."
+            }
+            return "You can add \(allowed) more video\(allowed == 1 ? "" : "s") to this event."
+        case .tooLong(let maxSeconds, let upgrade):
+            return upgrade
+                ? "Free videos can be up to \(maxSeconds) seconds. Premium allows up to a minute."
+                : "Videos can be up to \(maxSeconds) seconds. Trim it in Photos and try again."
+        }
     }
 }
 
@@ -110,11 +184,14 @@ public struct EventDetail: Decodable, Equatable, Sendable {
     public let event: EventSummary
     public let photos: [EventPhoto]
     public let places: [EventPlace]
+    /// The viewer's video allowance (absent on older servers)
+    public let videoLimits: EventVideoLimits?
 
-    public init(event: EventSummary, photos: [EventPhoto], places: [EventPlace]) {
+    public init(event: EventSummary, photos: [EventPhoto], places: [EventPlace], videoLimits: EventVideoLimits? = nil) {
         self.event = event
         self.photos = photos
         self.places = places
+        self.videoLimits = videoLimits
     }
 }
 

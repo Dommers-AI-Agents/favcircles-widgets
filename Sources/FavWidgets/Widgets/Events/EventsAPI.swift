@@ -69,6 +69,19 @@ struct EventsClient {
                                                       }])
         return r.photos
     }
+    /// A clip's upload slot: signed URLs for the file and its posters
+    struct VideoStart: Decodable {
+        struct URLs: Decodable { let video: String; let poster: String; let thumb: String }
+        let videoId: String
+        let uploadUrls: URLs
+    }
+    func startVideo(_ id: String, durationSec: Double) async throws -> VideoStart {
+        try await context.api(.post, "widgets/events/\(id)/videos", body: ["durationSec": durationSec])
+    }
+    func finishVideo(_ id: String, video: String) async throws -> EventPhoto {
+        let r: PhotoResponse = try await context.api(.post, "widgets/events/\(id)/videos/\(video)/finish")
+        return r.photo
+    }
     func deletePhoto(_ id: String, photo: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/photos/\(photo)") }
     func like(_ id: String, photo: String) async throws -> EventPhoto {
         let r: PhotoResponse = try await context.api(.post, "widgets/events/\(id)/photos/\(photo)/like"); return r.photo

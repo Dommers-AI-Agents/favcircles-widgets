@@ -1,4 +1,5 @@
 import SwiftUI
+import AVKit
 import FavWidgetsCore
 
 /// Full-screen swipe through the album: like, save to Photos, share, delete.
@@ -19,6 +20,10 @@ struct EventPhotoViewer: View {
                 } else {
                     TabView(selection: $currentId) {
                         ForEach(model.photos) { photo in
+                            if photo.isVideo, let url = URL(string: photo.videoUrl ?? "") {
+                                EventVideoPage(url: url, isCurrent: currentId == photo.id)
+                                    .tag(photo.id)
+                            } else {
                             CachedRemoteImage(url: URL(string: photo.imageUrl)) { image in
                                 image.resizable().scaledToFit()
                             } placeholder: {
@@ -26,6 +31,7 @@ struct EventPhotoViewer: View {
                                 CachedRemoteImage(url: URL(string: photo.gridURL)) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
                             }
                             .tag(photo.id)
+                            }
                         }
                     }
                     #if os(iOS)
@@ -49,8 +55,11 @@ struct EventPhotoViewer: View {
                     Label("\(photo.likeCount)", systemImage: photo.likedByMe ? "heart.fill" : "heart")
                         .foregroundStyle(photo.likedByMe ? .pink : .white)
                 }
-                Button { Task { await save(photo) } } label: { Image(systemName: "square.and.arrow.down") }
-                Button { Task { await share(photo) } } label: { Image(systemName: "square.and.arrow.up") }
+                // Save/share hand over the image; a video's is only its poster
+                if !photo.isVideo {
+                    Button { Task { await save(photo) } } label: { Image(systemName: "square.and.arrow.down") }
+                    Button { Task { await share(photo) } } label: { Image(systemName: "square.and.arrow.up") }
+                }
                 if photo.canDelete {
                     Button(role: .destructive) { delete(photo) } label: { Image(systemName: "trash") }
                 }
@@ -107,6 +116,35 @@ struct EventPhotoViewer: View {
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't delete", message: "Check your connection and try again."))
             }
+        }
+    }
+}
+
+/// One clip in the album viewer: plays while it's the page on screen.
+struct EventVideoPage: View {
+    let url: URL
+    let isCurrent: Bool
+    @State private var player: AVPlayer?
+
+    var body: some View {
+        Group {
+            if let player {
+                VideoPlayer(player: player)
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .onAppear { sync() }
+        .onChange(of: isCurrent) { _ in sync() }
+        .onDisappear { player?.pause() }
+    }
+
+    private func sync() {
+        if isCurrent {
+            if player == nil { player = AVPlayer(url: url) }
+            player?.play()
+        } else {
+            player?.pause()
         }
     }
 }
