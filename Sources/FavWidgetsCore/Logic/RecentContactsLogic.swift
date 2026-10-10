@@ -1,6 +1,6 @@
 import Foundation
 
-/// New Contacts (Wes, 2026-10-09): the last 50 people added to the phone's
+/// Recent Contacts (Wes, 2026-10-09): the last 50 people added to the phone's
 /// contacts, newest first. Read on the phone and never uploaded or stored —
 /// the widget has no document.
 ///

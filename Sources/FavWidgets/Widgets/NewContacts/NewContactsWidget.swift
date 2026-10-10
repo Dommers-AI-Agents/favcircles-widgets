@@ -7,7 +7,8 @@ import ContactsUI
 import UIKit
 #endif
 
-/// New Contacts (Wes, 2026-10-09): the last 50 people added to this phone's
+/// Recent Contacts (Wes, 2026-10-09; renamed from New Contacts 2026-10-10):
+/// the last 50 people added to this phone's
 /// contacts, newest first, with Call / Text / Email and the contact card one
 /// tap away. Everything is read on the phone at the moment the widget shows;
 /// nothing is uploaded, stored or logged (analytics carry counts only).
@@ -16,7 +17,7 @@ public struct NewContactsWidget: FavWidget {
 
     public let descriptor = FavWidgetDescriptor(
         id: "newcontacts",
-        title: "New Contacts",
+        title: "Recent Contacts",
         subtitle: "The last 50 people you added to your phone",
         symbolName: "person.crop.circle.badge.plus",
         accentHex: "#2B6CB0",

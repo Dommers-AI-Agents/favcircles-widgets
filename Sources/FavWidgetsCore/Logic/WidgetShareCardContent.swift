@@ -16,7 +16,7 @@ public struct WidgetShareCardContent: Equatable, Sendable {
         public init(_ value: String, _ label: String) { self.value = value; self.label = label }
     }
 
-    /// The big line: "2.28 mi run", "New Contacts".
+    /// The big line: "2.28 mi run", "Recent Contacts".
     public var headline: String
     /// One short line under it: a date, or what the widget does.
     public var detail: String?
