@@ -78,7 +78,7 @@ struct CareInvitePicker: View {
             }
             .task {
                 do { contacts = try await context.host.fetchConnections().sorted { $0.displayName < $1.displayName } }
-                catch { self.error = error.localizedDescription }
+                catch { if let message = WidgetErrorText.message(for: error) { self.error = message } }
                 loading = false
             }
         }

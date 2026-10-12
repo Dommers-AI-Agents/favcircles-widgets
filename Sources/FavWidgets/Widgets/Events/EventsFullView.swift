@@ -83,9 +83,9 @@ struct EventsFullView: View {
     private func hero(_ theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("🚌🎉📸").font(.system(size: 34))
-            Text("Photos only your group sees")
+            Text("Photos and videos only your group sees")
                 .font(.system(size: 20, weight: .heavy, design: .rounded)).foregroundStyle(.white)
-            Text("Start an event, drop the link in the group text, and everyone who joins shares one album and the places you went. +1 FavCoin for joining.")
+            Text("Start an event, drop the link in the group text, and everyone who joins shares one album of photos and videos, and the places you went. +1 FavCoin for joining.")
                 .font(.system(size: 14)).foregroundStyle(.white.opacity(0.9))
                 .fixedSize(horizontal: false, vertical: true)
             Button { creating = true } label: {

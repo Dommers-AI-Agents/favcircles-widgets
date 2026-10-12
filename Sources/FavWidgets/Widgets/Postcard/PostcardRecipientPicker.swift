@@ -97,7 +97,9 @@ struct PostcardRecipientPicker: View {
             connections = try await context.host.fetchConnections()
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
         } catch {
-            errorMessage = error.localizedDescription
+            // A screen closed mid-load isn't an error to show
+            if WidgetErrorText.isCancellation(error) { isLoading = false; return }
+            errorMessage = WidgetErrorText.message(for: error)
         }
         hasLoaded = true
         isLoading = false

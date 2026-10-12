@@ -200,7 +200,11 @@ final class EventDetailModel: ObservableObject {
     }
 
     func load() async {
-        do { detail = try await client.detail(eventId); error = nil } catch { self.error = "Couldn't load the event. Pull to try again." }
+        do { detail = try await client.detail(eventId); error = nil } catch {
+            // Leaving the screen mid-load isn't a failure
+            guard !WidgetErrorText.isCancellation(error) else { return }
+            self.error = "Couldn't load the event. Pull to try again."
+        }
     }
 
     var photos: [EventPhoto] { detail?.photos ?? [] }
