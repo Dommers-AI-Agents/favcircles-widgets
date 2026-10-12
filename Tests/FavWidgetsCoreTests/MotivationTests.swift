@@ -17,7 +17,8 @@ struct MotivationTests {
 
     @Test func noBankSwears() {
         // Wes 2026-10-02: no profanity anywhere, so the app needs no profanity age rating.
-        let words = ["fuck", "shit", "puss", "bitch", "ass", "damn", "hell", "crap", "bastard", "dick", "piss", "bullshit"]
+        // Wes 2026-10-12: "ass" is allowed ("get off your ass and do it"); nothing stronger.
+        let words = ["fuck", "shit", "puss", "bitch", "damn", "hell", "crap", "bastard", "dick", "piss", "bullshit"]
         for intensity in MotivationIntensity.allCases {
             for focus in MotivationFocus.allCases {
                 for line in MotivationLines.bank(intensity, focus) {

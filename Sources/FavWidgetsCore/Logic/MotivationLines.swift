@@ -1,8 +1,9 @@
 import Foundation
 
-/// The coach's lines. Neither bank swears (Wes 2026-10-02: keep the app off
-/// the profanity age rating); Savage is just ruder. Opt-in, because
-/// the user picked it. No slurs in either bank.
+/// The coach's lines. No profanity beyond the mild "ass" (Wes 2026-10-02:
+/// keep the app off the profanity age rating; 2026-10-12: that one word is
+/// allowed, in Savage); Savage is just ruder. Opt-in, because the user
+/// picked it. No slurs in either bank.
 public enum MotivationLines {
     public static func bank(_ intensity: MotivationIntensity, _ focus: MotivationFocus) -> [String] {
         switch (intensity, focus) {
@@ -80,6 +81,7 @@ public enum MotivationLines {
             ]
         case (.savage, .gym):
             return [
+                "Watching someone else workout is pathetic, get off your ass and do it.",  // Wes, 2026-10-12
                 "Get to the gym. Right now. Move it.",
                 "Off the couch, lazybones. Lift something heavy.",
                 "The bar's not going to curl itself, princess. Move.",
