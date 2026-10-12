@@ -48,6 +48,8 @@ struct FridgeMailFullView: View {
             }
             .padding(16)
         }
+        // Pull down to reload the plan and the mailed cards
+        .refreshable { await store.load(context: context) }
         .background(theme.background.ignoresSafeArea())
         .widgetInlineNavigationTitle("Fridge Mail")
         .task {

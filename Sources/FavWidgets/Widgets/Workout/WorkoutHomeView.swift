@@ -54,6 +54,9 @@ struct WorkoutHomeView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Pull down to reload your people's workouts (every server-backed
+        // widget screen refreshes this way, 2026-10-12)
+        .refreshable { await WorkoutFeedStore.shared(context).load(context: context) }
         .background(theme.background)
         .sheet(isPresented: $showSettings) { WorkoutSettingsView(context: context, settings: settings) }
         .sheet(item: $editor) { target in RoutineEditorView(context: context, settings: settings, routine: target.routine) }
