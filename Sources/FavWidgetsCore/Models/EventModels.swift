@@ -208,6 +208,17 @@ public struct EventInvitePreview: Decodable, Equatable, Sendable {
 
 /// The words on the Events screens. Pure, so they're tested on a Mac.
 public enum EventCopy {
+    /// "3 photos and 1 video saved to your Photos."
+    public static func savedToPhotos(photos: Int, videos: Int) -> String {
+        func count(_ n: Int, _ word: String) -> String { "\(n) \(word)\(n == 1 ? "" : "s")" }
+        switch (photos, videos) {
+        case (0, 0): return "Nothing was saved."
+        case (_, 0): return "\(count(photos, "photo")) saved to your Photos."
+        case (0, _): return "\(count(videos, "video")) saved to your Photos."
+        default: return "\(count(photos, "photo")) and \(count(videos, "video")) saved to your Photos."
+        }
+    }
+
     public static let defaultName = "Party Bus"
     public static let emojiChoices = ["🚌", "🎉", "🍾", "🎂", "💍", "🏖️", "⛳️", "🏈", "🎤", "🥳"]
 

@@ -24,13 +24,11 @@ struct EventPhotoViewer: View {
                                 EventVideoPage(url: url, isCurrent: currentId == photo.id)
                                     .tag(photo.id)
                             } else {
-                            CachedRemoteImage(url: URL(string: photo.imageUrl)) { image in
-                                image.resizable().scaledToFit()
-                            } placeholder: {
-                                // The cached preview while the full photo loads
-                                CachedRemoteImage(url: URL(string: photo.gridURL)) { $0.resizable().scaledToFit() } placeholder: { ProgressView().tint(.white) }
-                            }
-                            .tag(photo.id)
+                                // Pinch or double-tap to zoom; the cached grid
+                                // preview shows while the full photo loads
+                                ZoomableRemoteImage(url: URL(string: photo.imageUrl), previewURL: URL(string: photo.gridURL),
+                                                    isCurrent: currentId == photo.id)
+                                    .tag(photo.id)
                             }
                         }
                     }
@@ -55,11 +53,10 @@ struct EventPhotoViewer: View {
                     Label("\(photo.likeCount)", systemImage: photo.likedByMe ? "heart.fill" : "heart")
                         .foregroundStyle(photo.likedByMe ? .pink : .white)
                 }
-                // Save/share hand over the image; a video's is only its poster
-                if !photo.isVideo {
-                    Button { Task { await save(photo) } } label: { Image(systemName: "square.and.arrow.down") }
-                    Button { Task { await share(photo) } } label: { Image(systemName: "square.and.arrow.up") }
-                }
+                Button { Task { await save(photo) } } label: { Image(systemName: "square.and.arrow.down") }
+                    .accessibilityLabel(photo.isVideo ? "Save video to Photos" : "Save photo to Photos")
+                Button { Task { await share(photo) } } label: { Image(systemName: "square.and.arrow.up") }
+                    .accessibilityLabel(photo.isVideo ? "Share video" : "Share photo")
                 if photo.canDelete {
                     Button(role: .destructive) { delete(photo) } label: { Image(systemName: "trash") }
                 }
@@ -88,7 +85,20 @@ struct EventPhotoViewer: View {
     private func save(_ photo: EventPhoto) async {
         busy = true
         defer { busy = false }
-        guard let data = await imageData(photo) else { return }
+        if photo.isVideo {
+            guard let file = await EventMediaDownload.video(photo) else { return downloadFailed() }
+            defer { try? FileManager.default.removeItem(at: file) }
+            do {
+                try await context.host.saveVideoToPhotos(file)
+                context.host.haptic(.success)
+                context.track("event_video_saved")
+                context.host.presentAlert(WidgetAlert(title: "Saved", message: "The video is in your Photos."))
+            } catch {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't save to Photos", message: "Allow FavCircles to add photos in Settings, then try again."))
+            }
+            return
+        }
+        guard let data = await imageData(photo) else { return downloadFailed() }
         do {
             try await context.host.saveImageToPhotos(data)
             context.host.haptic(.success)
@@ -99,9 +109,24 @@ struct EventPhotoViewer: View {
         }
     }
 
+    /// Shares the file itself, never its link: the link would work for
+    /// anyone, and event media is members-only.
     private func share(_ photo: EventPhoto) async {
-        guard let data = await imageData(photo) else { return }
+        busy = true
+        defer { busy = false }
+        if photo.isVideo {
+            // The file stays in tmp while the share sheet may still read it
+            guard let file = await EventMediaDownload.video(photo) else { return downloadFailed() }
+            context.track("event_video_shared")
+            context.host.share([.file(file)])
+            return
+        }
+        guard let data = await imageData(photo) else { return downloadFailed() }
         context.host.share([.imageJPEG(data)])
+    }
+
+    private func downloadFailed() {
+        context.host.presentAlert(WidgetAlert(title: "Couldn't download it", message: "Check your connection and try again."))
     }
 
     private func delete(_ photo: EventPhoto) {
@@ -146,5 +171,20 @@ struct EventVideoPage: View {
         } else {
             player?.pause()
         }
+    }
+}
+
+/// Event media downloaded to a temporary file.
+enum EventMediaDownload {
+    /// The clip as a local .mp4, or nil when it can't be downloaded.
+    static func video(_ photo: EventPhoto) async -> URL? {
+        guard photo.isVideo, let remote = URL(string: photo.videoUrl ?? ""),
+              let (downloaded, response) = try? await URLSession.shared.download(from: remote),
+              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return nil }
+        let name = "\(photo.uploaderName.replacingOccurrences(of: "/", with: "-")) \(photo.id.prefix(6)).mp4"
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: file)
+        do { try FileManager.default.moveItem(at: downloaded, to: file) } catch { return nil }
+        return file
     }
 }

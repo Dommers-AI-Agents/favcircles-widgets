@@ -36,13 +36,22 @@ struct EventPeopleSection: View {
             }
             ForEach(event.members) { member in
                 HStack(spacing: 12) {
-                    EventAvatar(member: member, size: 40)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(member.id == myId ? "\(member.name) (you)" : member.name)
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
-                        if member.isHost { Text("Coordinator").font(.system(size: 12)).foregroundStyle(context.accent) }
-                        else if requested.contains(member.id) { Text("Request sent").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel) }
+                    // Tap a person to see their profile (Wes, 2026-10-12)
+                    Button { openProfile(member.id) } label: {
+                        HStack(spacing: 12) {
+                            EventAvatar(member: member, size: 40)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(member.id == myId ? "\(member.name) (you)" : member.name)
+                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+                                if member.isHost { Text("Coordinator").font(.system(size: 12)).foregroundStyle(context.accent) }
+                                else if requested.contains(member.id) { Text("Request sent").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel) }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens their profile")
                     Spacer()
                     if event.isHost && event.pushOffIds.contains(member.id) {
                         Image(systemName: "bell.slash").foregroundStyle(theme.secondaryLabel)
@@ -59,12 +68,17 @@ struct EventPeopleSection: View {
             if !event.invitedPeople.isEmpty {
                 Text("Invited").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel).padding(.top, 6)
                 ForEach(event.invitedPeople) { person in
-                    HStack(spacing: 12) {
-                        Image(systemName: "envelope.badge").font(.system(size: 18)).foregroundStyle(context.accent).frame(width: 40)
-                        Text(person.name).font(.system(size: 15)).foregroundStyle(theme.label)
-                        Spacer()
-                        Text("Hasn't joined yet").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    Button { openProfile(person.id) } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "envelope.badge").font(.system(size: 18)).foregroundStyle(context.accent).frame(width: 40)
+                            Text(person.name).font(.system(size: 15)).foregroundStyle(theme.label)
+                            Spacer()
+                            Text("Hasn't joined yet").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                        }
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Opens their profile")
                 }
             }
             Divider().overlay(theme.separator)
@@ -85,6 +99,12 @@ struct EventPeopleSection: View {
         .confirmationDialog("Leave \(event.name)?", isPresented: $confirmLeave, titleVisibility: .visible) {
             Button("Leave", role: .destructive) { leave() }
         }
+    }
+
+    private func openProfile(_ userId: String) {
+        context.host.haptic(.light)
+        context.track("event_profile_opened")
+        context.host.openProfile(userId: userId)
     }
 
     private func connectAll(_ members: [EventSummary.Member]) {

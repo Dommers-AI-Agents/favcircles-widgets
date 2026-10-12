@@ -92,11 +92,9 @@ struct PostcardReceivedView: View {
         .padding(.top, 8)
         .sheet(isPresented: $showFullSize) {
             NavigationStack {
-                AsyncImage(url: URL(string: card.imageUrl)) { image in
-                    image.resizable().scaledToFit()
-                } placeholder: { ProgressView() }
-                .padding()
-                .background(Color.black.ignoresSafeArea())
+                // Pinch or double-tap to zoom (Wes, 2026-10-12)
+                ZoomableRemoteImage(url: URL(string: card.imageUrl))
+                    .background(Color.black.ignoresSafeArea())
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showFullSize = false } } }
             }
         }

@@ -44,3 +44,11 @@ final class EventVideoLimitsTests: XCTestCase {
         XCTAssertFalse(try JSONDecoder().decode(EventPhoto.self, from: Data(photo.utf8)).isVideo)
     }
 }
+
+final class EventSavedCopyTests: XCTestCase {
+    func testSummaries() {
+        XCTAssertEqual(EventCopy.savedToPhotos(photos: 3, videos: 0), "3 photos saved to your Photos.")
+        XCTAssertEqual(EventCopy.savedToPhotos(photos: 0, videos: 1), "1 video saved to your Photos.")
+        XCTAssertEqual(EventCopy.savedToPhotos(photos: 1, videos: 2), "1 photo and 2 videos saved to your Photos.")
+    }
+}

@@ -224,13 +224,18 @@ struct EventDetailView: View {
                         .font(.system(size: 13)).foregroundStyle(.white.opacity(0.85))
                 }
             }
-            HStack(spacing: -8) {
-                ForEach(event.members.prefix(8)) { member in EventAvatar(member: member, size: 32) }
-                if event.members.count > 8 {
-                    Text("+\(event.members.count - 8)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
-                        .frame(width: 32, height: 32).background(Circle().fill(Color.white.opacity(0.25)))
+            // The faces open the People tab (who's here, tap for profiles)
+            Button { tab = .people; context.track("event_people_opened") } label: {
+                HStack(spacing: -8) {
+                    ForEach(event.members.prefix(8)) { member in EventAvatar(member: member, size: 32) }
+                    if event.members.count > 8 {
+                        Text("+\(event.members.count - 8)").font(.system(size: 12, weight: .bold)).foregroundStyle(.white)
+                            .frame(width: 32, height: 32).background(Circle().fill(Color.white.opacity(0.25)))
+                    }
                 }
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("See everyone in \(event.name)")
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,7 +301,7 @@ struct EventDetailView: View {
                 Button { showRecap = true } label: { Label("Recap", systemImage: "sparkles") }
             }
             if !model.photos.isEmpty {
-                Button { Task { await downloadAll() } } label: { Label("Download all photos", systemImage: "square.and.arrow.down.on.square") }
+                Button { Task { await downloadAll() } } label: { Label(model.photos.contains(where: \.isVideo) ? "Download all photos and videos" : "Download all photos", systemImage: "square.and.arrow.down.on.square") }
             }
             Divider()
             if event.isArchived {
@@ -501,15 +506,24 @@ struct EventDetailView: View {
     }
 
     private func downloadAll() async {
-        // Videos aren't saved here (their image is just the poster)
-        let photos = model.photos.filter { !$0.isVideo }
+        let photos = model.photos
         var saved = 0
+        var savedVideos = 0
         for (i, photo) in photos.enumerated() {
             model.uploading = "Saving \(i + 1) of \(photos.count)…"
-            guard let url = URL(string: photo.imageUrl),
-                  let fetched = try? await URLSession.shared.data(from: url) else { continue }
-            let data = fetched.0
-            do { try await context.host.saveImageToPhotos(data); saved += 1 } catch {
+            do {
+                if photo.isVideo {
+                    guard let file = await EventMediaDownload.video(photo) else { continue }
+                    defer { try? FileManager.default.removeItem(at: file) }
+                    try await context.host.saveVideoToPhotos(file)
+                    savedVideos += 1
+                } else {
+                    guard let url = URL(string: photo.imageUrl),
+                          let fetched = try? await URLSession.shared.data(from: url) else { continue }
+                    try await context.host.saveImageToPhotos(fetched.0)
+                    saved += 1
+                }
+            } catch {
                 model.uploading = nil
                 context.host.presentAlert(WidgetAlert(title: "Couldn't save to Photos", message: "Allow FavCircles to add photos in Settings, then try again."))
                 return
@@ -517,7 +531,7 @@ struct EventDetailView: View {
         }
         model.uploading = nil
         context.host.haptic(.success)
-        context.host.presentAlert(WidgetAlert(title: "Saved", message: "\(saved) photo\(saved == 1 ? "" : "s") saved to your Photos."))
+        context.host.presentAlert(WidgetAlert(title: "Saved", message: EventCopy.savedToPhotos(photos: saved, videos: savedVideos)))
     }
 
     // MARK: Coordinator

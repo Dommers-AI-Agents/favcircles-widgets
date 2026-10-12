@@ -56,6 +56,8 @@ public enum WidgetShareItem: Sendable {
     /// A link that Messages draws as one tappable bubble showing `imageJPEG`
     /// (the host hands the share sheet the preview itself, so no web fetch)
     case link(URL, title: String, imageJPEG: Data?)
+    /// A local file shared as itself (an event video, contract 0.44.0)
+    case file(URL)
 }
 
 public struct WidgetAlert: Sendable {
@@ -245,6 +247,13 @@ public protocol FavWidgetHost: AnyObject {
     /// Opens the app's Premium paywall, for a widget feature Premium unlocks
     /// (`reason` e.g. "event_video"; contract 0.43.0). Default: nothing.
     func presentPremiumPaywall(reason: String)
+
+    /// Saves a local video file to the camera roll (contract 0.44.0).
+    func saveVideoToPhotos(_ file: URL) async throws
+
+    /// Opens a person's profile over the widget; closing it comes back
+    /// here (contract 0.44.0).
+    func openProfile(userId: String)
 }
 
 /// Push permission as a widget needs to know it.
@@ -254,6 +263,10 @@ public enum WidgetNotificationPermission: String, Sendable {
 
 public extension FavWidgetHost {
     func presentPremiumPaywall(reason: String) {}
+    func saveVideoToPhotos(_ file: URL) async throws {
+        throw WidgetAPIError(status: 501, message: "Saving videos isn't available")
+    }
+    func openProfile(userId: String) {}
     var quietHours: WidgetQuietHours? { nil }
     func saveImageToPhotos(_ jpeg: Data) async throws {
         throw NSError(domain: "FavWidgetHost", code: 1, userInfo: [NSLocalizedDescriptionKey: "Saving photos isn't available"])
