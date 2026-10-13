@@ -13,9 +13,11 @@ struct RunShareClient {
     private struct OK: Decodable { let success: Bool }
     private struct VoiceResponse: Decodable { let audio: String }
 
-    func startLive(unit: RunUnit, startedAt: Date) async throws -> SharedRun {
+    /// `clientKey`: this run's id on the phone, so a retry after a lost
+    /// reply gets the same shared run back
+    func startLive(unit: RunUnit, startedAt: Date, clientKey: String) async throws -> SharedRun {
         let r: RunResponse = try await context.api(.post, "widgets/run/live", body: [
-            "unit": unit.label, "startedAt": ISO8601DateFormatter().string(from: startedAt)
+            "unit": unit.label, "startedAt": ISO8601DateFormatter().string(from: startedAt), "clientKey": clientKey
         ])
         return r.run
     }

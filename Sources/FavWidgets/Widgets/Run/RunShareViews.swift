@@ -20,7 +20,6 @@ struct RunInviteSheet: View {
     /// Inner Circle lists: one tap picks everyone on it (Wes, 2026-10-06)
     @ObservedObject private var lists: WorkoutAudienceStore
     @State private var loading = true
-    @State private var sending = false
     @Environment(\.dismiss) private var dismiss
 
     init(context: WidgetContext, choosing: (initial: [RunFollower], onDone: ([RunFollower]) -> Void)? = nil) {
@@ -40,7 +39,7 @@ struct RunInviteSheet: View {
         WidgetSheet(title: choosing == nil ? "Watch my run" : "Who follows your runs", theme: theme,
                     confirm: choosing != nil
                         ? (label: "Done", enabled: true, action: saveChoice)
-                        : (label: sending ? "Inviting…" : (picked.isEmpty ? "Invite" : "Invite \(picked.count)"), enabled: !sending && !picked.isEmpty, action: send)) {
+                        : (label: picked.isEmpty ? "Invite" : "Invite \(picked.count)", enabled: !picked.isEmpty, action: send)) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(choosing != nil
@@ -118,25 +117,22 @@ struct RunInviteSheet: View {
         dismiss()
     }
 
+    /// Queued on the run: sent now, or as soon as there's signal (the run
+    /// screen says which)
     private func send() {
-        sending = true
-        Task { @MainActor in
-            defer { sending = false }
-            do {
-                let run = try await RunSession.shared.shareLive()
-                let n = try await RunShareClient(context: context).invite(run.id, userIds: Array(picked))
-                context.host.haptic(.success)
-                context.track("run_watch_invited", ["count": "\(n)"])
-                dismiss()
-            } catch {
-                context.host.presentAlert(WidgetAlert(title: "Couldn't send the invites", message: "Check your connection and try again. Your run keeps going."))
-            }
-        }
+        let people = contacts.filter { picked.contains($0.id) }.map { RunFollower(id: $0.id, name: $0.displayName) }
+        RunSession.shared.queueInvites(people)
+        context.host.haptic(.success)
+        context.track("run_watch_invited", ["count": "\(people.count)"])
+        dismiss()
     }
 
     private func shareLink() {
         Task { @MainActor in
-            guard let run = try? await RunSession.shared.shareLive(), let url = URL(string: run.shareUrl) else { return }
+            guard let run = try? await RunSession.shared.shareLive(), let url = URL(string: run.shareUrl) else {
+                context.host.presentAlert(WidgetAlert(title: "No signal right now", message: "Your run keeps going. Try sharing the link again in a moment."))
+                return
+            }
             context.track("run_watch_link_shared")
             // One bubble (shares rule): the link, titled
             context.host.share([.link(url, title: "🏃 I'm out for a run — watch live", imageJPEG: nil)])

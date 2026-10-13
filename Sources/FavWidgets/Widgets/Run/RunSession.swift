@@ -38,8 +38,25 @@ public final class RunSession: NSObject, ObservableObject {
     @Published public var newCheer: SharedRun.Cheer?
     /// Who's following along right now ("Sal, Brit")
     @Published public private(set) var watcherNames: [String] = []
-    /// Followers chosen before the run: invited as soon as it starts
-    private var followersToInvite: [String] = []
+    /// Followers waiting for their "watch live" push. Kept and retried every
+    /// 15 s until it goes through (2026-10-13: one lost reply on a weak
+    /// signal used to drop everyone's invite silently).
+    @Published public private(set) var followersWaiting: [RunFollower] = []
+    /// Followers who've been told
+    @Published public private(set) var followersTold: [RunFollower] = []
+    /// The last try to reach the server failed (shown as "No signal")
+    @Published public private(set) var liveNoSignal = false
+    /// This run's id for the server, so a retry after a lost reply gets the
+    /// same shared run instead of a second one
+    private var clientKey = UUID().uuidString
+    private var lastLiveAttempt = Date.distantPast
+    private var attemptingLive = false
+    private static let liveRetryInterval: TimeInterval = 15
+
+    /// The run screen's line about who knows you're running
+    public var followersStatus: String? {
+        RunFollowersCopy.status(waiting: followersWaiting.map(\.name), told: followersTold.map(\.name), noSignal: liveNoSignal)
+    }
     private var seenCheers = Set<String>()
     private var lastLiveSync = Date.distantPast
     private var lastSyncedSplits = 0
@@ -79,7 +96,11 @@ public final class RunSession: NSObject, ObservableObject {
                       coach: Bool = false, coachIntensity: MotivationIntensity = .savage) {
         guard !isActive else { return }
         coachOn = coach; self.coachIntensity = coachIntensity; coachedSplits = 0
-        followersToInvite = followers.map(\.id)
+        clientKey = UUID().uuidString
+        followersWaiting = followers
+        followersTold = []
+        liveNoSignal = false
+        lastLiveAttempt = .distantPast
         self.context = context
         self.host = context.host
         liveRun = nil; newCheer = nil; seenCheers = []; lastSyncedSplits = 0; watcherNames = []
@@ -108,13 +129,50 @@ public final class RunSession: NSObject, ObservableObject {
     /// The run is live for the followers picked before it: their "watch
     /// live" push goes out now, nothing to tap mid-run.
     private func inviteChosenFollowers() {
-        let ids = followersToInvite
-        followersToInvite = []
-        guard !ids.isEmpty, let context else { return }
+        guard !followersWaiting.isEmpty else { return }
+        attemptLive()
+    }
+
+    /// More people to tell mid-run (the invite sheet). Queued like the
+    /// followers picked before the run, so a weak signal only delays them.
+    public func queueInvites(_ people: [RunFollower]) {
+        let known = Set((followersWaiting + followersTold).map(\.id))
+        let fresh = people.filter { !known.contains($0.id) }
+        guard !fresh.isEmpty else { return }
+        followersWaiting += fresh
+        attemptLive()
+    }
+
+    /// Every second from the ticker: try again once the last try is 15 s old.
+    private func retryLiveIfDue() {
+        guard isActive, !followersWaiting.isEmpty, !attemptingLive,
+              Date().timeIntervalSince(lastLiveAttempt) >= Self.liveRetryInterval else { return }
+        attemptLive()
+    }
+
+    /// Make the run watchable (the server returns the same run on a retry)
+    /// and tell everyone waiting. Failures leave them waiting for the next try.
+    func attemptLive() {
+        guard let context, isActive, !attemptingLive else { return }
+        attemptingLive = true
+        lastLiveAttempt = Date()
         Task { @MainActor in
-            guard let run = try? await shareLive() else { return }
-            _ = try? await RunShareClient(context: context).invite(run.id, userIds: ids)
-            context.track("run_followers_invited", ["count": "\(ids.count)"])
+            defer { attemptingLive = false }
+            do {
+                let run = try await shareLive()
+                let batch = followersWaiting
+                if !batch.isEmpty {
+                    _ = try await RunShareClient(context: context).invite(run.id, userIds: batch.map(\.id))
+                    let sent = Set(batch.map(\.id))
+                    followersWaiting.removeAll { sent.contains($0.id) }
+                    followersTold += batch
+                    context.track("run_followers_invited", ["count": "\(batch.count)"])
+                }
+                liveNoSignal = false
+            } catch {
+                liveNoSignal = true
+                context.track("run_live_retry", ["waiting": "\(followersWaiting.count)"])
+            }
         }
     }
 
@@ -172,6 +230,7 @@ public final class RunSession: NSObject, ObservableObject {
                 self.now = Date()
                 self.pushLive(force: false)
                 self.syncLiveIfDue()
+                self.retryLiveIfDue()
             }
         }
     }
@@ -196,7 +255,7 @@ public final class RunSession: NSObject, ObservableObject {
     func shareLive() async throws -> SharedRun {
         if let liveRun { return liveRun }
         guard let context, let track else { throw URLError(.cancelled) }
-        let run = try await RunShareClient(context: context).startLive(unit: unit, startedAt: track.startedAt)
+        let run = try await RunShareClient(context: context).startLive(unit: unit, startedAt: track.startedAt, clientKey: clientKey)
         liveRun = run
         lastLiveSync = .distantPast
         syncLiveIfDue(force: true)

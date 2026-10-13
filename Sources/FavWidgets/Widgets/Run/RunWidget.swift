@@ -263,6 +263,8 @@ struct ActiveRunView: View {
     private var inviteLabel: String {
         let names = session.watcherNames
         if names.isEmpty {
+            // Who's been told, who's still waiting, and whether there's signal
+            if let status = session.followersStatus { return status }
             return session.liveRun == nil ? "👀 Invite people to follow along" : "👀 Invited · waiting for them to join"
         }
         let shown = names.prefix(2).joined(separator: ", ") + (names.count > 2 ? " +\(names.count - 2)" : "")
