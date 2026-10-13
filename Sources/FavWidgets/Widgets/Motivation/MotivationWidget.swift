@@ -3,7 +3,7 @@ import FavWidgetsCore
 
 /// Coach Mane yells at you to go train: a line on the card, a shouting coach
 /// in the full view, and reminders through the day. Tough love by default;
-/// Savage (ruder; mild language at most) is opt-in. Single document (`MotivationLog`).
+/// Savage (ruder, and he swears) is opt-in. Single document (`MotivationLog`).
 public struct MotivationWidget: FavWidget {
     public init() {}
 

@@ -175,7 +175,7 @@ struct MotivationFullView: View {
             }
             .pickerStyle(.segmented)
             Text(model.intensity == .savage
-                 ? "Savage doesn't hold back. Mild language, and no sympathy."
+                 ? "Savage doesn't hold back. Strong language, and no sympathy."
                  : "Blunt and encouraging. Switch to Savage if you want it rougher.")
                 .font(.system(size: 12))
                 .foregroundStyle(theme.secondaryLabel)
