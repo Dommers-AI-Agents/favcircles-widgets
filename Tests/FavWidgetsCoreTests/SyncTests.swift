@@ -23,11 +23,16 @@ struct WidgetStateControllerTests {
         await c.loadIfNeeded()
         let day = DayKey(rawValue: "2026-09-13")
         for _ in 0..<5 { c.update { $0.add(1, on: day) } }
-        try await Task.sleep(for: .milliseconds(150))
+        // Wait for the debounced save (up to 2 s: a busy parallel run can
+        // take longer than a fixed 150 ms, which crashed below), then give a
+        // second save time to show up if coalescing were broken
+        for _ in 0..<200 where store.saveCount == 0 { try await Task.sleep(for: .milliseconds(10)) }
+        try await Task.sleep(for: .milliseconds(100))
         #expect(store.saveCount == 1)
         #expect(c.model.cups(on: day) == 5)
         #expect(store.document(id: "water")?.version == 1)
-        let stored = try WidgetDocumentCodec.decode(WaterLog.self, from: store.document(id: "water")!.payload)
+        let document = try #require(store.document(id: "water"))
+        let stored = try WidgetDocumentCodec.decode(WaterLog.self, from: document.payload)
         #expect(stored.cups(on: day) == 5)
     }
 

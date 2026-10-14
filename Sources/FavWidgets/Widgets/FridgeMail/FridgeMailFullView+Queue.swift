@@ -94,6 +94,8 @@ extension FridgeMailFullView {
             if !store.cards.isEmpty {
                 WidgetUI.header("Mailed", theme: theme)
                 ForEach(store.cards) { card in
+                    // Tap for the card full size (Wes, 2026-10-14)
+                    Button { openedCard = card } label: {
                     HStack(spacing: 12) {
                         FridgeMailThumb(url: card.imageURL, width: 60, height: 40)
                         VStack(alignment: .leading, spacing: 2) {
@@ -105,9 +107,14 @@ extension FridgeMailFullView {
                                 .font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
                         }
                         Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
                     }
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
+                    .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Shows the card full size")
                 }
             }
         }

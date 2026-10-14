@@ -20,6 +20,8 @@ struct FridgeMailFullView: View {
     /// Which pack the tiles have chosen; the Apple Pay button buys it.
     @State var selectedPackId: String?
     @State var familyNameDraft = ""
+    /// A mailed card open full size
+    @State var openedCard: FridgeMailCard?
 
     var body: some View {
         let theme = context.theme
@@ -77,6 +79,7 @@ struct FridgeMailFullView: View {
                 FridgeMailAddSheet(context: context, store: store, image: image)
             }
         }
+        .sheet(item: $openedCard) { card in FridgeMailCardDetailView(context: context, card: card) }
         .sheet(item: $recipientSheet) { item in
             FridgeMailRecipientSheet(context: context, store: store, editing: item.recipient)
         }
