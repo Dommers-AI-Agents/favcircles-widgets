@@ -39,6 +39,9 @@ struct EventModelsTests {
         #expect(EventCopy.joinedMessage(name: "Party Bus", coinCredited: true).contains("FavCoin"))
         #expect(EventCopy.uploadProgress(done: 0, total: 1) == "Adding your photo…")
         #expect(EventCopy.uploadProgress(done: 2, total: 8) == "Adding 3 of 8…")
+        #expect(EventCopy.duplicatePhotosTitle(skipped: 1, added: 0) == "That photo is already in the album")
+        #expect(EventCopy.duplicatePhotosTitle(skipped: 3, added: 0) == "Those photos are already in the album")
+        #expect(EventCopy.duplicatePhotosTitle(skipped: 1, added: 4) == "4 photos added, 1 repeat left out")
         #expect(EventCopy.notConnected(event, myId: "wes", connectedIds: []).map(\.id) == ["sal"])
         #expect(EventCopy.notConnected(event, myId: "wes", connectedIds: ["sal"]).isEmpty)
     }

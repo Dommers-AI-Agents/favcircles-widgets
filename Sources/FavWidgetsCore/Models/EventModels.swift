@@ -268,6 +268,13 @@ public enum EventCopy {
         total <= 1 ? "Adding your photo…" : "Adding \(min(done + 1, total)) of \(total)…"
     }
 
+    /// The note when the server left out photos this person already added
+    public static func duplicatePhotosTitle(skipped: Int, added: Int) -> String {
+        if added == 0 { return skipped == 1 ? "That photo is already in the album" : "Those photos are already in the album" }
+        let left = skipped == 1 ? "1 repeat left out" : "\(skipped) repeats left out"
+        return "\(added == 1 ? "1 photo" : "\(added) photos") added, \(left)"
+    }
+
     public static func savedToCircle(placeName: String, eventName: String) -> String {
         "\(placeName) is in your \(eventName) circle"
     }

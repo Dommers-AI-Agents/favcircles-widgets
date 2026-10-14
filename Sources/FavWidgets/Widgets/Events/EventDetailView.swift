@@ -486,7 +486,7 @@ struct EventDetailView: View {
             guard let fullURL = try? await context.host.uploadImage(full) else { continue }
             // The grid's ~25 KB preview; a failed preview just means the grid loads the photo
             let thumbURL: URL? = if let thumb = EventImagePrep.thumbnail(photo.image) { try? await context.host.uploadImage(thumb) } else { nil }
-            uploads.append(EventsClient.PhotoUpload(full: fullURL, thumb: thumbURL, metadata: photo.metadata))
+            uploads.append(EventsClient.PhotoUpload(full: fullURL, thumb: thumbURL, metadata: photo.metadata, fingerprint: EventImagePrep.fingerprint(photo.image)))
         }
         defer { model.uploading = nil }
         guard !uploads.isEmpty else {
@@ -494,7 +494,14 @@ struct EventDetailView: View {
             return
         }
         do {
-            let added = try await EventsClient(context: context).addPhotos(eventId, uploads: uploads, challengeId: challengeId)
+            let result = try await EventsClient(context: context).addPhotos(eventId, uploads: uploads, challengeId: challengeId)
+            let added = result.photos
+            if result.skipped > 0 {
+                context.track("event_photos_duplicate", ["count": "\(result.skipped)"])
+                context.host.presentAlert(WidgetAlert(title: EventCopy.duplicatePhotosTitle(skipped: result.skipped, added: added.count),
+                                                      message: "You can only add the same photo to an event once."))
+            }
+            guard !added.isEmpty else { return }
             model.prependPhotos(added)
             tab = .photos
             context.host.haptic(.success)
@@ -701,6 +708,30 @@ enum EventImagePrep {
     /// The album grid's preview: 400 px (a grid square is ~435 px on the
     /// biggest phones), ~25–35 KB for a real phone photo.
     static func thumbnail(_ image: PostcardPlatformImage) -> Data? { encode(image, longest: 400, quality: 0.6) }
+
+    /// The picture's 64-bit fingerprint (see `PhotoFingerprint`): drawn at
+    /// 9×8 the way it looks on screen, so a re-saved copy matches.
+    static func fingerprint(_ image: PostcardPlatformImage) -> String? {
+        #if os(iOS)
+        let w = PhotoFingerprint.width, h = PhotoFingerprint.height
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let small = UIGraphicsImageRenderer(size: CGSize(width: w, height: h), format: format).image { _ in
+            image.draw(in: CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        guard let cg = small.cgImage else { return nil }
+        var luma = [UInt8](repeating: 0, count: w * h)
+        let drawn = luma.withUnsafeMutableBytes { buffer -> Bool in
+            guard let context = CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                                          space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        return drawn ? PhotoFingerprint.hash(luma: luma) : nil
+        #else
+        return nil
+        #endif
+    }
 
     private static func encode(_ image: PostcardPlatformImage, longest maxSide: CGFloat, quality: CGFloat) -> Data? {
         #if os(iOS)

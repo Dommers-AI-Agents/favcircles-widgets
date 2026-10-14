@@ -9,7 +9,7 @@ struct EventsClient {
     private struct EventResponse: Decodable { let event: EventSummary }
     private struct PreviewResponse: Decodable { let preview: EventInvitePreview }
     struct JoinResponse: Decodable { let event: EventSummary; let joined: Bool; let coinCredited: Bool }
-    private struct PhotosResponse: Decodable { let photos: [EventPhoto] }
+    private struct PhotosResponse: Decodable { let photos: [EventPhoto]; let skipped: Int? }
     private struct PhotoResponse: Decodable { let photo: EventPhoto }
     private struct PlaceResponse: Decodable { let place: EventPlace }
     struct SaveResponse: Decodable { let place: EventPlace; let circleId: String; let alreadySaved: Bool }
@@ -57,17 +57,23 @@ struct EventsClient {
         let full: URL
         let thumb: URL?
         var metadata = PhotoCaptureMetadata()
+        /// `PhotoFingerprint` of the picture, so the server can skip a repeat
+        var fingerprint: String?
     }
-    func addPhotos(_ id: String, uploads: [PhotoUpload], challengeId: String? = nil) async throws -> [EventPhoto] {
+    /// What was added, and how many the server left out as repeats of
+    /// photos this person already added to the event.
+    struct AddedPhotos { let photos: [EventPhoto]; let skipped: Int }
+    func addPhotos(_ id: String, uploads: [PhotoUpload], challengeId: String? = nil) async throws -> AddedPhotos {
         let r: PhotosResponse = try await context.api(.post, "widgets/events/\(id)/photos",
                                                       body: ["photos": uploads.map { upload -> [String: Any] in
                                                           var p: [String: Any] = ["imageUrl": upload.full.absoluteString]
                                                           if let thumb = upload.thumb { p["thumbUrl"] = thumb.absoluteString }
                                                           if let challengeId { p["challengeId"] = challengeId }
+                                                          if let fingerprint = upload.fingerprint { p["fingerprint"] = fingerprint }
                                                           p.merge(upload.metadata.requestFields) { current, _ in current }
                                                           return p
                                                       }])
-        return r.photos
+        return AddedPhotos(photos: r.photos, skipped: r.skipped ?? 0)
     }
     /// A clip's upload slot: signed URLs for the file and its posters
     struct VideoStart: Decodable {
