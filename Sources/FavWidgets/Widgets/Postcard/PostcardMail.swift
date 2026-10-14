@@ -116,6 +116,17 @@ enum PostcardMail {
         try decode(Config.self, from: await context.host.request(WidgetAPIRequest(.get, "widgets/postcard/mail/config")))
     }
 
+    /// The card's price badge: the config, reused for 30 minutes (it was
+    /// fetched on every appearance of the Widgets tab). Sending always uses
+    /// a fresh `config`.
+    @MainActor private static var cardConfigCache: (config: Config, at: Date)?
+    @MainActor static func cardConfig(context: WidgetContext) async throws -> Config {
+        if let hit = cardConfigCache, Date().timeIntervalSince(hit.at) < 30 * 60 { return hit.config }
+        let fresh = try await config(context: context)
+        cardConfigCache = (fresh, Date())
+        return fresh
+    }
+
     static func quote(context: WidgetContext, address: PostcardMailAddress) async throws -> Quote {
         let a = address.normalized
         let body = try JSONSerialization.data(withJSONObject: ["recipient": [

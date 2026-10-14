@@ -9,6 +9,17 @@ import UserNotifications
 /// change and whenever the widget opens.
 enum MedReminderScheduler {
     static let prefix = "med-"
+    /// The med list last scheduled this launch: the card only re-syncs when
+    /// it changed (it removed and re-added every reminder on each appearance)
+    @MainActor private static var lastSynced: [Med]?
+
+    /// Sync only if the list differs from what this launch already scheduled.
+    @MainActor @discardableResult
+    static func syncIfChanged(_ settings: MedSettings) async -> Bool {
+        guard lastSynced != settings.meds else { return true }
+        lastSynced = settings.meds
+        return await sync(settings)
+    }
 
     /// Replaces every pending med reminder. Returns false when
     /// notifications are denied, so the screen can say so.

@@ -39,16 +39,55 @@ struct RegistryTests {
         #expect(model.visible.count == FavWidgetRegistry.all.filter { $0.descriptor.defaultEnabled }.count)
     }
 
-    @Test func tabModelPreloadsHotSetInOneBatch() async {
+    @Test func tabModelPreloadsHotSetInChunksTheServerAccepts() async {
         let store = InMemoryWidgetDataStore()
         let host = MockWidgetHost(dataStore: store)
         let model = WidgetsTabModel(host: host)
         await model.loadIfNeeded()
-        #expect(store.loadCount == 1)
+        // Every request fits the server's limit, together they cover the
+        // hot set once, and widgets that store nothing aren't asked for
+        let asked = store.batchRequests.flatMap { $0 }
+        #expect(store.batchRequests.allSatisfy { $0.count <= WidgetsTabModel.batchChunkSize })
+        #expect(store.loadCount == store.batchRequests.count)
+        #expect(Set(asked) == Set(model.shownHotIds()) && asked.count == Set(asked).count)
+        #expect(!asked.contains("weather") && !asked.contains("newcontacts"))
         #expect(model.hasLoaded && model.loadError == nil)
         model.setEnabled(false, id: "water")
         #expect(!model.visible.contains { $0.id == "water" })
         model.move(from: IndexSet(integer: 0), to: 2)
         #expect(model.ordered.first?.id != "water")
+    }
+
+    @Test func turnedOffWidgetsAreNotFetched() async {
+        let store = InMemoryWidgetDataStore()
+        let model = WidgetsTabModel(host: MockWidgetHost(dataStore: store))
+        await model.loadIfNeeded()
+        model.setEnabled(false, id: "water")
+        #expect(!model.shownHotIds().contains("water"))
+        #expect(model.shownHotIds().contains("prefs"))
+    }
+
+    @Test func aCardCreatedAfterTheBatchStartsLoadedWithoutAFetch() async {
+        let store = InMemoryWidgetDataStore()
+        let model = WidgetsTabModel(host: MockWidgetHost(dataStore: store))
+        await model.loadIfNeeded()
+        let before = store.loadCount
+        let controller = model.cache.controller(WaterLog.self, documentId: "water", schemaVersion: WaterLog.schemaVersion)
+        #expect(controller.hasLoaded)
+        await controller.loadIfNeeded()
+        #expect(store.loadCount == before)
+    }
+
+    @Test func aFailedBatchLeavesCardsFreeToFetchTheirOwn() async {
+        let store = InMemoryWidgetDataStore()
+        store.loadError = .network("offline")
+        let model = WidgetsTabModel(host: MockWidgetHost(dataStore: store))
+        await model.loadIfNeeded()
+        #expect(model.hasLoaded && model.loadError != nil)
+        store.loadError = nil
+        let controller = model.cache.controller(WaterLog.self, documentId: "water", schemaVersion: WaterLog.schemaVersion)
+        #expect(!controller.hasLoaded)
+        await controller.loadIfNeeded()
+        #expect(controller.hasLoaded)
     }
 }

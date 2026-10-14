@@ -22,6 +22,7 @@ public struct NewContactsWidget: FavWidget {
         symbolName: "person.crop.circle.badge.plus",
         accentHex: "#2B6CB0",
         category: .social,
+        storage: .none,
         shareBlurb: "See the last 50 people you added to your phone, newest first — and call or text them in a tap."
     )
 

@@ -82,7 +82,7 @@ struct MedsCardView: View {
         }
         .task {
             await settings.loadIfNeeded(); await month.loadIfNeeded()
-            await MedReminderScheduler.sync(settings.model)
+            await MedReminderScheduler.syncIfChanged(settings.model)
         }
     }
 

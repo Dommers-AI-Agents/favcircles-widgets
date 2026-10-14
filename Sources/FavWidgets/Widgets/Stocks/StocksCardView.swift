@@ -13,6 +13,7 @@ struct StocksCardView: View {
     @ObservedObject var quotes: StockQuoteStore
     /// Rates & crypto fold-out; starts folded every time the card appears
     @State private var extrasExpanded = false
+    @State private var isPolling = false
 
     private var pollSymbols: [String] { MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols }
 
@@ -46,8 +47,24 @@ struct StocksCardView: View {
             await state.loadIfNeeded()
             await quotes.refresh(symbols: pollSymbols)
         }
-        .onAppear { quotes.startPolling { MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols } }
-        .onDisappear { quotes.stopPolling() }
+        .onAppear { setPolling(true) }
+        .onDisappear { setPolling(false) }
+        // The Widgets tab is hidden with isHidden, so onDisappear never fires
+        // when you switch to Activity — stop with the tab too (2026-10-14)
+        .onReceive(NotificationCenter.default.publisher(for: .favWidgetsTabVisibilityChanged)) { note in
+            setPolling((note.userInfo?["visible"] as? Bool) ?? true)
+        }
+    }
+
+    /// Balanced start/stop, however many signals arrive.
+    private func setPolling(_ on: Bool) {
+        guard on != isPolling else { return }
+        isPolling = on
+        if on {
+            quotes.startPolling { MarketIndexes.symbols + MarketExtras.symbols + state.model.symbols }
+        } else {
+            quotes.stopPolling()
+        }
     }
 
     /// "10-Yr Treasury · Bitcoin" header with a chevron; the rows fold out

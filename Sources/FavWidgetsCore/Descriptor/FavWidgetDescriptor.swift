@@ -12,6 +12,9 @@ public enum FavWidgetCategory: String, Codable, CaseIterable, Sendable {
 ///   document per month (`<id>_YYYY-MM`) for entry-style data that grows.
 public enum FavWidgetStorage: String, Codable, Sendable {
     case single, monthly
+    /// Never saves a document (Weather, Recent Contacts): nothing to fetch
+    /// at tab open (2026-10-14: the tab asked for them anyway)
+    case none
 }
 
 /// The static identity of a widget. `id` doubles as the backend document

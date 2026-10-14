@@ -36,6 +36,9 @@ public final class WidgetStateController<Model: WidgetModel>: ObservableObject {
     private var saveTask: Task<Void, Never>?
     private var inFlightSave: Task<Void, Never>?
     private var retriedAfterConflict = false
+    /// Set while the tab's batch preload is in flight: loading waits for it
+    /// instead of fetching this document separately (2026-10-14).
+    public var preloadGate: (() async -> Void)?
 
     public init(
         documentId: String,
@@ -55,6 +58,11 @@ public final class WidgetStateController<Model: WidgetModel>: ObservableObject {
     /// Loads once. Safe to call from every appearance.
     public func loadIfNeeded() async {
         guard !hasLoaded else { return }
+        if let gate = preloadGate {
+            preloadGate = nil
+            await gate()
+            guard !hasLoaded else { return }   // the batch brought it
+        }
         restorePendingEdit()
         await reload()
     }

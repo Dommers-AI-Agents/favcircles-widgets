@@ -12,6 +12,8 @@ public final class InMemoryWidgetDataStore: WidgetDataStore, @unchecked Sendable
     public var loadError: WidgetDataStoreError?
     public private(set) var saveCount = 0
     public private(set) var loadCount = 0
+    /// Test hook: the ids of every batch `load(ids:)`, in order
+    public private(set) var batchRequests: [[String]] = []
 
     public init(seed: [String: WidgetDocument] = [:]) {
         documents = seed
@@ -25,6 +27,7 @@ public final class InMemoryWidgetDataStore: WidgetDataStore, @unchecked Sendable
     public func load(ids: [String]) async throws -> [String: WidgetDocument] {
         try locked {
             loadCount += 1
+            batchRequests.append(ids)
             if let loadError { throw loadError }
             return documents.filter { ids.contains($0.key) }
         }

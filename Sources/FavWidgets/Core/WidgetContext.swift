@@ -7,6 +7,12 @@ import FavWidgetsCore
 public final class WidgetStateCache {
     private var controllers: [String: AnyObject] = [:]
     private let store: WidgetDataStore
+    /// Documents the tab's batch already fetched (nil = known absent), so a
+    /// controller created afterwards (a card scrolled into view) starts
+    /// loaded instead of fetching again.
+    private var seeded: [String: WidgetDocument?] = [:]
+    /// Awaited by controllers created while the batch is in flight.
+    public var preloadGate: (() async -> Void)?
 
     public init(store: WidgetDataStore) {
         self.store = store
@@ -18,7 +24,18 @@ public final class WidgetStateCache {
         }
         let controller = WidgetStateController<M>(documentId: documentId, schemaVersion: schemaVersion, store: store)
         controllers[documentId] = controller
+        if let entry = seeded[documentId] {
+            controller.adopt(entry)
+        } else {
+            controller.preloadGate = preloadGate
+        }
         return controller
+    }
+
+    /// Records the batch's documents for controllers created later; ids in
+    /// `requested` that came back empty are remembered as absent.
+    public func seed(_ documents: [String: WidgetDocument], requested: [String]) {
+        for id in requested { seeded[id] = .some(documents[id]) }
     }
 
     /// Every controller created so far, for flush/refresh sweeps.

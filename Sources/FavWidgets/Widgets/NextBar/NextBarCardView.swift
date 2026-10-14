@@ -42,9 +42,11 @@ struct NextBarCardView: View {
             }
         }
         .task {
-            await state.loadIfNeeded()
-            await rounds.loadIfNeeded()
-            await pool.loadIfNeeded()
+            // Independent loads, together (they ran one after another)
+            async let doc: Void = state.loadIfNeeded()
+            async let past: Void = rounds.loadIfNeeded()
+            async let bars: Void = pool.loadIfNeeded()
+            _ = await (doc, past, bars)
             autoPickIfStale()
         }
     }

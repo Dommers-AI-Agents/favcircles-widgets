@@ -17,6 +17,8 @@ public enum WidgetShardPlanner {
     /// previous month keeps streaks and "last workout" right on the 1st).
     public static func hotIds(for descriptor: FavWidgetDescriptor, now: Date = Date(), calendar: Calendar = .current) -> [String] {
         switch descriptor.storage {
+        case .none:
+            return []
         case .single:
             return [descriptor.id]
         case .monthly:

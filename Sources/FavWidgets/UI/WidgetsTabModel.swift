@@ -15,6 +15,17 @@ public final class WidgetsTabModel: ObservableObject {
     @Published public private(set) var isLoading = false
     @Published public private(set) var loadError: String?
     @Published public private(set) var hasLoaded = false
+    /// The disk cache painted at least one card: no spinner over them
+    @Published public private(set) var hasCachedContent = false
+    /// The spinner is only for a first open with nothing cached
+    public var showsLoadingSpinner: Bool { isLoading && !hasLoaded && !hasCachedContent }
+    /// Whether the Widgets tab is on screen (the app reports it; the tab is
+    /// hidden with isHidden, so SwiftUI's onDisappear never fires)
+    public private(set) var isTabVisible = true
+
+    /// Most ids one batch read asks for (the server's limit was 30 when the
+    /// tab grew to 41 and every open got a 400 — 2026-10-14)
+    public static let batchChunkSize = 30
 
     /// The app sets this to push a full view.
     public var onOpen: (any FavWidget, WidgetContext) -> Void = { _, _ in }
@@ -61,26 +72,42 @@ public final class WidgetsTabModel: ObservableObject {
         await load()
     }
 
+    /// Paints from the disk cache (read off the main thread), then fetches
+    /// the hot set of the widgets that are SHOWN, in chunks the server
+    /// accepts. Cards that appear meanwhile wait for this instead of
+    /// fetching their own documents.
     public func load() async {
         isLoading = !hasLoaded
         loadError = nil
-        let ids = WidgetShardPlanner.hotIds(for: descriptors, now: Date(), calendar: calendar)
-        if let cached = host.dataStore as? CachedWidgetDataStore {
-            adopt(cached.cached(ids: ids))
+        let cachedStore = host.dataStore as? CachedWidgetDataStore
+        if let cachedStore {
+            let everyId = WidgetShardPlanner.hotIds(for: descriptors, now: Date(), calendar: calendar)
+            let (cached, pending) = await Task.detached(priority: .userInitiated) {
+                (cachedStore.cached(ids: everyId), cachedStore.pendingIds(among: everyId))
+            }.value
+            if !cached.isEmpty { hasCachedContent = true }
+            adopt(cached)
             // Edits refused while offline last time go out again now.
-            let pending = cached.pendingIds(among: ids)
             for controller in cache.all where pending.contains(controller.documentId) {
                 controller.restorePendingEdit()
             }
+            recomputeVisible()
         }
+
+        let ids = shownHotIds()
+        let batch = Task { try await self.fetchInChunks(ids) }
+        cache.preloadGate = { _ = try? await batch.value }
         do {
-            let documents = try await host.dataStore.load(ids: ids)
+            let documents = try await batch.value
+            cache.seed(documents, requested: ids)
             adopt(documents)
             markLoaded(ids)
         } catch {
-            if !hasLoaded { loadError = "Couldn't load your widgets — pull to refresh" }
-            markLoaded(ids)
+            // Cached cards stay as they are; a card with nothing cached
+            // fetches its own document when it appears.
+            if !hasCachedContent { loadError = "Couldn't load your widgets — pull to refresh" }
         }
+        cache.preloadGate = nil
         hasLoaded = true
         isLoading = false
         recomputeVisible()
@@ -88,31 +115,57 @@ public final class WidgetsTabModel: ObservableObject {
 
     public func refreshAll() async {
         loadError = nil
-        let ids = WidgetShardPlanner.hotIds(for: descriptors, now: Date(), calendar: calendar)
+        let ids = shownHotIds()
         do {
-            adopt(try await host.dataStore.load(ids: ids))
+            let documents = try await fetchInChunks(ids)
+            cache.seed(documents, requested: ids)
+            adopt(documents)
         } catch {
             loadError = "Couldn't refresh — check your connection"
         }
         recomputeVisible()
     }
 
+    /// Preferences plus the documents of widgets that are turned on and
+    /// store data (not Weather or Recent Contacts).
+    func shownHotIds() -> [String] {
+        let shown = WidgetOrdering.visible(prefs: prefs.model, descriptors: descriptors)
+        return WidgetShardPlanner.hotIds(for: shown, now: Date(), calendar: calendar)
+    }
+
+    /// One request per ≤30 ids, in parallel, merged.
+    func fetchInChunks(_ ids: [String]) async throws -> [String: WidgetDocument] {
+        let size = Self.batchChunkSize
+        guard ids.count > size else { return try await host.dataStore.load(ids: ids) }
+        let chunks = stride(from: 0, to: ids.count, by: size).map { Array(ids[$0..<min($0 + size, ids.count)]) }
+        let store = host.dataStore
+        return try await withThrowingTaskGroup(of: [String: WidgetDocument].self) { group in
+            for chunk in chunks { group.addTask { try await store.load(ids: chunk) } }
+            var merged: [String: WidgetDocument] = [:]
+            for try await part in group { merged.merge(part) { a, _ in a } }
+            return merged
+        }
+    }
+
+    /// The app reports the tab going on/off screen.
+    public func setTabVisible(_ visible: Bool) {
+        guard visible != isTabVisible else { return }
+        isTabVisible = visible
+        NotificationCenter.default.post(name: .favWidgetsTabVisibilityChanged, object: nil, userInfo: ["visible": visible])
+    }
+
     public func flushAll() async {
         for controller in cache.all { await controller.flush() }
     }
 
+    /// Hands each document to its controller (one decode each); the caller
+    /// recomputes the visible list once.
     private func adopt(_ documents: [String: WidgetDocument]) {
+        guard !documents.isEmpty else { return }
         prefs.adopt(documents[WidgetPreferences.documentId])
-        for descriptor in descriptors {
-            for id in WidgetShardPlanner.hotIds(for: descriptor, now: Date(), calendar: calendar) {
-                guard let controller = cache.all.first(where: { $0.documentId == id }) else { continue }
-                controller.adopt(documents[id])
-            }
+        for controller in cache.all where controller.documentId != WidgetPreferences.documentId {
+            if let document = documents[controller.documentId] { controller.adopt(document) }
         }
-        for controller in cache.all where documents[controller.documentId] != nil {
-            controller.adopt(documents[controller.documentId])
-        }
-        recomputeVisible()
     }
 
     /// Controllers created after the batch landed would refetch on their
@@ -162,4 +215,9 @@ public final class WidgetsTabModel: ObservableObject {
     public func markHintSeen(_ key: String) {
         prefs.update { $0.seenHints.insert(key) }
     }
+}
+
+public extension Notification.Name {
+    /// The Widgets tab went on or off screen (userInfo["visible"]: Bool).
+    static let favWidgetsTabVisibilityChanged = Notification.Name("favWidgetsTabVisibilityChanged")
 }

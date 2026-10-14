@@ -30,11 +30,12 @@ struct PostcardCardView: View {
             }
         }
         .task {
-            await currentMonth.loadIfNeeded()
-            await previousMonth.loadIfNeeded()
+            async let current: Void = currentMonth.loadIfNeeded()
+            async let previous: Void = previousMonth.loadIfNeeded()
+            _ = await (current, previous)
         }
         .task {
-            guard let config = try? await PostcardMail.config(context: context), config.isUsable else { return }
+            guard let config = try? await PostcardMail.cardConfig(context: context), config.isUsable else { return }
             specialBadge = PostcardPriceCopy.badge(priceCents: config.priceCents,
                                                    regularPriceCents: config.regularPriceCents,
                                                    label: config.special?.label)

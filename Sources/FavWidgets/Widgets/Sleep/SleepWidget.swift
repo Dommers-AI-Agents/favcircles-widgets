@@ -43,9 +43,15 @@ enum SleepData {
         nights.filter { $0.day < night.day }.suffix(7).map(\.bedtime)
     }
 
+    /// When Health was last read (the card reads at most every 30 minutes;
+    /// opening the widget or pulling to refresh always reads)
+    private static var lastHealthRead: Date?
+
     /// Pulls Health's nights into their month shards (manual ones stay).
-    static func refreshFromHealth(context: WidgetContext, settings: WidgetStateController<SleepSettings>) async {
+    static func refreshFromHealth(context: WidgetContext, settings: WidgetStateController<SleepSettings>, force: Bool = true) async {
         guard settings.model.healthConnected, SleepHealthReader.isAvailable else { return }
+        if !force, let last = lastHealthRead, Date().timeIntervalSince(last) < 30 * 60 { return }
+        lastHealthRead = Date()
         let nights = await SleepHealthReader.nights(days: 30, calendar: context.calendar)
         let byMonth = Dictionary(grouping: nights) { $0.day.monthKey }
         for (key, list) in byMonth {
@@ -88,7 +94,7 @@ struct SleepCardView: View {
         }
         .task {
             await settings.loadIfNeeded(); await month.loadIfNeeded(); await previous.loadIfNeeded()
-            await SleepData.refreshFromHealth(context: context, settings: settings)
+            await SleepData.refreshFromHealth(context: context, settings: settings, force: false)
         }
     }
 }

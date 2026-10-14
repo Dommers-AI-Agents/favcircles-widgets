@@ -62,7 +62,7 @@ public struct WidgetsTabRootView: View {
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListRowHeight, 1)
             .scrollDismissesKeyboard(.immediately)
-            if model.isLoading && !model.hasLoaded {
+            if model.showsLoadingSpinner {
                 WidgetStatusView(theme: theme, isLoading: true, message: nil)
             }
         }
