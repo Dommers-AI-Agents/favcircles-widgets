@@ -81,8 +81,10 @@ struct EventsClient {
         let videoId: String
         let uploadUrls: URLs
     }
-    func startVideo(_ id: String, durationSec: Double) async throws -> VideoStart {
-        try await context.api(.post, "widgets/events/\(id)/videos", body: ["durationSec": durationSec])
+    func startVideo(_ id: String, durationSec: Double, fingerprint: String? = nil) async throws -> VideoStart {
+        var body: [String: Any] = ["durationSec": durationSec]
+        if let fingerprint { body["fingerprint"] = fingerprint }
+        return try await context.api(.post, "widgets/events/\(id)/videos", body: body)
     }
     func finishVideo(_ id: String, video: String) async throws -> EventPhoto {
         let r: PhotoResponse = try await context.api(.post, "widgets/events/\(id)/videos/\(video)/finish")

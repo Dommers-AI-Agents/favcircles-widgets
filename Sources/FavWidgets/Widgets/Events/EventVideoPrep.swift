@@ -65,6 +65,13 @@ enum EventVideoPrep {
         return CGImageDestinationFinalize(dest) ? data as Data : nil
     }
 
+    /// The clip's 64-bit fingerprint (see `PhotoFingerprint`), from a frame of
+    /// the original so it matches however the copy was saved.
+    static func fingerprint(_ url: URL) async -> String? {
+        guard let data = await frame(url, maxSide: 96, quality: 0.5), let image = PostcardPlatformImage(data: data) else { return nil }
+        return EventImagePrep.fingerprint(image)
+    }
+
     /// Re-encodes to ≤1280 px H.264 + AAC in an MP4, keeping orientation.
     static func transcode(_ url: URL) async throws -> URL {
         let asset = AVURLAsset(url: url)

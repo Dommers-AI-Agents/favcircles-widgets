@@ -275,6 +275,12 @@ public enum EventCopy {
         return "\(added == 1 ? "1 photo" : "\(added) photos") added, \(left)"
     }
 
+    public static func duplicateVideosTitle(skipped: Int, added: Int) -> String {
+        if added == 0 { return skipped == 1 ? "That video is already in the album" : "Those videos are already in the album" }
+        let left = skipped == 1 ? "1 repeat left out" : "\(skipped) repeats left out"
+        return "\(added == 1 ? "1 video" : "\(added) videos") added, \(left)"
+    }
+
     public static func savedToCircle(placeName: String, eventName: String) -> String {
         "\(placeName) is in your \(eventName) circle"
     }

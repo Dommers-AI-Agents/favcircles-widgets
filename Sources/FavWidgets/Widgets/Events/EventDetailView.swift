@@ -426,13 +426,14 @@ struct EventDetailView: View {
         let client = EventsClient(context: context)
         var added: [EventPhoto] = []
         var failed = 0
+        var repeats = 0
         for (i, clip) in clips.enumerated() {
             let of = clips.count == 1 ? "" : " \(i + 1) of \(clips.count)"
             model.uploading = "Preparing video\(of)…"
             do {
                 let prepared = try await EventVideoPrep.prepare(clip.movie.url)
                 defer { try? FileManager.default.removeItem(at: prepared.video) }
-                let slot = try await client.startVideo(eventId, durationSec: clip.seconds)
+                let slot = try await client.startVideo(eventId, durationSec: clip.seconds, fingerprint: await EventVideoPrep.fingerprint(clip.movie.url))
                 model.uploading = "Uploading video\(of)…"
                 guard let videoURL = URL(string: slot.uploadUrls.video), let posterURL = URL(string: slot.uploadUrls.poster) else { failed += 1; continue }
                 try await EventVideoPrep.put(prepared.video, to: videoURL, contentType: "video/mp4")
@@ -441,6 +442,8 @@ struct EventDetailView: View {
                     try? await EventVideoPrep.put(thumb, to: thumbURL, contentType: "image/jpeg")
                 }
                 added.append(try await client.finishVideo(eventId, video: slot.videoId))
+            } catch let error as WidgetAPIError where error.code == "duplicate_video" {
+                repeats += 1
             } catch let error as WidgetAPIError where error.status == 403 {
                 // The server's limit (it is the authority); Premium when it would help
                 if limits?.isPremium == true {
@@ -461,6 +464,11 @@ struct EventDetailView: View {
             context.track("event_videos_added", ["count": "\(added.count)"])
             // Fresh limits (how many are left)
             Task { await model.load() }
+        }
+        if repeats > 0 {
+            context.track("event_videos_duplicate", ["count": "\(repeats)"])
+            context.host.presentAlert(WidgetAlert(title: EventCopy.duplicateVideosTitle(skipped: repeats, added: added.count),
+                                                  message: "You can only add the same video to an event once."))
         }
         if failed > 0 {
             context.host.presentAlert(WidgetAlert(title: failed == 1 ? "Couldn't add a video" : "Couldn't add \(failed) videos",
