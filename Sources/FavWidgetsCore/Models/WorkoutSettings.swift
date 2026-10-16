@@ -27,11 +27,15 @@ public struct WorkoutSettings: WidgetModel {
     /// Who a shared workout goes to: "connections" (everyone connected, via
     /// the activity feed) or nil = the Inner Circle, as before (schema 6).
     public var shareAudience: String?
+    /// The person's Inner Circle may browse their whole workout history from
+    /// a shared workout (schema 7). Off by default; the phone sends the
+    /// summaries, since custom exercise names live only here.
+    public var shareHistoryWithInnerCircle: Bool
 
     public init(unit: WeightUnit = .lb, restTimerSeconds: Int = 90, autoRestTimer: Bool = true, customExercises: [Exercise] = [],
                 routines: [Routine] = [], prsByExercise: [String: PersonalRecord] = [:], activeSession: WorkoutSession? = nil,
                 profile: BodyProfile = BodyProfile(), exerciseImages: [String: String] = [:], shareWithInnerCircle: Bool = false, shareListId: String? = nil,
-                shareAudience: String? = nil) {
+                shareAudience: String? = nil, shareHistoryWithInnerCircle: Bool = false) {
         self.unit = unit
         self.restTimerSeconds = restTimerSeconds
         self.autoRestTimer = autoRestTimer
@@ -44,11 +48,12 @@ public struct WorkoutSettings: WidgetModel {
         self.shareWithInnerCircle = shareWithInnerCircle
         self.shareListId = shareListId
         self.shareAudience = shareAudience
+        self.shareHistoryWithInnerCircle = shareHistoryWithInnerCircle
     }
 
     private enum CodingKeys: String, CodingKey {
         case unit, restTimerSeconds, autoRestTimer, customExercises, routines, prsByExercise, activeSession
-        case profile, exerciseImages, shareWithInnerCircle, shareListId, shareAudience
+        case profile, exerciseImages, shareWithInnerCircle, shareListId, shareAudience, shareHistoryWithInnerCircle
     }
 
     /// Documents written before a field existed decode with that field's
@@ -68,6 +73,7 @@ public struct WorkoutSettings: WidgetModel {
         shareWithInnerCircle = try c.decodeIfPresent(Bool.self, forKey: .shareWithInnerCircle) ?? false
         shareListId = try c.decodeIfPresent(String.self, forKey: .shareListId)
         shareAudience = try c.decodeIfPresent(String.self, forKey: .shareAudience)
+        shareHistoryWithInnerCircle = try c.decodeIfPresent(Bool.self, forKey: .shareHistoryWithInnerCircle) ?? false
     }
 
     /// The photo for an exercise: the attached one, else the custom

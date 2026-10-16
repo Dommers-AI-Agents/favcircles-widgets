@@ -27,6 +27,7 @@ struct WorkoutSettingsView: View {
                 unitSection
                 profileSection
                 restSection
+                historySection
             }
             .padding(20)
         }
@@ -131,6 +132,27 @@ struct WorkoutSettingsView: View {
             .pickerStyle(.segmented)
             .disabled(!settings.model.autoRestTimer)
             .opacity(settings.model.autoRestTimer ? 1 : 0.4)
+        }
+    }
+
+    private var historySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            WidgetUI.header("Inner Circle", theme: theme)
+            Toggle(isOn: Binding(
+                get: { settings.model.shareHistoryWithInnerCircle },
+                set: { on in
+                    settings.update { $0.shareHistoryWithInnerCircle = on }
+                    context.track("workout_history_sharing_changed", ["on": on ? "1" : "0"])
+                    let model = settings.model
+                    Task { await WorkoutHistorySync.sync(context: context, settings: model) }
+                }
+            )) {
+                Text("Let my Inner Circle see my workout history")
+                    .font(.system(size: 15)).foregroundStyle(theme.label)
+            }
+            .tint(context.accent)
+            Text("People on your Inner Circle lists can tap any workout you share and see all your workouts from the past year. Turn it off and they can't.")
+                .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
         }
     }
 

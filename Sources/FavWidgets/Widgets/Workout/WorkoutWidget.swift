@@ -20,7 +20,8 @@ public struct WorkoutWidget: FavWidget {
         // 4 (2026-09-22): which Inner Circle list a workout is posted to (shareListId).
         // 5 (2026-09-29): set rows prefilled from last time (SetEntry.isPrefilled).
         // 6 (2026-09-30): who a shared workout goes to (shareAudience).
-        schemaVersion: 6,
+        // 7 (2026-10-16): Inner Circle may browse the history (shareHistoryWithInnerCircle).
+        schemaVersion: 7,
         shareBlurb: "Log sets, reps and PRs, and see your progress over time."
     )
 

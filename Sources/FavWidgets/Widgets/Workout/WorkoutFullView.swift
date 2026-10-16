@@ -32,9 +32,16 @@ struct WorkoutFullView: View {
             await settings.loadIfNeeded()
             await context.month(WorkoutMonth.self, context.currentMonth).loadIfNeeded()
             await context.month(WorkoutMonth.self, context.currentMonth.previous).loadIfNeeded()
+            await WorkoutHistorySync.syncOnOpen(context: context, settings: settings.model)
         }
         .onChange(of: settings.model.activeSession == nil) { ended in
             if ended { showHomeWhileActive = false }
+        }
+        // A finished workout joins the history the Inner Circle sees
+        .onChange(of: summary?.id) { finished in
+            guard finished != nil, settings.model.shareHistoryWithInnerCircle else { return }
+            let model = settings.model
+            Task { await WorkoutHistorySync.sync(context: context, settings: model) }
         }
         .sheet(item: $summary) { summary in
             WorkoutSummaryView(context: context, settings: settings, summary: summary)

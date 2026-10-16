@@ -19,6 +19,9 @@ struct WorkoutPostView: View {
     /// Opened from outside the widget: "Open Workouts" goes to the widget
     /// (Wes, 2026-10-08)
     var onOpenWorkouts: (() -> Void)?
+    /// Pushed inside another navigation stack (the author's history), so it
+    /// brings no stack or Close of its own
+    var embedded = false
 
     @Environment(\.dismiss) private var dismiss
     @State private var post: WorkoutFeedAPI.Post?
@@ -31,46 +34,56 @@ struct WorkoutPostView: View {
     private var theme: WidgetTheme { context.theme }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let post {
-                    content(post)
-                } else if failed {
-                    VStack(spacing: 10) {
-                        Image(systemName: "dumbbell").font(.system(size: 32)).foregroundStyle(theme.secondaryLabel)
-                        Text("This workout isn't available.").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
-                        Text("It may have been shared with a smaller group.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+        if embedded {
+            page
+        } else {
+            NavigationStack {
+                page
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let previewTitle {
-                    // The row's own words straight away, the details a moment later
-                    VStack(spacing: 10) {
-                        Image(systemName: "dumbbell.fill").font(.system(size: 34)).foregroundStyle(context.accent)
-                        Text(previewTitle).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.label)
-                            .multilineTextAlignment(.center)
-                        if let previewDetail, !previewDetail.isEmpty {
-                            Text(previewDetail).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
-                        }
-                        ProgressView().padding(.top, 6)
-                    }
-                    .padding(24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
             }
-            .background(theme.background.ignoresSafeArea())
-            .widgetInlineNavigationTitle("Workout")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                if let post, isMine(post) {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button { shareOut(post) } label: {
-                            if sharing { ProgressView() } else { Image(systemName: "square.and.arrow.up") }
-                        }
-                        .disabled(sharing)
-                        .accessibilityLabel("Share this workout")
+        }
+    }
+
+    private var page: some View {
+        Group {
+            if let post {
+                content(post)
+            } else if failed {
+                VStack(spacing: 10) {
+                    Image(systemName: "dumbbell").font(.system(size: 32)).foregroundStyle(theme.secondaryLabel)
+                    Text("This workout isn't available.").font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+                    Text("It may have been shared with a smaller group.").font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let previewTitle {
+                // The row's own words straight away, the details a moment later
+                VStack(spacing: 10) {
+                    Image(systemName: "dumbbell.fill").font(.system(size: 34)).foregroundStyle(context.accent)
+                    Text(previewTitle).font(.system(size: 22, weight: .bold)).foregroundStyle(theme.label)
+                        .multilineTextAlignment(.center)
+                    if let previewDetail, !previewDetail.isEmpty {
+                        Text(previewDetail).font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
                     }
+                    ProgressView().padding(.top, 6)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background(theme.background.ignoresSafeArea())
+        .widgetInlineNavigationTitle("Workout")
+        .toolbar {
+            if let post, isMine(post) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { shareOut(post) } label: {
+                        if sharing { ProgressView() } else { Image(systemName: "square.and.arrow.up") }
+                    }
+                    .disabled(sharing)
+                    .accessibilityLabel("Share this workout")
                 }
             }
         }
@@ -81,6 +94,10 @@ struct WorkoutPostView: View {
         if post == nil, let initialPost { post = initialPost }
         if post == nil {
             do { post = try await WorkoutFeedAPI.post(context: context, id: postId) } catch { failed = true }
+        } else if !embedded, post?.historyAvailable == nil, let shown = post, !isMine(shown) {
+            // A feed row doesn't say whether the history is open to this
+            // viewer; one quiet fetch does (the row stays up meanwhile)
+            if let fresh = try? await WorkoutFeedAPI.post(context: context, id: postId) { post = fresh }
         }
         await settings.loadIfNeeded()
         if let post { copied = WorkoutCopyLogic.existingCopy(of: post.summary, in: settings.model) }
@@ -139,6 +156,18 @@ struct WorkoutPostView: View {
                     }
                 }
                 if !summary.exercises.isEmpty { copyBlock(post) }
+                if post.historyAvailable == true, !embedded {
+                    NavigationLink {
+                        WorkoutAuthorHistoryView(context: context, settings: settings, userId: post.userId, userName: post.userName)
+                    } label: {
+                        Label("See all of \(post.userName)'s workouts", systemImage: "clock.arrow.circlepath")
+                            .font(.system(size: 16, weight: .semibold)).foregroundStyle(context.accent)
+                            .frame(maxWidth: .infinity).frame(height: 48)
+                            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .simultaneousGesture(TapGesture().onEnded { context.track("workout_history_opened") })
+                }
                 if isMine(post) {
                     Button { shareOut(post) } label: {
                         Label("Share this workout", systemImage: "square.and.arrow.up")

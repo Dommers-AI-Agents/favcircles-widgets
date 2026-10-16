@@ -11,7 +11,49 @@ enum WorkoutFeedAPI {
         let avatarUrl: String?
         let summary: WorkoutShareSummary
         let createdAt: Date
+        /// The author lets the viewer browse their whole workout history
+        /// (only from a single-post fetch; nil in feeds)
+        var historyAvailable: Bool? = nil
         var id: String { postId }
+    }
+
+    /// Someone's workout history, as their phone last sent it.
+    struct History: Decodable, Equatable {
+        struct Entry: Decodable, Identifiable, Equatable {
+            let postId: String
+            let summary: WorkoutShareSummary
+            var id: String { postId }
+        }
+        let userId: String
+        let userName: String
+        let avatarUrl: String?
+        let workouts: [Entry]
+
+        /// One entry as a Post, so it opens in the same workout view.
+        func post(_ entry: Entry) -> Post {
+            Post(postId: entry.postId, userId: userId, userName: userName, avatarUrl: avatarUrl,
+                 summary: entry.summary, createdAt: entry.summary.startedAt)
+        }
+    }
+
+    private struct HistoryEnvelope: Decodable { let history: History }
+    private struct HistoryBody: Encodable {
+        let enabled: Bool
+        let workouts: [WorkoutShareSummary]
+    }
+
+    /// Sends the person's history (replacing what was there), or with
+    /// `enabled` false takes it down.
+    static func syncHistory(context: WidgetContext, enabled: Bool, workouts: [WorkoutShareSummary]) async throws {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let body = try encoder.encode(HistoryBody(enabled: enabled, workouts: enabled ? workouts : []))
+        _ = try await context.host.request(WidgetAPIRequest(.put, "widgets/workouts/history", body: body))
+    }
+
+    static func history(context: WidgetContext, userId: String) async throws -> History {
+        let path = "widgets/workouts/history/" + (userId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? userId)
+        return try WidgetJSON.decode(HistoryEnvelope.self, from: await context.host.request(WidgetAPIRequest(.get, path))).history
     }
 
     private struct FeedResponse: Decodable { let posts: [Post] }
