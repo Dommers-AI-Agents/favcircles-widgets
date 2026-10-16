@@ -341,6 +341,16 @@ struct WeatherPlaceSheet: View {
     let target: WeatherTarget
     @ObservedObject private var weather = FavWeather.shared
     @Environment(\.dismiss) private var dismiss
+    /// Where "My Location" is, for its radar card (a saved city has its own)
+    @State private var hereCoordinate: WidgetCoordinate?
+
+    /// The spot the radar centres on, when NEXRAD covers it
+    private var radarSpot: (latitude: Double, longitude: Double)? {
+        let spot = target.place.map { ($0.latitude, $0.longitude) }
+            ?? hereCoordinate.map { ($0.latitude, $0.longitude) }
+        guard let spot, WeatherRadar.covers(latitude: spot.0, longitude: spot.1) else { return nil }
+        return (spot.0, spot.1)
+    }
 
     var body: some View {
         let theme = context.theme
@@ -351,6 +361,11 @@ struct WeatherPlaceSheet: View {
                 VStack(alignment: .leading, spacing: 18) {
                     if let f = forecast {
                         WeatherForecastSections(forecast: f, unit: unit, theme: theme, title: target.place?.name ?? f.placeName ?? "My Location")
+                        #if os(iOS)
+                        if let spot = radarSpot {
+                            WeatherRadarCard(latitude: spot.latitude, longitude: spot.longitude, theme: theme)
+                        }
+                        #endif
                     } else {
                         ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                     }
@@ -382,6 +397,7 @@ struct WeatherPlaceSheet: View {
                 await weather.refresh(place: place)
             } else {
                 await weather.refreshHere { await context.host.currentLocation() }
+                hereCoordinate = await context.host.currentLocation()
             }
         }
     }

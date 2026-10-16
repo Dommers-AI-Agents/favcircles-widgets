@@ -199,3 +199,25 @@ struct RunPostAudienceMemoryTests {
         #expect(decoded.coachOn)
     }
 }
+
+/// The rain radar shows only where NEXRAD has radars (2026-10-16).
+struct WeatherRadarCoverageTests {
+    @Test func coversTheUS() {
+        #expect(WeatherRadar.covers(latitude: 35.22, longitude: -80.84))   // Charlotte
+        #expect(WeatherRadar.covers(latitude: 61.2, longitude: -149.9))    // Anchorage
+        #expect(WeatherRadar.covers(latitude: 21.3, longitude: -157.85))   // Honolulu
+        #expect(WeatherRadar.covers(latitude: 18.47, longitude: -66.1))    // San Juan
+        // Border cities fall in the box, and US radars do reach them
+        #expect(WeatherRadar.covers(latitude: 43.65, longitude: -79.38))   // Toronto
+    }
+
+    @Test func notElsewhere() {
+        #expect(!WeatherRadar.covers(latitude: 51.5, longitude: -0.12))    // London
+        #expect(!WeatherRadar.covers(latitude: 19.43, longitude: -99.13))  // Mexico City
+    }
+
+    @Test func tilesComeFromTheMesonet() {
+        #expect(WeatherRadar.tileTemplate.hasPrefix("https://mesonet.agron.iastate.edu/"))
+        #expect(WeatherRadar.tileTemplate.contains("{z}/{x}/{y}"))
+    }
+}
