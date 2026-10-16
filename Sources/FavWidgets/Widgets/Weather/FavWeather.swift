@@ -25,6 +25,11 @@ public final class FavWeather: ObservableObject {
     @Published public private(set) var locationUnavailable = false
     /// The last fetch failed and there's nothing cached to show
     @Published public private(set) var unavailable = false
+    /// Where the phone is now (the list's My Location row), whatever the
+    /// header shows
+    @Published public private(set) var here: WeatherForecast?
+    /// Saved cities' forecasts, by `WeatherPlace.id`
+    @Published public private(set) var forecasts: [String: WeatherForecast] = [:]
 
     private var cache: [String: WeatherForecast] = [:]
     private var inFlight: [String: Task<WeatherForecast, Error>] = [:]
@@ -47,8 +52,8 @@ public final class FavWeather: ObservableObject {
         let target: (lat: Double, lon: Double, name: String?)
         if let place = prefs.fixedPlace {
             target = (place.latitude, place.longitude, place.name)
-        } else if let here = await currentLocation() {
-            target = (here.latitude, here.longitude, nil)
+        } else if let spot = await currentLocation() {
+            target = (spot.latitude, spot.longitude, nil)
         } else {
             locationUnavailable = true
             return latest
@@ -57,6 +62,7 @@ public final class FavWeather: ObservableObject {
         do {
             let forecast = try await forecast(latitude: target.lat, longitude: target.lon, name: target.name, force: force)
             latest = forecast
+            if prefs.fixedPlace == nil { here = forecast }
             unavailable = false
             publishHeader(forecast)
             return forecast
@@ -64,6 +70,67 @@ public final class FavWeather: ObservableObject {
             unavailable = latest == nil
             return latest
         }
+    }
+
+    // MARK: - Saved cities
+
+    /// My Location's row: where the phone is now.
+    public func refreshHere(force: Bool = false, currentLocation: () async -> WidgetCoordinate?) async {
+        guard let spot = await currentLocation() else {
+            locationUnavailable = true
+            return
+        }
+        locationUnavailable = false
+        if let f = try? await forecast(latitude: spot.latitude, longitude: spot.longitude, name: nil, force: force) {
+            here = f
+        }
+    }
+
+    /// One place's forecast (a saved city, or one being previewed from search).
+    @discardableResult
+    public func refresh(place: WeatherPlace, force: Bool = false) async -> WeatherForecast? {
+        guard let f = try? await forecast(latitude: place.latitude, longitude: place.longitude, name: place.name, force: force) else {
+            return forecasts[place.id]
+        }
+        forecasts[place.id] = f
+        return f
+    }
+
+    /// Every saved city, side by side. Places saved before time zones were
+    /// kept get theirs filled in once.
+    public func refreshSaved(force: Bool = false) async {
+        await withTaskGroup(of: Void.self) { group in
+            for place in prefs.savedPlaces {
+                group.addTask { await self.refresh(place: place, force: force) }
+            }
+        }
+        for place in prefs.savedPlaces where place.timeZoneId == nil {
+            if let zone = await Self.timeZone(latitude: place.latitude, longitude: place.longitude) {
+                let filled = WeatherPlace(name: place.name, latitude: place.latitude, longitude: place.longitude, timeZoneId: zone)
+                update { p in
+                    if let i = p.savedPlaces.firstIndex(where: { $0.sameSpot(as: place) }) { p.savedPlaces[i] = filled }
+                    if p.place?.sameSpot(as: place) == true { p.place = filled }
+                }
+            }
+        }
+    }
+
+    public func addPlace(_ place: WeatherPlace) { update { $0.addPlace(place) } }
+    public func removePlace(_ place: WeatherPlace) {
+        update { $0.removePlace(place) }
+        forecasts[place.id] = nil
+    }
+    public func movePlaces(from source: IndexSet, to destination: Int) { update { $0.movePlaces(from: source, to: destination) } }
+
+    /// The home header shows this place (nil = current location), refetched.
+    public func showOnHeader(_ place: WeatherPlace?, currentLocation: () async -> WidgetCoordinate?) async {
+        update { $0.showOnHeader(place) }
+        await refresh(force: false, currentLocation: currentLocation)
+    }
+
+    nonisolated private static func timeZone(latitude: Double, longitude: Double) async -> String? {
+        let marks = try? await CLGeocoder().reverseGeocodeLocation(CLLocation(latitude: latitude, longitude: longitude))
+        return marks?.first?.timeZone?.identifier
     }
 
     private func forecast(latitude: Double, longitude: Double, name: String?, force: Bool) async throws -> WeatherForecast {

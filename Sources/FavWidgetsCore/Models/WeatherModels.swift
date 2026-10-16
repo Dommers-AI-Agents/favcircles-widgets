@@ -1,18 +1,78 @@
 import Foundation
 
 /// Weather (Wes, 2026-10-07): the temperature on the home header and a full
-/// forecast widget, for your current location or a place you pick that stays.
-/// Preferences live on the phone (`WeatherPrefs.load/save`).
+/// forecast widget. Saved cities like Apple's Weather app (2026-10-16): My
+/// Location plus a list you search, add, reorder and delete. The home header
+/// shows current location or one place (`mode`/`place`). Preferences live on
+/// the phone (`WeatherPrefs.load/save`).
 public struct WeatherPrefs: Codable, Equatable, Sendable {
     public enum Mode: String, Codable, Sendable { case current, fixed }
+    /// What the home header shows
     public var mode: Mode
-    /// The place that stays, when `mode == .fixed`
+    /// The header's place, when `mode == .fixed`
     public var place: WeatherPlace?
     /// nil = the phone's region (°F in the US)
     public var unit: WeatherUnit?
+    /// Saved cities, in the user's order
+    public var savedPlaces: [WeatherPlace]
 
-    public init(mode: Mode = .current, place: WeatherPlace? = nil, unit: WeatherUnit? = nil) {
-        self.mode = mode; self.place = place; self.unit = unit
+    public static let maxSaved = 25
+
+    public init(mode: Mode = .current, place: WeatherPlace? = nil, unit: WeatherUnit? = nil, savedPlaces: [WeatherPlace] = []) {
+        self.mode = mode; self.place = place; self.unit = unit; self.savedPlaces = savedPlaces
+    }
+
+    enum CodingKeys: String, CodingKey { case mode, place, unit, savedPlaces }
+
+    /// Prefs saved before the list existed have no `savedPlaces`: their one
+    /// fixed place becomes the first saved city.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        mode = try c.decodeIfPresent(Mode.self, forKey: .mode) ?? .current
+        place = try c.decodeIfPresent(WeatherPlace.self, forKey: .place)
+        unit = try c.decodeIfPresent(WeatherUnit.self, forKey: .unit)
+        if let saved = try c.decodeIfPresent([WeatherPlace].self, forKey: .savedPlaces) {
+            savedPlaces = saved
+        } else {
+            savedPlaces = place.map { [$0] } ?? []
+        }
+    }
+
+    /// Whether `place` is already in the list (same ~1 km spot)
+    public func isSaved(_ place: WeatherPlace) -> Bool {
+        savedPlaces.contains { $0.sameSpot(as: place) }
+    }
+
+    /// Adds to the end; a place already there or a full list changes nothing.
+    @discardableResult
+    public mutating func addPlace(_ place: WeatherPlace) -> Bool {
+        guard !isSaved(place), savedPlaces.count < Self.maxSaved else { return false }
+        savedPlaces.append(place)
+        return true
+    }
+
+    /// Removes a saved city; if the header showed it, the header goes back to
+    /// current location.
+    public mutating func removePlace(_ place: WeatherPlace) {
+        savedPlaces.removeAll { $0.sameSpot(as: place) }
+        if mode == .fixed, let shown = self.place, shown.sameSpot(as: place) {
+            mode = .current
+            self.place = nil
+        }
+    }
+
+    public mutating func movePlaces(from source: IndexSet, to destination: Int) {
+        // IndexSet move without SwiftUI: take the items out, put them back
+        let moving = source.sorted().map { savedPlaces[$0] }
+        var rest = savedPlaces.enumerated().filter { !source.contains($0.offset) }.map(\.element)
+        let insertAt = destination - source.filter { $0 < destination }.count
+        rest.insert(contentsOf: moving, at: max(0, min(insertAt, rest.count)))
+        savedPlaces = rest
+    }
+
+    /// The header shows this place (nil = current location)
+    public mutating func showOnHeader(_ place: WeatherPlace?) {
+        if let place { mode = .fixed; self.place = place } else { mode = .current; self.place = nil }
     }
 
     /// The fixed place, if that's what's chosen (a fixed mode with no place falls back to current)
@@ -32,12 +92,47 @@ public struct WeatherPrefs: Codable, Equatable, Sendable {
     }
 }
 
-public struct WeatherPlace: Codable, Equatable, Hashable, Sendable {
+public struct WeatherPlace: Codable, Equatable, Hashable, Sendable, Identifiable {
     public let name: String
     public let latitude: Double
     public let longitude: Double
-    public init(name: String, latitude: Double, longitude: Double) {
-        self.name = name; self.latitude = latitude; self.longitude = longitude
+    /// For the row's local time ("3:20 AM" in Chandler); nil on places saved
+    /// before 2026-10-16
+    public let timeZoneId: String?
+    public init(name: String, latitude: Double, longitude: Double, timeZoneId: String? = nil) {
+        self.name = name; self.latitude = latitude; self.longitude = longitude; self.timeZoneId = timeZoneId
+    }
+    public var id: String { WeatherCachePolicy.key(latitude: latitude, longitude: longitude) }
+    public func sameSpot(as other: WeatherPlace) -> Bool { id == other.id }
+    public var timeZone: TimeZone? { timeZoneId.flatMap(TimeZone.init(identifier:)) }
+}
+
+/// The sky behind a row: night, clear, clouds, rain, snow or storm, from the
+/// condition's SF Symbol (WeatherKit names them "moon.stars", "cloud.rain", …).
+public enum WeatherSky: String, Sendable {
+    case clearDay, clearNight, cloudy, cloudyNight, rain, snow, storm, fog
+
+    public static func from(symbol: String) -> WeatherSky {
+        let s = symbol.lowercased()
+        let night = s.contains("moon")
+        if s.contains("bolt") { return .storm }
+        if s.contains("snow") || s.contains("sleet") || s.contains("hail") { return .snow }
+        if s.contains("rain") || s.contains("drizzle") || s.contains("heavyrain") { return .rain }
+        if s.contains("fog") || s.contains("haze") || s.contains("smoke") || s.contains("dust") { return .fog }
+        if s.contains("cloud") { return night ? .cloudyNight : .cloudy }
+        return night ? .clearNight : .clearDay
+    }
+}
+
+public enum WeatherClock {
+    /// "6:20 AM" where the place is
+    public static func localTime(_ date: Date = Date(), in timeZone: TimeZone, locale: Locale = .current) -> String {
+        let f = DateFormatter()
+        f.locale = locale
+        f.timeZone = timeZone
+        f.timeStyle = .short
+        f.dateStyle = .none
+        return f.string(from: date).replacingOccurrences(of: "\u{202F}", with: " ")
     }
 }
 
