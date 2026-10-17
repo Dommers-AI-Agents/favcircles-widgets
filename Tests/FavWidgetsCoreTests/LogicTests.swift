@@ -221,3 +221,28 @@ struct WeatherRadarCoverageTests {
         #expect(WeatherRadar.tileTemplate.contains("{z}/{x}/{y}"))
     }
 }
+
+/// Radar playback: 50 minutes in 5-minute frames, ending on now.
+struct WeatherRadarPlaybackTests {
+    @Test func elevenFramesOldestFirst() {
+        #expect(WeatherRadar.frames.count == 11)
+        #expect(WeatherRadar.frames.first?.minutesAgo == 50)
+        #expect(WeatherRadar.frames.last?.minutesAgo == 0)
+        #expect(WeatherRadar.frames.last?.label == "Now")
+        #expect(WeatherRadar.frames.first?.label == "50 min ago")
+    }
+
+    @Test func pastFramesUseTheMesonetsTimeLayers() {
+        #expect(WeatherRadar.Frame(minutesAgo: 5).tileTemplate.contains("nexrad-n0q-900913-m05m/{z}"))
+        #expect(WeatherRadar.Frame(minutesAgo: 50).tileTemplate.contains("nexrad-n0q-900913-m50m/{z}"))
+        #expect(WeatherRadar.Frame(minutesAgo: 0).tileTemplate == WeatherRadar.tileTemplate)
+    }
+
+    @Test func loopsAfterHoldingOnNow() {
+        let last = WeatherRadar.frames.count - 1
+        #expect(WeatherRadar.nextIndex(after: 0, holdTicks: 2, held: 0) == (1, 0))
+        #expect(WeatherRadar.nextIndex(after: last, holdTicks: 2, held: 0) == (last, 1))
+        #expect(WeatherRadar.nextIndex(after: last, holdTicks: 2, held: 1) == (last, 2))
+        #expect(WeatherRadar.nextIndex(after: last, holdTicks: 2, held: 2) == (0, 0))
+    }
+}
