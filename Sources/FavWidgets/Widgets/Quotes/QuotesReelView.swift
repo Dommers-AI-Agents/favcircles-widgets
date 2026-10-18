@@ -210,3 +210,13 @@ extension View {
         #endif
     }
 }
+
+/// The quote reel on its own, for a shared quote link: the host shows it
+/// straight over whatever is on screen, instead of switching to the Widgets
+/// tab and opening the Quotes page first, which flashed by on the way
+/// (Wes, 2026-10-18). `context` is the Quotes widget's context.
+public enum QuoteReelScreen {
+    public static func view(context: WidgetContext, startId: String?, onClose: @escaping () -> Void) -> AnyView {
+        AnyView(QuotesReelView(context: context, startId: startId, onClose: onClose))
+    }
+}
