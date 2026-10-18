@@ -137,6 +137,11 @@ public final class WidgetContext: ObservableObject {
     /// the answer, reactions and comments, and that question's history.
     public var launchCareAskId: String?
 
+    /// A mailed Fridge Mail card to open (its "printing / out for delivery /
+    /// delivered" push or bell row): the card as printed, its message and
+    /// where it is (Wes, 2026-10-18 — the tap used to open a blank postcard).
+    public var launchFridgeMailCardId: String?
+
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still
     /// being pushed, and a sheet presented mid-push flashed blank and closed;

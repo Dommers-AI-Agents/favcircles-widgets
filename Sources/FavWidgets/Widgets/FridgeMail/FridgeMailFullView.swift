@@ -57,6 +57,7 @@ struct FridgeMailFullView: View {
         .task {
             await store.loadIfNeeded(context: context)
             await store.loadDetails(context: context)
+            await openLaunchedCard()
             familyNameDraft = store.plan?.familyName ?? ""
         }
         .onChange(of: store.plan?.familyName) { name in
@@ -83,6 +84,20 @@ struct FridgeMailFullView: View {
         .sheet(item: $recipientSheet) { item in
             FridgeMailRecipientSheet(context: context, store: store, editing: item.recipient)
         }
+    }
+
+    /// A card's push or bell row was tapped: open that card, not this page.
+    /// If history hasn't loaded (or failed), it is fetched once more.
+    private func openLaunchedCard() async {
+        guard let cardId = context.launchFridgeMailCardId else { return }
+        context.launchFridgeMailCardId = nil
+        var card = store.cards.first { $0.cardId == cardId }
+        if card == nil, let all = try? await FridgeMailAPI.cards(context: context) {
+            card = all.first { $0.cardId == cardId }
+        }
+        guard let card else { return }
+        await context.waitForPageToSettle()
+        openedCard = card
     }
 
     /// Which grandparent sheet is up: a blank one, or one filled in for editing.

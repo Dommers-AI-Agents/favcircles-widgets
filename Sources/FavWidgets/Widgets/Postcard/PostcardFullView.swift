@@ -59,6 +59,7 @@ struct PostcardFullView: View {
     // History.
     @State var extraMonths: [MonthKey] = []
     @State var selectedRecord: PostcardRecord?
+    @State var sentFilter: PostcardSentFilter = .all
     /// A received card opened from its QR / web page (a share token).
     @State var receivedToken: ReceivedToken?
 
@@ -96,7 +97,7 @@ struct PostcardFullView: View {
         .task {
             await reconcileMailHistory()
             if context.launchPostcardOrderId != nil { await context.waitForPageToSettle() }
-            openLaunchedOrder()
+            await openLaunchedOrder()
         }
         .task { await loadMailConfig() }
         .task {

@@ -148,6 +148,11 @@ extension PostcardFullView {
         let preloadedEmpty = currentMonth.model.sent.isEmpty && previousMonth.model.sent.isEmpty
         return VStack(alignment: .leading, spacing: 12) {
             WidgetUI.header("Sent", theme: theme)
+            // Mailed vs digital at a glance, and just one kind when wanted
+            Picker("Show", selection: $sentFilter) {
+                ForEach(PostcardSentFilter.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
             if preloadedEmpty && extraMonths.isEmpty && currentMonth.hasLoaded && previousMonth.hasLoaded {
                 Text("Postcards you send show up here.")
                     .font(.system(size: 14))
@@ -155,7 +160,7 @@ extension PostcardFullView {
             }
             ForEach(months, id: \.rawValue) { month in
                 PostcardMonthRows(context: context, month: month,
-                                  controller: context.month(PostcardMonth.self, month)) { record in
+                                  controller: context.month(PostcardMonth.self, month), filter: sentFilter) { record in
                     selectedRecord = record
                 }
             }

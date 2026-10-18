@@ -7,10 +7,11 @@ struct PostcardMonthRows: View {
     let context: WidgetContext
     let month: MonthKey
     @ObservedObject var controller: WidgetStateController<PostcardMonth>
+    var filter: PostcardSentFilter = .all
     let onSelect: (PostcardRecord) -> Void
 
     private var records: [PostcardRecord] {
-        controller.model.sent.sorted { $0.sentAt > $1.sentAt }
+        controller.model.sent.filter(filter.includes).sorted { $0.sentAt > $1.sentAt }
     }
 
     var body: some View {
@@ -54,16 +55,13 @@ struct PostcardRecordRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6, style: .continuous).fill(accent.opacity(0.15))
-                Image(systemName: "envelope.fill").foregroundStyle(accent)
-            }
-            .frame(width: 40, height: 40)
-            VStack(alignment: .leading, spacing: 2) {
+            thumbnail
+            VStack(alignment: .leading, spacing: 3) {
                 Text(record.recipientName)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(theme.label)
                     .lineLimit(1)
+                kindTag
                 Text(subtitle)
                     .font(.system(size: 12))
                     .foregroundStyle(theme.secondaryLabel)
@@ -78,6 +76,33 @@ struct PostcardRecordRow: View {
         .padding(.vertical, 10)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
         .contentShape(Rectangle())
+    }
+
+    /// The card itself, small; an icon for how it went when there's no picture
+    private var thumbnail: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous).fill(accent.opacity(0.15))
+            Image(systemName: record.sentKind.systemImage).foregroundStyle(accent)
+            if let url = record.cardImageURL {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase { image.resizable().scaledToFill() }
+                }
+            }
+        }
+        .frame(width: 56, height: 40)
+        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    }
+
+    /// "Mailed" stands out; the digital kinds are quieter
+    private var kindTag: some View {
+        let kind = record.sentKind
+        let mailed = kind == .mailed
+        return Label(kind.label, systemImage: kind.systemImage)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(mailed ? Color.white : theme.secondaryLabel)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(mailed ? accent : theme.tertiaryBackground))
     }
 
     private var subtitle: String {
@@ -111,7 +136,7 @@ struct PostcardRecordDetail: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let url = record.imageURL {
+                    if let url = record.cardImageURL ?? order?.imageUrl.flatMap(URL.init(string:)) {
                         AsyncImage(url: url) { phase in
                             if case .success(let image) = phase {
                                 image.resizable().scaledToFit()
@@ -125,6 +150,13 @@ struct PostcardRecordDetail: View {
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
+                    if let page = record.cardPageURL {
+                        Link(destination: page) {
+                            Label("Open the card they received", systemImage: "safari")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                    }
+                    detailRow("Sent as", sentAs, theme: theme)
                     detailRow("To", record.recipientName, theme: theme)
                     if let place = record.place?.name, !place.isEmpty {
                         detailRow("From", place, theme: theme)
@@ -186,6 +218,14 @@ struct PostcardRecordDetail: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    private var sentAs: String {
+        switch record.sentKind {
+        case .mailed: return "Printed postcard, mailed"
+        case .app: return "In the app"
+        case .email: return "Email"
+        }
     }
 
     private func refreshOrder() async {

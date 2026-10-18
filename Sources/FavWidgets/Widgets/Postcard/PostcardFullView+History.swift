@@ -29,12 +29,23 @@ extension PostcardFullView {
 
     /// The push said "your postcard is printing"; show that card, with its
     /// live status, rather than a blank composer.
-    func openLaunchedOrder() {
+    func openLaunchedOrder() async {
         guard let orderId = context.launchPostcardOrderId else { return }
         context.launchPostcardOrderId = nil
         let messageId = "mail:\(orderId)"
         let months = [currentMonth, previousMonth] + extraMonths.map { context.month(PostcardMonth.self, $0) }
-        guard let record = months.lazy.compactMap({ $0.model.sent.first { $0.messageId == messageId } }).first else { return }
-        selectedRecord = record
+        if let record = months.lazy.compactMap({ $0.model.sent.first { $0.messageId == messageId } }).first {
+            selectedRecord = record
+            return
+        }
+        // Not in the months on screen (an older card): build it from the
+        // server's order, rather than leaving a blank composer (Wes, 2026-10-18)
+        guard let order = try? await PostcardMail.orders(context: context).first(where: { $0.orderId == orderId })?.asRecordOrder,
+              let found = PostcardHistoryReconciler.missingRecords(
+                orders: [order], knownMessageIds: [], templateId: settings.model.lastTemplateId,
+                calendar: context.calendar).first else { return }
+        let stored = context.month(PostcardMonth.self, found.month)
+        await stored.loadIfNeeded()
+        selectedRecord = stored.model.sent.first { $0.messageId == messageId } ?? found.record
     }
 }
