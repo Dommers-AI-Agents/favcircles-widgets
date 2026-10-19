@@ -146,7 +146,13 @@ struct WeatherFullView: View {
             attribution = await weather.attribution()
         }
         .sheet(item: $opened) { target in
-            WeatherPlaceSheet(context: context, target: target)
+            // Search results open on their own; My Location and saved
+            // cities open in the pager, swiped between like the Weather app
+            if case .preview = target {
+                WeatherPlaceSheet(context: context, target: target)
+            } else {
+                WeatherPagerSheet(context: context, start: target)
+            }
         }
     }
 
@@ -334,15 +340,117 @@ struct WeatherSearchResults: View {
     }
 }
 
-/// One place's forecast in a sheet. From search it has Add; a saved city or
-/// My Location can be put on the home header.
+/// Your places in a pager, swiped left and right like the Weather app (Wes,
+/// 2026-10-19): My Location first, then the saved cities in their order,
+/// opening on the one tapped. Dots at the bottom, an arrow for My Location.
+struct WeatherPagerSheet: View {
+    let context: WidgetContext
+    let start: WeatherTarget
+    @ObservedObject private var weather = FavWeather.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var selection: String = ""
+
+    private var pages: [WeatherTarget] {
+        [.current] + weather.prefs.savedPlaces.map { .saved($0) }
+    }
+
+    var body: some View {
+        let theme = context.theme
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                #if os(iOS)
+                TabView(selection: $selection) {
+                    ForEach(pages) { target in
+                        WeatherPlacePage(context: context, target: target)
+                            .tag(target.id)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                #else
+                WeatherPlacePage(context: context, target: pages.first { $0.id == selection } ?? start)
+                #endif
+                if pages.count > 1 { pageDots(theme) }
+            }
+            .background(theme.background.ignoresSafeArea())
+            .widgetInlineNavigationTitle("")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .onAppear { if selection.isEmpty { selection = start.id } }
+        .onChange(of: selection) { _ in context.track("weather_page_swiped") }
+    }
+
+    /// One dot per place (an arrow for My Location); tap one to jump there
+    private func pageDots(_ theme: WidgetTheme) -> some View {
+        HStack(spacing: 9) {
+            ForEach(pages) { target in
+                let on = target.id == selection
+                Group {
+                    if case .current = target {
+                        Image(systemName: "location.fill").font(.system(size: 9, weight: .bold))
+                    } else {
+                        Circle().frame(width: 7, height: 7)
+                    }
+                }
+                .foregroundStyle(on ? theme.label : theme.secondaryLabel.opacity(0.5))
+                .contentShape(Rectangle().inset(by: -6))
+                .onTapGesture { withAnimation { selection = target.id } }
+                .accessibilityLabel(WeatherPlacePage.title(for: target, forecast: nil))
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 9)
+        .background(Capsule().fill(theme.secondaryBackground.opacity(0.92)))
+        .padding(.bottom, 10)
+    }
+}
+
+/// A city from search: one page, with Add.
 struct WeatherPlaceSheet: View {
     let context: WidgetContext
     let target: WeatherTarget
     @ObservedObject private var weather = FavWeather.shared
     @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            WeatherPlacePage(context: context, target: target)
+                .background(context.theme.background.ignoresSafeArea())
+                .widgetInlineNavigationTitle("")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                    }
+                    if case .preview(let place) = target, !weather.prefs.isSaved(place) {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Add") {
+                                weather.addPlace(place)
+                                context.host.haptic(.success)
+                                context.track("weather_city_added")
+                                dismiss()
+                            }
+                            .disabled(weather.prefs.savedPlaces.count >= WeatherPrefs.maxSaved)
+                        }
+                    }
+                }
+        }
+    }
+}
+
+/// One place's forecast: the sections, its radar, and (for My Location or a
+/// saved city) "Show on the home screen".
+struct WeatherPlacePage: View {
+    let context: WidgetContext
+    let target: WeatherTarget
+    @ObservedObject private var weather = FavWeather.shared
     /// Where "My Location" is, for its radar card (a saved city has its own)
     @State private var hereCoordinate: WidgetCoordinate?
+
+    static func title(for target: WeatherTarget, forecast: WeatherForecast?) -> String {
+        target.place?.name ?? forecast?.placeName ?? "My Location"
+    }
 
     /// The spot the radar centres on, when NEXRAD covers it
     private var radarSpot: (latitude: Double, longitude: Double)? {
@@ -356,41 +464,22 @@ struct WeatherPlaceSheet: View {
         let theme = context.theme
         let unit = weather.prefs.resolvedUnit()
         let forecast: WeatherForecast? = target.place.map { weather.forecasts[$0.id] } ?? weather.here
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    if let f = forecast {
-                        WeatherForecastSections(forecast: f, unit: unit, theme: theme, title: target.place?.name ?? f.placeName ?? "My Location")
-                        #if os(iOS)
-                        if let spot = radarSpot {
-                            WeatherRadarCard(latitude: spot.latitude, longitude: spot.longitude, theme: theme)
-                        }
-                        #endif
-                    } else {
-                        ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                if let f = forecast {
+                    WeatherForecastSections(forecast: f, unit: unit, theme: theme, title: Self.title(for: target, forecast: f))
+                    #if os(iOS)
+                    if let spot = radarSpot {
+                        WeatherRadarCard(latitude: spot.latitude, longitude: spot.longitude, theme: theme)
                     }
-                    headerToggle(theme)
+                    #endif
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, minHeight: 200)
                 }
-                .padding(16)
+                headerToggle(theme)
             }
-            .background(theme.background.ignoresSafeArea())
-            .widgetInlineNavigationTitle("")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(isPreview ? "Cancel" : "Done") { dismiss() }
-                }
-                if case .preview(let place) = target, !weather.prefs.isSaved(place) {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Add") {
-                            weather.addPlace(place)
-                            context.host.haptic(.success)
-                            context.track("weather_city_added")
-                            dismiss()
-                        }
-                        .disabled(weather.prefs.savedPlaces.count >= WeatherPrefs.maxSaved)
-                    }
-                }
-            }
+            .padding(16)
+            .padding(.bottom, 44)   // clear of the page dots
         }
         .task {
             if let place = target.place {
