@@ -108,8 +108,9 @@ extension FridgeMailFullView {
                     Button("Keep my subscription") { run("resume") { try await FridgeMailAPI.resumeSubscription(context: context) } }
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent).disabled(busy != nil)
                 } else {
+                    // Red, where it always was (Wes, 2026-10-19: hard to find)
                     Button("Cancel subscription") { run("cancel") { try await FridgeMailAPI.cancelSubscription(context: context) } }
-                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.secondaryLabel).disabled(busy != nil)
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.danger).disabled(busy != nil)
                 }
             } else if canPay {
                 subscribeBlock(plan)
@@ -159,7 +160,8 @@ extension FridgeMailFullView {
                     Button { selectedPackId = pack.id } label: {
                         VStack(spacing: 2) {
                             Text(pack.label).font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.label)
-                            Text(pack.priceText).font(.system(size: 13)).foregroundStyle(context.accent)
+                            // A pack is paid once; "$12.99" read as a monthly price
+                            Text("\(pack.priceText) once").font(.system(size: 13)).foregroundStyle(context.accent)
                             Text(pack.perCardText).font(.system(size: 10)).foregroundStyle(theme.secondaryLabel)
                         }
                         .frame(maxWidth: .infinity)

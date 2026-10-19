@@ -82,10 +82,10 @@ struct FridgeMailModelTests {
         cal.locale = Locale(identifier: "en_US")
         cal.timeZone = TimeZone(identifier: "UTC")!
         var plan = Self.plan
-        #expect(FridgeMailCopy.planStatus(plan, calendar: cal) == "Subscribed · 1 grandparent · renews Oct 18\n5 prepaid cards")
+        #expect(FridgeMailCopy.planStatus(plan, calendar: cal) == "Subscribed · $7.99 a month · 1 grandparent · renews Oct 18\n5 prepaid cards")
 
         plan.subscription?.cancelAtPeriodEnd = true
-        #expect(FridgeMailCopy.planStatus(plan, calendar: cal).hasPrefix("Subscription ends Oct 18"))
+        #expect(FridgeMailCopy.planStatus(plan, calendar: cal).hasPrefix("Canceled · no more charges · cards keep coming until Oct 18"))
 
         plan.subscription = nil
         plan.entitlement.weeksOfCredits = 5

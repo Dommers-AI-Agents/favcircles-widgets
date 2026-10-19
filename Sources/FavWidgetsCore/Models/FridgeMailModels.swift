@@ -250,12 +250,15 @@ public enum FridgeMailCopy {
         var lines: [String] = []
         if let sub = plan.subscription, sub.isActive {
             let slots = sub.quantity == 1 ? "1 grandparent" : "\(sub.quantity) grandparents"
+            // The price in so many words: a $7.99 card charge nobody could
+            // place sent Wes looking (2026-10-19)
+            let price = "\(PostcardMailOrder.price(cents: plan.subscriptionPriceCents * max(1, sub.quantity))) a month"
             if sub.cancelAtPeriodEnd, let end = sub.currentPeriodEnd {
-                lines.append("Subscription ends \(shortDate(end, calendar: calendar)) · \(slots)")
+                lines.append("Canceled · no more charges · cards keep coming until \(shortDate(end, calendar: calendar))")
             } else if let end = sub.currentPeriodEnd {
-                lines.append("Subscribed · \(slots) · renews \(shortDate(end, calendar: calendar))")
+                lines.append("Subscribed · \(price) · \(slots) · renews \(shortDate(end, calendar: calendar))")
             } else {
-                lines.append("Subscribed · \(slots)")
+                lines.append("Subscribed · \(price) · \(slots)")
             }
         } else if let sub = plan.subscription, sub.isPastDue {
             lines.append("Subscription payment failed · update your card in Wallet")
