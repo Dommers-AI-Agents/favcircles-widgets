@@ -21,6 +21,20 @@ struct CareReflectionTests {
                        answeredAt: status == "answered" ? at : nil, pushDelivered: delivered)
     }
 
+    @Test func recentAnswersAreTheAnsweredOnesNewestFirst() {
+        // Sal (2026-10-19): any answer can still get a comment afterwards
+        let history = [
+            ask("old", daysAgo: 3, answer: .okay),
+            ask("missed", daysAgo: 0.5, status: "missed"),
+            ask("new", daysAgo: 0.1, answer: .great),
+            ask("mid", kind: .scale, daysAgo: 1, score: 3),
+            ask("open", daysAgo: 0, status: "sent")
+        ]
+        #expect(CareReflection.recentAnswers(history).map(\.askId) == ["new", "mid", "old"])
+        #expect(CareReflection.recentAnswers(history, limit: 2).map(\.askId) == ["new", "mid"])
+        #expect(CareReflection.recentAnswers([]).isEmpty)
+    }
+
     @Test func theWeekStripHasSevenDaysEndingTodayWithTheDaysMood() {
         let history = [
             ask("m0", daysAgo: 0.1, answer: .great),

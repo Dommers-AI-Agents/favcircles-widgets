@@ -7,6 +7,15 @@ import Foundation
 /// answers and a trend over time?"). Pure, so it is tested on the Mac.
 /// Histories arrive newest-first, as the server sends them.
 public enum CareReflection {
+    /// The parent's own latest answers, newest first, so any of them can
+    /// still get a comment after answering (Sal, 2026-10-19: "unless I do the
+    /// comment first, and then answer the question, I lose the opportunity").
+    public static func recentAnswers(_ history: [CareAsk], limit: Int = 5) -> [CareAsk] {
+        Array(history.filter(\.isAnswered)
+            .sorted { ($0.answeredAt ?? $0.askedAt) > ($1.answeredAt ?? $1.askedAt) }
+            .prefix(limit))
+    }
+
 
     /// One calendar day in the week strip.
     public struct Day: Equatable, Sendable {

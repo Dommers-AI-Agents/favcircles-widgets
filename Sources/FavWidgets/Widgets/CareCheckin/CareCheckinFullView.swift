@@ -298,10 +298,15 @@ struct CareCheckinFullView: View {
                     .font(.system(size: 15))
                     .padding(.horizontal, 12).frame(height: 44)
                     .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
+                Text("You can also comment after you answer, below.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             } else {
                 Text(plan.isPaused ? "\(plan.ownerName) paused the questions for now." : "Nothing waiting. \(plan.ownerName) checks in at \(CareCopy.timesLine(plan.times)).")
                     .font(.system(size: 14)).foregroundStyle(theme.label).fixedSize(horizontal: false, vertical: true)
             }
+            // Every answer can still get a comment afterwards (Sal: the note
+            // box went away with the question, and with it the chance to say more)
+            recentAnswers(plan: plan)
             // Their own answers looked back on — the week, the trends, the habits
             Divider().padding(.vertical, 4)
             CareMyWeekView(context: context, history: store.histories[plan.planId] ?? [])
@@ -320,6 +325,46 @@ struct CareCheckinFullView: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
         .task(id: plan.planId) { _ = await store.history(context: context, planId: plan.planId, refresh: true) }
+    }
+
+    @ViewBuilder
+    private func recentAnswers(plan: CarePlan) -> some View {
+        let theme = context.theme
+        let recent = CareReflection.recentAnswers(store.histories[plan.planId] ?? [])
+        if !recent.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Divider().padding(.vertical, 4)
+                WidgetUI.header("Your recent answers", theme: theme)
+                Text("Tap one to add a comment. \(plan.ownerName) gets a notification.")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                ForEach(recent, id: \.askId) { ask in
+                    Button { openAnswer = CareAnswerRef(id: ask.askId) } label: {
+                        HStack(alignment: .center, spacing: 10) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ask.questionText)
+                                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
+                                Text(ask.answerText ?? "Answered")
+                                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label).lineLimit(1)
+                                if let at = ask.answeredAt {
+                                    Text(CareCopy.relative(at, calendar: context.calendar))
+                                        .font(.system(size: 11)).foregroundStyle(theme.secondaryLabel)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                            Label(ask.comments.isEmpty ? "Comment" : "\(ask.comments.count)",
+                                  systemImage: ask.comments.isEmpty ? "plus.bubble" : "bubble.left.fill")
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(context.accent)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     /// The parent's view of the family on their check-in: who sees the
