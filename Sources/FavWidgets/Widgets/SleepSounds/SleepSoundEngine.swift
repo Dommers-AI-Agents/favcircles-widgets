@@ -35,12 +35,15 @@ public final class SleepSoundEngine: ObservableObject {
     public var hasBeenTouched = false
 
     private var mixer: SleepMixer
+    /// The sleep timer's fade, 1 → 0 (the recordings follow it too)
+    private var fade: Float = 1
     private var sessionStartedAt: Date?
     private var ticker: Timer?
     private var pausedByInterruption = false
     #if canImport(AVFoundation)
     private var engine: AVAudioEngine?
     private var source: AVAudioSourceNode?
+    private var recordings: SleepRecordings?
     private var observers: [NSObjectProtocol] = []
     #endif
 
@@ -51,8 +54,38 @@ public final class SleepSoundEngine: ObservableObject {
         let rate: Float = 48000
         #endif
         mixer = SleepMixer(sampleRate: rate)
-        mixer.setLevels(SleepMix.builtIns[0].levels)
+        mixer.setLevels(Self.synthesized(SleepMix.builtIns[0].levels))
         levels = SleepMix.builtIns[0].levels
+    }
+
+    /// The levels the synthesizer plays: everything but the sounds that
+    /// have a recording (those play from their files instead)
+    private static func synthesized(_ levels: [String: Double]) -> [String: Double] {
+        #if canImport(AVFoundation)
+        return levels.filter { key, _ in SleepSoundKind(rawValue: key).map { !SleepRecordings.available.contains($0) } ?? true }
+        #else
+        return levels
+        #endif
+    }
+
+    private static func isRecorded(_ kind: SleepSoundKind) -> Bool {
+        #if canImport(AVFoundation)
+        return SleepRecordings.available.contains(kind)
+        #else
+        return false
+        #endif
+    }
+
+    private func applyRecordingVolumes() {
+        #if canImport(AVFoundation)
+        recordings?.setVolumes(levels: levels, master: masterVolume, fade: fade)
+        #endif
+    }
+
+    private func setFade(_ value: Float) {
+        fade = min(1, max(0, value))
+        mixer.setFade(fade)
+        applyRecordingVolumes()
     }
 
     public var remaining: TimeInterval? {
@@ -68,7 +101,8 @@ public final class SleepSoundEngine: ObservableObject {
     public func load(levels: [String: Double], name: String) {
         self.levels = levels
         mixName = name
-        mixer.setLevels(levels)
+        mixer.setLevels(Self.synthesized(levels))
+        applyRecordingVolumes()
         updateNowPlaying()
     }
 
@@ -76,7 +110,8 @@ public final class SleepSoundEngine: ObservableObject {
         guard let kind = SleepSoundKind(rawValue: soundId) else { return }
         let clamped = min(1, max(0, level))
         if clamped < 0.001 { levels.removeValue(forKey: soundId) } else { levels[soundId] = clamped }
-        mixer.setLevel(clamped, for: kind)
+        mixer.setLevel(Self.isRecorded(kind) ? 0 : clamped, for: kind)
+        applyRecordingVolumes()
         mixName = SleepMix.describe(levels: levels)
         updateNowPlaying()
     }
@@ -88,6 +123,7 @@ public final class SleepSoundEngine: ObservableObject {
     public func setMasterVolume(_ volume: Double) {
         masterVolume = min(1, max(0, volume))
         mixer.setMaster(masterVolume)
+        applyRecordingVolumes()
     }
 
     // MARK: - Timer
@@ -100,7 +136,7 @@ public final class SleepSoundEngine: ObservableObject {
 
     private func armTimer() {
         timerEndsAt = timerMinutes > 0 ? Date().addingTimeInterval(TimeInterval(timerMinutes * 60)) : nil
-        mixer.setFade(1)
+        setFade(1)
     }
 
     // MARK: - Transport
@@ -122,6 +158,7 @@ public final class SleepSoundEngine: ObservableObject {
         if sessionStartedAt == nil { sessionStartedAt = Date() }
         mixer.setMaster(masterVolume)
         armTimer()
+        applyRecordingVolumes()
         mixer.snap()
         startTicker()
         installRemoteCommands()
@@ -151,6 +188,8 @@ public final class SleepSoundEngine: ObservableObject {
         timerEndsAt = nil
         stopTicker()
         #if canImport(AVFoundation)
+        recordings?.stop()
+        recordings = nil
         engine?.stop()
         engine = nil
         source = nil
@@ -162,7 +201,7 @@ public final class SleepSoundEngine: ObservableObject {
             if seconds >= 60 { onSessionEnded?(SleepSession(startedAt: startedAt, seconds: seconds, mixName: mixName)) }
         }
         _ = wasPlaying
-        mixer.setFade(1)
+        setFade(1)
         clearNowPlaying()
     }
 
@@ -185,7 +224,7 @@ public final class SleepSoundEngine: ObservableObject {
     private func tick() {
         now = Date()
         guard let remaining else { return }
-        mixer.setFade(SleepTimer.fadeGain(remaining: remaining))
+        setFade(SleepTimer.fadeGain(remaining: remaining))
         if remaining <= 0 { stop() }
         else if Int(remaining) % 30 == 0 { updateNowPlaying() }
     }
@@ -213,6 +252,7 @@ public final class SleepSoundEngine: ObservableObject {
         if let engine, engine.isRunning { return }
         if let engine, !engine.isRunning, source != nil {
             try engine.start()
+            recordings?.start()
             return
         }
         let engine = AVAudioEngine()
@@ -224,7 +264,7 @@ public final class SleepSoundEngine: ObservableObject {
         // with the same levels so nothing sounds transposed.
         if abs(mixer.sampleRate - Float(rate)) > 1 {
             let rebuilt = SleepMixer(sampleRate: Float(rate))
-            rebuilt.setLevels(levels)
+            rebuilt.setLevels(Self.synthesized(levels))
             rebuilt.setMaster(masterVolume)
             mixer = rebuilt
         }
@@ -242,11 +282,17 @@ public final class SleepSoundEngine: ObservableObject {
         }
         engine.attach(source)
         engine.connect(source, to: engine.mainMixerNode, format: format)
+        // The recorded sounds, each looping its file
+        let recordings = SleepRecordings()
+        recordings.attach(to: engine)
         engine.mainMixerNode.outputVolume = 1
         engine.prepare()
         try engine.start()
+        recordings.start()
         self.engine = engine
         self.source = source
+        self.recordings = recordings
+        applyRecordingVolumes()
     }
 
     private func installSessionObservers() {
@@ -268,6 +314,7 @@ public final class SleepSoundEngine: ObservableObject {
     private func handleConfigurationChange() {
         guard isPlaying, let engine, !engine.isRunning else { return }
         try? engine.start()
+        recordings?.start()
     }
 
     #if os(iOS)

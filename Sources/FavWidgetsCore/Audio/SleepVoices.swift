@@ -1,9 +1,10 @@
 import Foundation
 
-// Every Sleep Sounds voice is synthesized here, sample by sample, from
-// noise and a few filters. No audio files: the package can't carry
-// resources (see Package.swift), a night of rain would be tens of MB, and
-// a generated sound never loops, so there is no seam to notice at 3 am.
+// The synthesized Sleep Sounds voices, sample by sample, from noise and a
+// few filters. The noise colours and the fan play from here. The nature
+// sounds and the heartbeat play real recordings since 2026-10-19
+// (FavWidgets/SleepRecordings: synthesized rain sounded like a machine);
+// their voices below are the fallback when a recording is missing.
 //
 // Pure Foundation so `swift test` can measure each voice on a Mac. The
 // AVAudioEngine wrapper lives in FavWidgets.
