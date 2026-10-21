@@ -50,11 +50,34 @@ struct MotivationTests {
         #expect(MotivationLines.line(id: "00000000") == nil)
     }
 
+    @Test func explicitIsItsOwnLevelWithAWarning() {
+        // Wes 2026-10-21: an explicit cursing option, confirmed before it is switched on
+        #expect(MotivationIntensity.allCases == [.clean, .savage, .explicit])
+        #expect(MotivationIntensity.explicit.needsWarning)
+        #expect(!MotivationIntensity.savage.needsWarning && !MotivationIntensity.clean.needsWarning)
+        #expect(!MotivationIntensity.explicitWarningMessage.isEmpty)
+        let explicit = MotivationLines.pool(intensity: .explicit, focus: MotivationFocus.allCases)
+        #expect(explicit.count >= 200)
+        #expect(Set(explicit).count == explicit.count)
+        // No line lives in two levels (ids are per line)
+        let others = Set(MotivationLines.pool(intensity: .clean, focus: MotivationFocus.allCases)
+                         + MotivationLines.pool(intensity: .savage, focus: MotivationFocus.allCases))
+        #expect(explicit.allSatisfy { !others.contains($0) })
+        // The bank is never reached from the clean or savage settings
+        let log = MotivationLog(intensity: .explicit)
+        #expect(log.intensity == .explicit)
+    }
+
+    @Test func meanerSavageLinesExist() {
+        let all = MotivationLines.pool(intensity: .savage, focus: MotivationFocus.allCases)
+        #expect(all.contains("It's cold out? Stay in bed with the rest of the wussies. Wussy!"))
+    }
+
     @Test func shareAndChatTextCarryTheLine() {
         let line = MotivationLines.bank(.savage, .run)[0]
         #expect(MotivationShareText.shareText(line: line).contains(line))
-        #expect(!MotivationShareText.shareText(line: line).contains("http"))
-        #expect(MotivationShareText.chatText(line: line) == "📣 Coach Mane says: \(line)")
+        #expect(MotivationShareText.shareText(line: line).contains(MotivationShareText.gymVideoURL))
+        #expect(MotivationShareText.chatText(line: line) == "📣 Coach Mane says: \(line)\n▶ Go to the gym: https://www.tiktok.com/t/ZTfBJR7gQ/")
         #expect(MotivationLines.all.allSatisfy { $0.count <= MotivationShareText.lineLimit })
     }
 

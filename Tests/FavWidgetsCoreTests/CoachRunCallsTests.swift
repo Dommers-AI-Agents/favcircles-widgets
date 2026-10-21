@@ -51,4 +51,13 @@ struct CoachRunCallsTests {
         #expect(!s.coachOn)
         #expect(s.coachLevel == .savage)
     }
+
+    @Test func explicitCoachHasItsOwnCalls() {
+        let slow = CoachRunCalls.call(splits: [480, 510], index: 1, unit: .miles, intensity: .explicit, pick: { _ in 0 })
+        #expect(slow.contains("Second mile done."))
+        #expect(CoachRunCalls.slowerExplicit.contains { slow.hasSuffix($0) })
+        let race = CoachRunCalls.call(splits: [300, 300, 300, 300, 301], index: 4, unit: .kilometers, intensity: .explicit, pick: { _ in 0 })
+        #expect(race.contains("5K"))
+        #expect(CoachRunCalls.slowerExplicit.count >= 6 && CoachRunCalls.fasterExplicit.count >= 5 && CoachRunCalls.steadyExplicit.count >= 5)
+    }
 }

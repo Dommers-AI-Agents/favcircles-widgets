@@ -285,6 +285,7 @@ struct RunHomeView: View {
     let context: WidgetContext
     @ObservedObject var settings: WidgetStateController<RunSettings>
     let onStart: () -> Void
+    @State private var confirmingExplicit = false
     @State private var loadedMonths: [MonthKey] = []
     @State private var runs: [RunRecord] = []
     @State private var opened: RunRecord?
@@ -313,23 +314,37 @@ struct RunHomeView: View {
             .tint(context.accent)
             if settings.model.coachOn {
                 Picker("Coach", selection: Binding(get: { settings.model.coachLevel }, set: { level in
-                    settings.update { $0.coachIntensity = level }
-                    CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit), intensity: level, context: context)
+                    if level.needsWarning && settings.model.coachLevel != level { confirmingExplicit = true; return }
+                    setCoachLevel(level)
                 })) {
                     ForEach(MotivationIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .alert(MotivationIntensity.explicitWarningTitle, isPresented: $confirmingExplicit) {
+                    Button(MotivationIntensity.explicitWarningConfirm, role: .destructive) { setCoachLevel(.explicit) }
+                    Button("Cancel", role: .cancel) {}
+                } message: { Text(MotivationIntensity.explicitWarningMessage) }
+                if settings.model.coachLevel == .explicit {
+                    Text(MotivationIntensity.explicit.blurb).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                }
             }
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(theme.secondaryBackground))
     }
 
+    private func setCoachLevel(_ level: MotivationIntensity) {
+        settings.update { $0.coachIntensity = level }
+        CoachVoice.shared.say(Self.coachHello(level, unit: settings.model.unit), intensity: level, context: context)
+    }
+
     static func coachHello(_ level: MotivationIntensity, unit: RunUnit) -> String {
         let word = unit == .miles ? "mile" : "K"
-        return level == .savage
-            ? "Run, weakling! Why are you still standing there? Every \(word), I'll be in your ear. Move!"
-            : "Coach Mane here. Every \(word), I'll be in your ear. Now get moving!"
+        switch level {
+        case .explicit: return "Run, you wussy! Why the hell are you still standing there? Every \(word), I'll be screaming in your fucking ear. Move!"
+        case .savage: return "Run, weakling! Why are you still standing there? Every \(word), I'll be in your ear. Move!"
+        case .clean: return "Coach Mane here. Every \(word), I'll be in your ear. Now get moving!"
+        }
     }
 
     var body: some View {

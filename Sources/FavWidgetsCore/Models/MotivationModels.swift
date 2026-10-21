@@ -1,14 +1,36 @@
 import Foundation
 
-/// How hard the coach goes. Clean is the default; Savage is ruder (never swears) and has to
-/// be picked on purpose.
+/// How hard the coach goes. Tough love is the default and stays clean; Savage is ruder (it
+/// swears a little); Explicit curses hard and insults you (2026-10-21). The last two have to be
+/// picked on purpose, and Explicit asks you to confirm first.
 public enum MotivationIntensity: String, Codable, CaseIterable, Sendable {
-    case clean, savage
+    case clean, savage, explicit
 
     public var title: String {
         switch self {
         case .clean: return "Tough love"
         case .savage: return "Savage"
+        case .explicit: return "Explicit"
+        }
+    }
+
+    /// Savage and Explicit are the rude ones (clean gets the polite hello, race call and so on).
+    public var isRude: Bool { self != .clean }
+
+    /// Picking this asks "are you sure?" first.
+    public var needsWarning: Bool { self == .explicit }
+
+    public static let explicitWarningTitle = "Explicit language"
+    public static let explicitWarningMessage =
+        "Explicit Coach Mane curses constantly and insults you, out loud and in notifications. Everyone nearby will hear it. Not for the easily offended."
+    public static let explicitWarningConfirm = "Turn on Explicit"
+
+    /// The line under the picker for each choice.
+    public var blurb: String {
+        switch self {
+        case .clean: return "Blunt and encouraging. Switch to Savage if you want it rougher."
+        case .savage: return "Savage doesn't hold back. Some strong language, and no sympathy."
+        case .explicit: return "⚠️ Explicit: heavy cursing and merciless insults. Nothing is bleeped."
         }
     }
 }

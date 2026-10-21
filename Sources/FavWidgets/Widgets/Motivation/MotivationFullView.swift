@@ -22,6 +22,8 @@ struct MotivationFullView: View {
         var id: String { line }
     }
 
+    @State private var confirmingExplicit = false
+
     private var shownLine: String { pinnedLine ?? state.model.currentLine(extra: extra) }
 
     var body: some View {
@@ -30,6 +32,7 @@ struct MotivationFullView: View {
             VStack(alignment: .leading, spacing: 24) {
                 WidgetSyncBadge(state: state.syncState, theme: theme)
                 coachSection(theme: theme)
+                GymVideoCard(context: context, theme: theme)
                 styleSection(theme: theme)
                 remindersSection(theme: theme)
             }
@@ -164,6 +167,7 @@ struct MotivationFullView: View {
             Picker("Intensity", selection: Binding(
                 get: { state.model.intensity },
                 set: { value in
+                    if value.needsWarning && state.model.intensity != value { confirmingExplicit = true; return }
                     state.update { $0.intensity = value }
                     context.track("motivation_intensity", ["value": value.rawValue])
                     extra = 0
@@ -174,9 +178,17 @@ struct MotivationFullView: View {
                 ForEach(MotivationIntensity.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
-            Text(model.intensity == .savage
-                 ? "Savage doesn't hold back. Strong language, and no sympathy."
-                 : "Blunt and encouraging. Switch to Savage if you want it rougher.")
+            .alert(MotivationIntensity.explicitWarningTitle, isPresented: $confirmingExplicit) {
+                Button(MotivationIntensity.explicitWarningConfirm, role: .destructive) {
+                    state.update { $0.intensity = .explicit }
+                    context.track("motivation_intensity", ["value": "explicit"])
+                    extra = 0
+                    pinnedLine = nil
+                    resync()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { Text(MotivationIntensity.explicitWarningMessage) }
+            Text(model.intensity.blurb)
                 .font(.system(size: 12))
                 .foregroundStyle(theme.secondaryLabel)
                 .fixedSize(horizontal: false, vertical: true)

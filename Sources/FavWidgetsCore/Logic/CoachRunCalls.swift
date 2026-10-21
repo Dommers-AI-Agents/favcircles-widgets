@@ -36,11 +36,16 @@ public enum CoachRunCalls {
         // 5K / 10K by km; 3 and 6.2 miles don't land on a split, so miles skip it
         if unit == .kilometers && (index == 4 || index == 9) {
             let race = index == 4 ? "5K" : "10K"
-            return [intensity == .savage
-                ? "That's a \(race). Don't you dare stop now, weakling. Keep going!"
-                : "That's a \(race). Strong work. Now go further!"]
+            switch intensity {
+            case .explicit: return ["That's a \(race), you glorious bastard. Don't you dare stop now. Keep going!"]
+            case .savage: return ["That's a \(race). Don't you dare stop now, weakling. Keep going!"]
+            case .clean: return ["That's a \(race). Strong work. Now go further!"]
+            }
         }
         switch (intensity, slower, faster) {
+        case (.explicit, true, _): return slowerExplicit
+        case (.explicit, _, true): return fasterExplicit
+        case (.explicit, _, _): return steadyExplicit
         case (.savage, true, _): return slowerSavage
         case (.savage, _, true): return fasterSavage
         case (.savage, _, _): return steadySavage
@@ -67,6 +72,32 @@ public enum CoachRunCalls {
         return "Number \(n)"
     }
 
+    static let slowerExplicit = [
+        "You slowed down, you pathetic wussy. Did your legs file a fucking complaint? Denied. Move!",
+        "Slower? Jesus Christ. A tired old man with a walker just passed you in my head. Pick it up!",
+        "That mile was shit. I've seen better pace from a parked car. Faster!",
+        "You're fading like a little bitch. Nobody's carrying you. Dig in!",
+        "Are you running or are you wandering around lost? Speed the fuck up!",
+        "Slower again? Quit the whining and put your damn legs to work!",
+        "That was soft as hell. Run like you mean it, wussy!",
+        "You got slower. The finish line doesn't give a shit and neither do I. Go!",
+    ]
+    static let fasterExplicit = [
+        "Faster. About fucking time. Don't you dare get comfortable. Again!",
+        "Now we're talking. Prove it wasn't luck, asshole. Go!",
+        "Good. Now do it again, harder. No rest for the wicked, wussy!",
+        "That's one fast mile. I'm still not impressed. Impress me, goddammit!",
+        "There's the beast. Don't you dare lock him back up. Go!",
+        "Finally, some effort. Keep it up and I might not hate you. Move!",
+    ]
+    static let steadyExplicit = [
+        "Same pace? Comfortable is for wussies. Push harder, dammit!",
+        "You're cruising like a lazy son of a bitch. Cruising is for boats. Run!",
+        "Not bad. Not good either. Give me more, you slacker!",
+        "Your excuses are slower than you are, and that's saying shit. Keep moving!",
+        "Steady? I don't want steady. I want fucking violence. Pick it up!",
+        "The road isn't tired, dumbass. Run it down!",
+    ]
     static let slowerSavage = [
         "You slowed down, weakling. Did your legs ask for permission to quit? Denied. Move!",
         "Slower? Pathetic. My grandma runs faster carrying groceries. Pick it up!",

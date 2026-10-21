@@ -1,11 +1,22 @@
 import Foundation
 
-/// The coach's lines. Tough love is clean. Savage swears (Wes 2026-10-13:
+/// The coach's lines. Tough love is clean. Explicit (2026-10-21) curses hard; its banks are in
+/// MotivationLinesExplicit.swift. Savage swears (Wes 2026-10-13:
 /// the app is rated 17+, so no word bans) and is opt-in, because the user
 /// picked it. No slurs in either bank.
 public enum MotivationLines {
     public static func bank(_ intensity: MotivationIntensity, _ focus: MotivationFocus) -> [String] {
+        switch intensity {
+        case .clean: return baseBank(.clean, focus)
+        case .savage: return baseBank(.savage, focus) + savageMeaner(focus)
+        case .explicit: return explicitBank(focus)
+        }
+    }
+
+    private static func baseBank(_ intensity: MotivationIntensity, _ focus: MotivationFocus) -> [String] {
         switch (intensity, focus) {
+        case (.explicit, _):
+            return explicitBank(focus)
         case (.clean, .gym):
             return [
                 "The weights don't lift themselves. Get to the gym.",
