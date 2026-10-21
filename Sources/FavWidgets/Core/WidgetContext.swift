@@ -142,6 +142,15 @@ public final class WidgetContext: ObservableObject {
     /// where it is (Wes, 2026-10-18 — the tap used to open a blank postcard).
     public var launchFridgeMailCardId: String?
 
+    /// A club invite link's token (`/app/club/<token>`, a `club_invite`
+    /// push): the Clubs page opens on the join screen.
+    public var launchClubToken: String?
+    /// A club to open (a bulletin, new-event, reply or joined push).
+    public var launchClubId: String?
+    /// With `launchClubId`: a post to open on top of the club (a bulletin
+    /// or a reply push), so the tap lands on what was said.
+    public var launchClubPostId: String?
+
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still
     /// being pushed, and a sheet presented mid-push flashed blank and closed;
