@@ -151,6 +151,12 @@ public final class WidgetContext: ObservableObject {
     /// or a reply push), so the tap lands on what was said.
     public var launchClubPostId: String?
 
+    /// A Dog Park post to open (`/app/widget/dogs?post=<id>`, a `dog_pet`
+    /// or `dog_comment` push): Can I Pet Dat Dog opens on that post.
+    public var launchDogPostId: String?
+    /// A Daily Dog to open full screen (`?daily=<id>`, the `daily_dog` push).
+    public var launchDailyDogId: String?
+
     /// Await before presenting a launch target (a sheet or cover opened from
     /// launchWorkoutPostId and friends). On the first open the page is still
     /// being pushed, and a sheet presented mid-push flashed blank and closed;

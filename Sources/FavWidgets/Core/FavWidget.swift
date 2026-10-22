@@ -45,6 +45,7 @@ public enum FavWidgetRegistry {
         NextBarWidget(),
         EventsWidget(),
         ClubsWidget(),
+        DogsWidget(),
         DrinkWidget(),
         WhatToEatWidget(),
         StocksWidget(),
