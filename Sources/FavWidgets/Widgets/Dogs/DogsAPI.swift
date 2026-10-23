@@ -20,7 +20,6 @@ struct DogsClient {
     private struct CommentsResponse: Decodable { let comments: [DogComment] }
     private struct ItemResponse: Decodable { let item: DailyDog }
     private struct PrefsResponse: Decodable { let prefs: DogDailyPrefs }
-    private struct DraftResponse: Decodable { let draft: DogRecordDraft }
 
     private static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -107,15 +106,6 @@ struct DogsClient {
     }
 
     // MARK: My dogs' extras
-
-    /// Photos (JPEG) or one PDF of vet paperwork → a draft to check. The
-    /// server reads it and keeps nothing.
-    func scanRecords(dogName: String?, images: [Data] = [], pdf: Data? = nil) async throws -> DogRecordDraft {
-        var body: [String: Any] = [:]
-        if let dogName { body["dogName"] = dogName }
-        if let pdf { body["pdf"] = pdf.base64EncodedString() } else { body["images"] = images.map { $0.base64EncodedString() } }
-        let r: DraftResponse = try await context.api(.post, "widgets/dogs/records/scan", body: body); return r.draft
-    }
 
     /// Adds a place to the person's "Dog spots" circle.
     func savePlace(_ place: WidgetPlaceCandidate) async throws -> PlaceSaved {

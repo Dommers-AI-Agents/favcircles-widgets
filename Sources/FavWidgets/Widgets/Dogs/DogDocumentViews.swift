@@ -4,6 +4,11 @@ import FavWidgetsCore
 import PDFKit
 #endif
 
+enum DogDocumentLimits {
+    static let maxPhotos = 4
+    static let maxPDFBytes = 10 * 1024 * 1024
+}
+
 /// A document's first page, small.
 struct DogDocumentThumb: View {
     let document: DogDocument

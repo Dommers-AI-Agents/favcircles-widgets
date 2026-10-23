@@ -10,9 +10,9 @@ import FavWidgetsCore
 /// Three tabs: the Dog Park (everyone's dog photos and 15-second clips, Pet
 /// instead of like, comments), Daily Dog (a funny line or the community's
 /// most-petted pup, pushed at the times you pick) and My Dogs (profiles plus
-/// private health records, insurance, the vet, favorite dog spots and
-/// "Import from your vet"). Health and insurance never leave the private
-/// document; certificate and card photos never leave the phone.
+/// private health records, insurance, the vet, favorite dog spots and the
+/// vet's paperwork as Documents). Health and insurance never leave the
+/// private document; documents and card photos never leave the phone.
 public struct DogsWidget: FavWidget {
     public init() {}
 

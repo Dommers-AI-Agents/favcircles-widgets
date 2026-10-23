@@ -4,8 +4,9 @@ import UniformTypeIdentifiers
 import FavWidgetsCore
 
 /// One dog's page: the profile, then the private records (vaccines, vet
-/// visits, medications, weight, the vet, insurance, documents) and
-/// "Import from your vet".
+/// visits, medications, weight, the vet, insurance) and the vet's paperwork
+/// as Documents. Paperwork is kept as the photos or PDF itself, never read by
+/// a paid model (Wes, 2026-10-23: "Having the image alone is sufficient").
 struct DogPageView: View {
     let context: WidgetContext
     @ObservedObject var store: DogsStore
@@ -14,7 +15,6 @@ struct DogPageView: View {
     let onClose: () -> Void
     @State private var editingProfile = false
     @State private var editing: DogRecordEdit?
-    @State private var importing = false
     @State private var removing = false
     @State private var viewingPhoto: LocalPhoto?
     @State private var addingDocument = false
@@ -35,7 +35,7 @@ struct DogPageView: View {
                 if let dog {
                     VStack(alignment: .leading, spacing: 16) {
                         header(dog, theme: theme)
-                        importButton(dog, theme: theme)
+                        paperworkButton(dog)
                         vaccines(theme)
                         visits(theme)
                         medications(theme)
@@ -69,11 +69,6 @@ struct DogPageView: View {
                 state.update { $0.records[dogId] = updated }
             }
         }
-        .sheet(isPresented: $importing) {
-            DogRecordImportSheet(context: context, dogName: dog?.name, existing: records) { merged in
-                state.update { $0.records[dogId] = merged }
-            }
-        }
         .sheet(item: $viewingPhoto) { photo in
             DogLocalPhotoViewer(context: context, name: photo.id) {
                 state.update { s in
@@ -101,7 +96,7 @@ struct DogPageView: View {
         } message: {
             Text("Vet invoices, visit summaries, vaccine certificates. Kept on this phone for \(dog?.name ?? "your dog").")
         }
-        .photosPicker(isPresented: $pickingDocPhotos, selection: $docItems, maxSelectionCount: DogRecordImportSheet.maxPhotos, matching: .images)
+        .photosPicker(isPresented: $pickingDocPhotos, selection: $docItems, maxSelectionCount: DogDocumentLimits.maxPhotos, matching: .images)
         .fileImporter(isPresented: $pickingDocPDF, allowedContentTypes: [.pdf]) { result in
             guard case .success(let url) = result else { return }
             addPDFDocument(url)
@@ -146,13 +141,13 @@ struct DogPageView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func importButton(_ dog: DogProfile, theme: WidgetTheme) -> some View {
-        Button { importing = true } label: {
+    private func paperworkButton(_ dog: DogProfile) -> some View {
+        Button { addingDocument = true } label: {
             HStack(spacing: 12) {
                 Text("🩺").font(.system(size: 28))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Import from your vet").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                    Text("Photos of the paperwork or the PDF they emailed. We read it, you check it.")
+                    Text("Add vet paperwork").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    Text("Snap the pages or pick the PDF they emailed. It's kept with \(dog.name)'s records.")
                         .font(.system(size: 12)).foregroundStyle(.white.opacity(0.92)).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
@@ -166,7 +161,7 @@ struct DogPageView: View {
 
     private func vaccines(_ theme: WidgetTheme) -> some View {
         section("Vaccines", theme: theme, add: { editing = .vaccine(nil) }) {
-            if records.vaccines.isEmpty { emptyLine("Rabies, DHPP, Bordetella… add them or import from your vet.") }
+            if records.vaccines.isEmpty { emptyLine("Rabies, DHPP, Bordetella… add them for due-date reminders.") }
             ForEach(records.vaccines) { v in
                 let status = DogVaccineStatus.of(v, calendar: context.calendar)
                 row(title: v.name,
@@ -275,7 +270,7 @@ struct DogPageView: View {
     private func addPDFDocument(_ url: URL) {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url), data.count <= DogRecordImportSheet.maxPDFBytes,
+        guard let data = try? Data(contentsOf: url), data.count <= DogDocumentLimits.maxPDFBytes,
               let doc = DogLocalPhotos.saveDocument(title: DogDocument.title(fromFileName: url.lastPathComponent), pdf: data) else {
             context.host.presentAlert(WidgetAlert(title: "Couldn't add that PDF", message: "Up to 10 MB. Try saving it to Files first."))
             return

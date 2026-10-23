@@ -53,25 +53,6 @@ struct DogModelsTests {
         #expect(!empty.member && empty.dogs.isEmpty && empty.today == nil && !empty.prefs.enabled)
     }
 
-    @Test func decodesAScanDraftAndDropsEmptyRows() throws {
-        let json = """
-        {"petName":"Biscuit","vaccines":[{"name":"Rabies (3 yr)","givenOn":"2025-04-02","dueOn":"2028-04-02"},{"name":"","givenOn":"2025-01-01"},
-           {"name":"Bordetella","givenOn":"2025/04/02","dueOn":"2026-04-02","unsure":true}],
-         "vetVisits":[{"date":"2025-04-02","clinic":"Dilworth Animal Hospital","reason":"Annual exam"}],
-         "medications":[{"name":"Heartgard Plus","dose":"26-50 lb","schedule":"Monthly"}],
-         "weights":[{"date":"2025-04-02","lbs":28.4},{"date":"2025-05-01","lbs":0}],
-         "vet":{"clinic":"Dilworth Animal Hospital","phone":"704-555-0100"}}
-        """
-        let draft = try WidgetJSON.decode(DogRecordDraft.self, from: Data(json.utf8))
-        #expect(draft.vaccines.count == 2)
-        #expect(draft.vaccines[1].givenOn == nil && draft.vaccines[1].unsure)  // odd date dropped, flag kept
-        #expect(draft.weights.count == 1 && draft.medications.first?.schedule == "Monthly")
-        #expect(draft.vet?.phone == "704-555-0100" && draft.vet?.address == "")
-        #expect(!draft.isEmpty)
-    }
-
-    // MARK: Words
-
     @Test func agesAndNames() {
         let now = at("2026-10-22")
         #expect(DogCopy.age(birthday: "2023-10-01", now: now, calendar: calendar) == "3 yrs")
@@ -153,30 +134,6 @@ struct DogModelsTests {
         // Today's birthday still counts when it's earlier in the day
         let today = DogReminderPlan.nextAnniversary(of: "2020-10-22", after: at("2026-10-22", 8), calendar: calendar)
         #expect(today?.years == 6)
-    }
-
-    // MARK: Import from your vet
-
-    @Test func mergeAddsOnlyWhatsNewAndNeverOverwritesTypedFields() {
-        var existing = DogRecords(vaccines: [DogVaccine(id: "a", name: "Rabies", givenOn: "2025-04-02", dueOn: nil)],
-                                  weights: [DogWeight(date: "2025-04-02", lbs: 28)],
-                                  vet: DogVet(clinic: "My Vet", phone: "", address: ""))
-        existing.medications = [DogMedication(name: "Heartgard Plus", startedOn: nil)]
-        let draft = DogRecordDraft(
-            vaccines: [.init(name: "rabies", givenOn: "2025-04-02", dueOn: "2028-04-02"),   // fills the due date
-                       .init(name: "Rabies", givenOn: "2025-04-02", dueOn: "2028-04-02"),   // now a repeat
-                       .init(name: "DHPP", givenOn: "2025-04-02", dueOn: "2026-04-02")],
-            vetVisits: [.init(date: "2025-04-02", reason: "Annual exam"), .init(date: "2025-04-02", reason: "annual  exam")],
-            medications: [.init(name: "HEARTGARD plus"), .init(name: "NexGard", schedule: "Monthly")],
-            weights: [.init(date: "2025-04-02", lbs: 28.4), .init(date: "2025-10-01", lbs: 29), .init(date: nil, lbs: 30)],
-            vet: DogVet(clinic: "Dilworth", phone: "704-555-0100", address: "1 Main St")
-        )
-        let result = DogRecordMerge.merge(draft, into: existing)
-        let r = result.records
-        #expect(r.vaccines.count == 2 && r.vaccines.first { $0.id == "a" }?.dueOn == "2028-04-02")
-        #expect(r.vetVisits.count == 1 && r.medications.count == 2 && r.weights.map(\.date) == ["2025-04-02", "2025-10-01"])
-        #expect(r.vet.clinic == "My Vet" && r.vet.phone == "704-555-0100" && r.vet.address == "1 Main St")
-        #expect(result.added == 1 + 1 + 1 + 1 + 1 && result.skipped == 1 + 1 + 1 + 2)
     }
 
     @Test func twoPhonesKeepEveryRow() {

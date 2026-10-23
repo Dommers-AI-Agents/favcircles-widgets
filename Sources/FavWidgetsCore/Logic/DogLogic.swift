@@ -211,61 +211,6 @@ public enum DogReminderPlan {
     }
 }
 
-/// Folding a vet-record scan into a dog's records: only the rows the person
-/// kept, nothing twice (a vaccine is the same shot by name and date given).
-public enum DogRecordMerge {
-    public struct Result: Equatable, Sendable {
-        public var records: DogRecords
-        public var added: Int
-        public var skipped: Int
-    }
-
-    public static func merge(_ draft: DogRecordDraft, into existing: DogRecords) -> Result {
-        var records = existing
-        var added = 0, skipped = 0
-
-        for v in draft.vaccines {
-            if let i = records.vaccines.firstIndex(where: { key($0.name) == key(v.name) && $0.givenOn == v.givenOn }) {
-                // The same shot: fill a missing due date, otherwise it's a repeat
-                if records.vaccines[i].dueOn == nil, let due = v.dueOn { records.vaccines[i].dueOn = due; added += 1 } else { skipped += 1 }
-                continue
-            }
-            records.vaccines.append(DogVaccine(name: v.name.trimmingCharacters(in: .whitespaces), givenOn: v.givenOn, dueOn: v.dueOn, notes: v.notes ?? ""))
-            added += 1
-        }
-        for v in draft.vetVisits {
-            if records.vetVisits.contains(where: { $0.date == v.date && key($0.reason) == key(v.reason ?? "") }) { skipped += 1; continue }
-            records.vetVisits.append(DogVetVisit(date: v.date, clinic: v.clinic ?? draft.vet?.clinic ?? "", reason: v.reason ?? "", notes: v.notes ?? ""))
-            added += 1
-        }
-        for m in draft.medications {
-            if records.medications.contains(where: { key($0.name) == key(m.name) && $0.startedOn == m.startedOn }) { skipped += 1; continue }
-            records.medications.append(DogMedication(name: m.name, dose: m.dose ?? "", schedule: m.schedule ?? "", startedOn: m.startedOn, endsOn: m.endsOn))
-            added += 1
-        }
-        for w in draft.weights {
-            guard let date = w.date else { skipped += 1; continue }
-            if records.weights.contains(where: { $0.date == date }) { skipped += 1; continue }
-            records.weights.append(DogWeight(date: date, lbs: w.lbs))
-            added += 1
-        }
-        if let vet = draft.vet, !vet.isEmpty {
-            // Fill what's blank; never overwrite what the person typed
-            if records.vet.clinic.isEmpty { records.vet.clinic = vet.clinic }
-            if records.vet.phone.isEmpty { records.vet.phone = vet.phone }
-            if records.vet.address.isEmpty { records.vet.address = vet.address }
-        }
-        records.vaccines.sort { ($0.givenOn ?? "") > ($1.givenOn ?? "") }
-        records.vetVisits.sort { ($0.date ?? "") > ($1.date ?? "") }
-        records.weights.sort { $0.date < $1.date }
-        return Result(records: records, added: added, skipped: skipped)
-    }
-
-    private static func key(_ s: String) -> String {
-        s.lowercased().filter { $0.isLetter || $0.isNumber }
-    }
-}
-
 /// Links into the widget (the landing page opens the app on that card).
 public enum DogShareLink {
     public static let base = "https://api.favcircles.com/app/widget/dogs"
