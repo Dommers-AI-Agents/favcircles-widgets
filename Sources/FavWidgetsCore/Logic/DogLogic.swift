@@ -242,3 +242,28 @@ public enum DogDocumentCopy {
         return "\(what) · Added \(formatter.string(from: doc.addedAt))"
     }
 }
+
+/// The dog-spot picker's results as you type: your own saves whose name
+/// matches come first (so a place you already saved isn't saved twice), then
+/// Apple Maps results, minus any that are one of those saves.
+public enum DogSpotSearch {
+    /// Same place: same name (ignoring case) within this many meters.
+    static let sameSpotMeters = 150.0
+
+    public static func matchingSaves(_ saves: [WidgetPlaceCandidate], query: String) -> [WidgetPlaceCandidate] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return [] }
+        return saves.filter { $0.name.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+    }
+
+    public static func merge(saves: [WidgetPlaceCandidate], apple: [WidgetPlaceCandidate], query: String) -> [WidgetPlaceCandidate] {
+        let mine = matchingSaves(saves, query: query)
+        let others = apple.filter { result in
+            !mine.contains { saved in
+                saved.name.caseInsensitiveCompare(result.name) == .orderedSame
+                    && saved.coordinate.distance(to: result.coordinate) <= sameSpotMeters
+            }
+        }
+        return mine + others
+    }
+}

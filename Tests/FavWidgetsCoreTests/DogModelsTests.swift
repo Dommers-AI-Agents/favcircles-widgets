@@ -204,3 +204,27 @@ struct DogModelsTests {
         #expect(DogShareLink.post("") == nil)
     }
 }
+
+@Suite("Dog spot search")
+struct DogSpotSearchTests {
+    private func place(_ id: String, _ name: String, _ lat: Double, _ lng: Double, source: WidgetPlaceSource = .mine) -> WidgetPlaceCandidate {
+        WidgetPlaceCandidate(id: id, name: name, coordinate: WidgetCoordinate(latitude: lat, longitude: lng), category: "other", source: source)
+    }
+
+    @Test func savesThatMatchComeFirstAndAppleDuplicatesDrop() {
+        let saves = [place("g1", "Skiptown", 35.20890, -80.86457), place("g2", "Starbucks", 35.2, -80.8)]
+        let apple = [place("apple:1", "Skiptown", 35.20895, -80.86450), place("apple:2", "Skiptown Raleigh", 35.8, -78.6)]
+        let out = DogSpotSearch.merge(saves: saves, apple: apple, query: "skip")
+        #expect(out.map(\.id) == ["g1", "apple:2"])
+    }
+
+    @Test func sameNameFarAwayIsADifferentPlace() {
+        let saves = [place("g1", "Skiptown", 35.20890, -80.86457)]
+        let apple = [place("apple:1", "Skiptown", 36.0, -79.0)]
+        #expect(DogSpotSearch.merge(saves: saves, apple: apple, query: "Skiptown").map(\.id) == ["g1", "apple:1"])
+    }
+
+    @Test func emptyQueryShowsNoSaves() {
+        #expect(DogSpotSearch.matchingSaves([place("g1", "Skiptown", 0, 0)], query: "  ").isEmpty)
+    }
+}

@@ -57,7 +57,13 @@ struct MyDogsView: View {
             DogDocumentsSheet(context: context, state: state, dog: dog)
         }
         .sheet(isPresented: $addingPlace) {
-            DogPlacePicker(context: context) { place in state.update { $0.places.insert(place, at: 0) } }
+            DogPlacePicker(context: context) { place in
+                state.update { s in
+                    // Picked again: one row, moved to the top
+                    s.places.removeAll { $0.placeId != nil && $0.placeId == place.placeId }
+                    s.places.insert(place, at: 0)
+                }
+            }
         }
         .confirmationDialog("Leave the Dog Park?", isPresented: $leaving, titleVisibility: .visible) {
             Button("Leave", role: .destructive) { leave() }
@@ -285,7 +291,9 @@ struct DogEditSheet: View {
     }
 }
 
-/// Search for a dog spot and save it to the "Dog spots" circle.
+/// Search for a dog spot and save it to the "Dog spots" circle. Results come
+/// as you type: your own saves first, then Apple Maps. The save goes through
+/// the same server save as Add Place (Google's details, no duplicates).
 struct DogPlacePicker: View {
     let context: WidgetContext
     let onSaved: (DogFavoritePlace) -> Void
@@ -294,6 +302,9 @@ struct DogPlacePicker: View {
     @State private var results: [WidgetPlaceCandidate] = []
     @State private var searching = false
     @State private var saving: String?
+    @State private var near: WidgetCoordinate?
+    @State private var mySaves: [WidgetPlaceCandidate] = []
+    @State private var searchTask: Task<Void, Never>?
 
     var body: some View {
         let theme = context.theme
@@ -301,13 +312,14 @@ struct DogPlacePicker: View {
             VStack(spacing: 0) {
                 WidgetUI.textField("Dog park, patio, pet store…", text: $query, theme: theme)
                     .padding(16)
-                    .onSubmit { search() }
+                    .onSubmit { search(after: 0) }
+                    .onChange(of: query) { _ in search(after: 300) }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 8) {
-                        if searching { ProgressView().frame(maxWidth: .infinity).padding(.top, 20) }
-                        if results.isEmpty, !searching {
+                        if searching && results.isEmpty { ProgressView().frame(maxWidth: .infinity).padding(.top, 20) }
+                        if results.isEmpty, !searching, query.trimmingCharacters(in: .whitespaces).isEmpty {
                             ForEach(["Dog park", "Dog friendly patio", "Pet store", "Groomer"], id: \.self) { s in
-                                Button { query = s; search() } label: {
+                                Button { query = s } label: {
                                     Label(s, systemImage: "magnifyingglass").font(.system(size: 15)).foregroundStyle(context.accent)
                                 }
                                 .buttonStyle(.plain)
@@ -320,6 +332,10 @@ struct DogPlacePicker: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(place.name).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
                                         if let address = place.address { Text(address).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1) }
+                                        if place.isGlobal {
+                                            Label("On your map", systemImage: "mappin.circle.fill")
+                                                .font(.system(size: 11, weight: .semibold)).foregroundStyle(context.accent)
+                                        }
                                     }
                                     Spacer()
                                     if saving == place.id { ProgressView() } else { Image(systemName: "plus.circle").foregroundStyle(context.accent) }
@@ -335,16 +351,28 @@ struct DogPlacePicker: View {
                 }
             }
         }
+        .task {
+            near = await context.host.currentLocation()
+            mySaves = (try? await context.host.fetchPlaces(WidgetPlaceQuery(sources: [.mine], near: near, radiusMeters: 200_000))) ?? []
+            if !query.isEmpty { search(after: 0) }
+        }
+        .onDisappear { searchTask?.cancel() }
     }
 
-    private func search() {
+    /// Your matching saves show at once; Apple Maps follows after a short pause.
+    private func search(after delayMs: UInt64) {
+        searchTask?.cancel()
         let text = query.trimmingCharacters(in: .whitespaces)
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty else { results = []; searching = false; return }
+        results = DogSpotSearch.merge(saves: mySaves, apple: results.filter { !$0.isGlobal }, query: text)
         searching = true
-        Task { @MainActor in
-            defer { searching = false }
-            let near = await context.host.currentLocation()
-            results = (try? await context.host.searchPlaces(text, near: near)) ?? []
+        searchTask = Task { @MainActor in
+            if delayMs > 0 { try? await Task.sleep(nanoseconds: delayMs * 1_000_000) }
+            guard !Task.isCancelled else { return }
+            let apple = (try? await context.host.searchPlaces(text, near: near)) ?? []
+            guard !Task.isCancelled else { return }
+            results = DogSpotSearch.merge(saves: mySaves, apple: apple, query: text)
+            searching = false
         }
     }
 
@@ -358,6 +386,11 @@ struct DogPlacePicker: View {
                 context.track("dog_spot_saved")
                 dismiss()
                 onSaved(DogFavoritePlace(name: place.name, address: place.address, placeId: saved.placeId ?? (place.isGlobal ? place.id : nil)))
+                if saved.alreadySaved == true, let circle = saved.circleName, circle != "Dog spots" {
+                    context.host.presentAlert(WidgetAlert(
+                        title: "Already on your map",
+                        message: "\(place.name) is saved in your \(circle) circle, so it's linked here instead of saved twice."))
+                }
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't save the spot", message: DogErrors.message(error)))
             }

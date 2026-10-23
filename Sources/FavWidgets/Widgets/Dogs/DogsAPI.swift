@@ -14,7 +14,7 @@ struct DogsClient {
         let videoId: String
         let uploadUrls: URLs
     }
-    struct PlaceSaved: Decodable { let placeId: String?; let circleId: String? }
+    struct PlaceSaved: Decodable { let placeId: String?; let circleId: String?; let circleName: String?; let alreadySaved: Bool? }
     private struct DogResponse: Decodable { let dog: DogProfile }
     private struct PostResponse: Decodable { let post: DogPost }
     private struct CommentsResponse: Decodable { let comments: [DogComment] }
