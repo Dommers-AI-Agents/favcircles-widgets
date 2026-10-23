@@ -10,7 +10,7 @@ import Foundation
 //   comments and the Daily Dog. Server shapes below.
 // - The private records (`DogsState`, the widget's own document): health,
 //   vet, insurance and favorite places. Never sent to the community side;
-//   certificate and insurance-card photos stay on this phone.
+//   vet documents and insurance-card photos stay on this phone.
 
 // MARK: - Community (server shapes)
 
@@ -513,6 +513,36 @@ public struct DogFavoritePlace: Codable, Equatable, Hashable, Identifiable, Send
     }
 }
 
+/// A vet document kept with a dog's records (Wes, 2026-10-23: "allow user
+/// to simply add the document to the dogs records … for easy viewing"):
+/// photos of the pages, or the PDF the vet emailed. The files live on this
+/// phone (`DogLocalPhotos`); the record keeps their names.
+public struct DogDocument: Codable, Equatable, Hashable, Identifiable, Sendable {
+    public enum Kind: String, Codable, Sendable { case photos, pdf }
+
+    public var id: String
+    public var title: String
+    public var kind: Kind
+    /// File names: one per photographed page, or the one PDF
+    public var files: [String]
+    public var addedAt: Date
+
+    public init(id: String = UUID().uuidString, title: String, kind: Kind, files: [String], addedAt: Date = Date()) {
+        self.id = id; self.title = title; self.kind = kind; self.files = files; self.addedAt = addedAt
+    }
+
+    public static let defaultTitle = "Vet paperwork"
+    static let legacyCertificateTitle = "Vaccine certificate"
+
+    /// "Invoice 103109.pdf" → "Invoice 103109"; blank → "Vet paperwork"
+    public static func title(fromFileName name: String?) -> String {
+        let base = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let stripped = base.lowercased().hasSuffix(".pdf") ? String(base.dropLast(4)) : base
+        let clean = stripped.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? defaultTitle : String(clean.prefix(80))
+    }
+}
+
 /// Everything private about one dog.
 public struct DogRecords: Codable, Equatable, Sendable {
     public var vaccines: [DogVaccine]
@@ -521,13 +551,19 @@ public struct DogRecords: Codable, Equatable, Sendable {
     public var weights: [DogWeight]
     public var vet: DogVet
     public var insurance: DogInsurance
-    /// Vaccine-certificate photos: file names on this phone (`DogLocalPhotos`)
-    public var certificatePhotos: [String]
+    /// Vet paperwork, certificates, invoices: files on this phone, newest last
+    public var documents: [DogDocument]
 
     public init(vaccines: [DogVaccine] = [], vetVisits: [DogVetVisit] = [], medications: [DogMedication] = [], weights: [DogWeight] = [],
-                vet: DogVet = DogVet(), insurance: DogInsurance = DogInsurance(), certificatePhotos: [String] = []) {
+                vet: DogVet = DogVet(), insurance: DogInsurance = DogInsurance(), documents: [DogDocument] = []) {
         self.vaccines = vaccines; self.vetVisits = vetVisits; self.medications = medications; self.weights = weights
-        self.vet = vet; self.insurance = insurance; self.certificatePhotos = certificatePhotos
+        self.vet = vet; self.insurance = insurance; self.documents = documents
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case vaccines, vetVisits, medications, weights, vet, insurance, documents
+        /// 0.53.0 kept vaccine-certificate photos as bare file names
+        case certificatePhotos
     }
 
     public init(from decoder: Decoder) throws {
@@ -538,11 +574,29 @@ public struct DogRecords: Codable, Equatable, Sendable {
         weights = try c.decodeIfPresent([DogWeight].self, forKey: .weights) ?? []
         vet = try c.decodeIfPresent(DogVet.self, forKey: .vet) ?? DogVet()
         insurance = try c.decodeIfPresent(DogInsurance.self, forKey: .insurance) ?? DogInsurance()
-        certificatePhotos = try c.decodeIfPresent([String].self, forKey: .certificatePhotos) ?? []
+        var docs = try c.decodeIfPresent([DogDocument].self, forKey: .documents) ?? []
+        let legacy = try c.decodeIfPresent([String].self, forKey: .certificatePhotos) ?? []
+        let known = Set(docs.map(\.id))
+        // The file name doubles as the id, so a re-read never duplicates one
+        docs += legacy.filter { !known.contains($0) }.map {
+            DogDocument(id: $0, title: DogDocument.legacyCertificateTitle, kind: .photos, files: [$0], addedAt: Date(timeIntervalSince1970: 0))
+        }
+        documents = docs
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(vaccines, forKey: .vaccines)
+        try c.encode(vetVisits, forKey: .vetVisits)
+        try c.encode(medications, forKey: .medications)
+        try c.encode(weights, forKey: .weights)
+        try c.encode(vet, forKey: .vet)
+        try c.encode(insurance, forKey: .insurance)
+        try c.encode(documents, forKey: .documents)
     }
 
     public var isEmpty: Bool {
-        vaccines.isEmpty && vetVisits.isEmpty && medications.isEmpty && weights.isEmpty && vet.isEmpty && insurance.isEmpty && certificatePhotos.isEmpty
+        vaccines.isEmpty && vetVisits.isEmpty && medications.isEmpty && weights.isEmpty && vet.isEmpty && insurance.isEmpty && documents.isEmpty
     }
 
     public var latestWeight: DogWeight? { weights.max { $0.date < $1.date } }
@@ -583,7 +637,7 @@ public struct DogsState: WidgetModel {
             merged.vetVisits = union(mine.vetVisits, theirs.vetVisits)
             merged.medications = union(mine.medications, theirs.medications)
             merged.weights = union(mine.weights, theirs.weights)
-            merged.certificatePhotos = mine.certificatePhotos + theirs.certificatePhotos.filter { !mine.certificatePhotos.contains($0) }
+            merged.documents = union(mine.documents, theirs.documents)
             if mine.vet.isEmpty { merged.vet = theirs.vet }
             if mine.insurance.isEmpty { merged.insurance = theirs.insurance }
             out.records[dogId] = merged

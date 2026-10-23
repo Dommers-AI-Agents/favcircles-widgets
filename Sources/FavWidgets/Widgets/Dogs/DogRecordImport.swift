@@ -7,7 +7,9 @@ import FavWidgetsCore
 /// so it reads the paperwork itself. Up to 4 photos of it, or the PDF the
 /// vet emailed, go to the server, which has the model read them and keeps
 /// nothing. The person checks every row (unsure ones are flagged) before
-/// anything joins the private records.
+/// anything joins the private records. The paperwork itself can be kept in
+/// the dog's Documents (on this phone), and when it can't be read it can
+/// still be saved there (Wes, 2026-10-23).
 struct DogRecordImportSheet: View {
     let context: WidgetContext
     let dogName: String?
@@ -27,6 +29,12 @@ struct DogRecordImportSheet: View {
     @State private var keepMeds: Set<Int> = []
     @State private var keepWeights: Set<Int> = []
     @State private var keepVet = true
+    /// What was picked, kept so it can be saved to Documents
+    @State private var pickedPages: [Data] = []
+    @State private var pickedPDF: (data: Data, title: String)?
+    @State private var keepDocument = true
+    /// Why reading failed; the sheet then offers to save the document anyway
+    @State private var failure: String?
 
     var body: some View {
         let theme = context.theme
@@ -34,7 +42,7 @@ struct DogRecordImportSheet: View {
                     confirm: draft == nil ? nil : (label: "Save", enabled: selectedCount > 0 || keepVet, action: save), cancelDisabled: scanning) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let draft { review(draft, theme: theme) } else { start(theme) }
+                    if let draft { review(draft, theme: theme) } else if let failure { failed(failure, theme: theme) } else { start(theme) }
                 }
                 .padding(16)
             }
@@ -84,9 +92,37 @@ struct DogRecordImportSheet: View {
                 Text("Tip: in Mail, tap the PDF, then Share → Save to Files, and choose it here.")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             }
-            Text("The pages are read once to fill this in and aren't stored. What you save stays private to you.")
+            Text("The pages are read once to fill this in and aren't kept on our servers. What you save stays private to you.")
                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    // MARK: Couldn't read it
+
+    private func failed(_ message: String, theme: WidgetTheme) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Couldn't read it 🐾").font(.system(size: 22, weight: .heavy, design: .rounded)).foregroundStyle(theme.label)
+            Text("\(message) You can still keep the paperwork with \(dogName ?? "your dog")'s records to look at anytime.")
+                .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
+            Button { saveDocumentOnly() } label: {
+                Label("Save it to \(dogName.map { "\($0)'s" } ?? "your dog's") documents", systemImage: "folder.badge.plus")
+                    .font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(context.accent))
+            }
+            .buttonStyle(.plain)
+            Button { reset() } label: {
+                Text("Try different pages").font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var hasPicked: Bool { !pickedPages.isEmpty || pickedPDF != nil }
+
+    private func reset() {
+        failure = nil; draft = nil; items = []; pickedPages = []; pickedPDF = nil
     }
 
     // MARK: Step 2: review
@@ -98,7 +134,11 @@ struct DogRecordImportSheet: View {
                 Text("Hmm, no records in there 🐾").font(.system(size: 20, weight: .bold, design: .rounded)).foregroundStyle(theme.label)
                 Text(draft.notes ?? "Try a clearer photo of the vaccine certificate or visit summary, or the PDF.")
                     .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
-                Button("Try again") { self.draft = nil; items = [] }.font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                Button("Try again") { reset() }.font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                if hasPicked {
+                    Button("Save it to \(dogName.map { "\($0)'s" } ?? "your dog's") documents anyway") { saveDocumentOnly() }
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                }
             }
         } else {
             if let pet = draft.petName, let dogName, !pet.isEmpty, pet.lowercased() != dogName.lowercased() {
@@ -145,6 +185,15 @@ struct DogRecordImportSheet: View {
                 }
                 .tint(context.accent)
             }
+            if hasPicked {
+                Toggle(isOn: $keepDocument) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Keep the paperwork in Documents").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+                        Text("To look at or share anytime. It stays on this phone.").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    }
+                }
+                .tint(context.accent)
+            }
         }
     }
 
@@ -182,7 +231,7 @@ struct DogRecordImportSheet: View {
         .buttonStyle(.plain)
     }
 
-    private var selectedCount: Int { keepVaccines.count + keepVisits.count + keepMeds.count + keepWeights.count }
+    private var selectedCount: Int { keepVaccines.count + keepVisits.count + keepMeds.count + keepWeights.count + (hasPicked && keepDocument ? 1 : 0) }
 
     // MARK: Scanning
 
@@ -198,6 +247,7 @@ struct DogRecordImportSheet: View {
             context.host.presentAlert(WidgetAlert(title: "Couldn't read those photos", message: "Try picking them again."))
             return
         }
+        pickedPages = pages; pickedPDF = nil
         await run { try await DogsClient(context: context).scanRecords(dogName: dogName, images: pages) }
     }
 
@@ -212,6 +262,7 @@ struct DogRecordImportSheet: View {
             context.host.presentAlert(WidgetAlert(title: "That PDF is too big", message: "Up to 10 MB. Try photos of the pages instead."))
             return
         }
+        pickedPDF = (data, DogDocument.title(fromFileName: url.lastPathComponent)); pickedPages = []
         scanning = true
         defer { scanning = false }
         await run { try await DogsClient(context: context).scanRecords(dogName: dogName, pdf: data) }
@@ -228,11 +279,31 @@ struct DogRecordImportSheet: View {
             draft = result
             context.track("dog_records_scanned", ["rows": "\(result.vaccines.count + result.vetVisits.count + result.medications.count + result.weights.count)"])
         } catch {
-            context.host.presentAlert(WidgetAlert(title: "Couldn't read it", message: DogErrors.message(error)))
+            failure = DogErrors.message(error)
         }
     }
 
     // MARK: Step 3: save
+
+    /// Writes what was picked to this phone; the clinic's name titles photos
+    private func storedDocument(title: String?) -> DogDocument? {
+        if let pickedPDF { return DogLocalPhotos.saveDocument(title: pickedPDF.title, pdf: pickedPDF.data) }
+        let clean = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return DogLocalPhotos.saveDocument(title: clean.isEmpty ? DogDocument.defaultTitle : clean, pages: pickedPages)
+    }
+
+    private func saveDocumentOnly() {
+        guard let doc = storedDocument(title: nil) else {
+            context.host.presentAlert(WidgetAlert(title: "Couldn't save it", message: "Try again in a moment."))
+            return
+        }
+        var records = existing
+        records.documents.append(doc)
+        onSave(records)
+        context.host.haptic(.success)
+        context.track("dog_document_added", ["kind": doc.kind.rawValue, "from": "import"])
+        dismiss()
+    }
 
     private func save() {
         guard let draft else { return }
@@ -243,7 +314,9 @@ struct DogRecordImportSheet: View {
         kept.weights = draft.weights.enumerated().filter { keepWeights.contains($0.offset) }.map(\.element)
         if !keepVet { kept.vet = nil }
         let result = DogRecordMerge.merge(kept, into: existing)
-        onSave(result.records)
+        var records = result.records
+        if hasPicked && keepDocument, let doc = storedDocument(title: kept.vet?.clinic) { records.documents.append(doc) }
+        onSave(records)
         context.host.haptic(.success)
         context.track("dog_records_imported", ["added": "\(result.added)", "skipped": "\(result.skipped)"])
         dismiss()

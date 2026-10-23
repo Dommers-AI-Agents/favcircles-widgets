@@ -278,3 +278,22 @@ public enum DogShareLink {
         return URL(string: "\(base)?\(query)=\(escaped)")
     }
 }
+
+/// The line under a document's title: "PDF · Added Oct 23, 2026", "3 pages · …".
+public enum DogDocumentCopy {
+    public static func detail(_ doc: DogDocument, calendar: Calendar = .current) -> String {
+        let what: String
+        switch doc.kind {
+        case .pdf: what = "PDF"
+        case .photos: what = doc.files.count == 1 ? "Photo" : "\(doc.files.count) pages"
+        }
+        // Certificates carried over from 0.53.0 have no added date
+        guard doc.addedAt.timeIntervalSince1970 > 0 else { return what }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = calendar.locale ?? Locale(identifier: "en_US")
+        formatter.setLocalizedDateFormatFromTemplate("MMMdyyyy")
+        return "\(what) · Added \(formatter.string(from: doc.addedAt))"
+    }
+}

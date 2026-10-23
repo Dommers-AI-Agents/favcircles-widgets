@@ -196,11 +196,49 @@ struct DogModelsTests {
         var state = DogsState()
         state.records["d"] = DogRecords(vaccines: [DogVaccine(name: "Rabies", givenOn: "2025-04-02", dueOn: "2028-04-02")],
                                         insurance: DogInsurance(provider: "Lemonade", policyNumber: "LP-1", cardPhoto: "dogs-card-d.jpg"),
-                                        certificatePhotos: ["dogs-cert-1.jpg"])
+                                        documents: [DogDocument(title: "Invoice", kind: .pdf, files: ["dogs-doc-1.pdf"],
+                                                                addedAt: Date(timeIntervalSince1970: 1_760_000_000))])
         let back = try WidgetDocumentCodec.decode(DogsState.self, from: WidgetDocumentCodec.encode(state))
         #expect(back == state)
         // An older/empty document reads as empty
         #expect(try WidgetDocumentCodec.decode(DogsState.self, from: Data("{}".utf8)) == .empty)
+    }
+
+    @Test func legacyCertificatePhotosBecomeDocuments() throws {
+        let json = #"{"records":{"d":{"certificatePhotos":["dogs-cert-1.jpg","dogs-cert-2.jpg"]}}}"#
+        let state = try WidgetDocumentCodec.decode(DogsState.self, from: Data(json.utf8))
+        let docs = state.records(for: "d").documents
+        #expect(docs.map(\.files) == [["dogs-cert-1.jpg"], ["dogs-cert-2.jpg"]])
+        #expect(docs.allSatisfy { $0.kind == .photos && $0.title == "Vaccine certificate" })
+        // Saved again, it's written as documents only and reads back the same
+        let again = try WidgetDocumentCodec.decode(DogsState.self, from: WidgetDocumentCodec.encode(state))
+        #expect(again == state)
+        #expect(!(String(data: try WidgetDocumentCodec.encode(state), encoding: .utf8) ?? "").contains("certificatePhotos"))
+    }
+
+    @Test func documentsMergeAcrossPhones() {
+        var local = DogsState()
+        local.records["d"] = DogRecords(documents: [DogDocument(id: "a", title: "Mine", kind: .pdf, files: ["a.pdf"])])
+        var remote = DogsState()
+        remote.records["d"] = DogRecords(documents: [DogDocument(id: "a", title: "Renamed elsewhere", kind: .pdf, files: ["a.pdf"]),
+                                                     DogDocument(id: "b", title: "Theirs", kind: .photos, files: ["b.jpg"])])
+        #expect(DogsState.merge(local: local, remote: remote).records["d"]?.documents.map(\.title) == ["Mine", "Theirs"])
+    }
+
+    @Test func documentTitleFromFileName() {
+        #expect(DogDocument.title(fromFileName: "Invoice 103109.PDF") == "Invoice 103109")
+        #expect(DogDocument.title(fromFileName: "  ") == "Vet paperwork")
+        #expect(DogDocument.title(fromFileName: nil) == "Vet paperwork")
+    }
+
+    @Test func documentDetailLine() {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/New_York")!
+        cal.locale = Locale(identifier: "en_US")
+        let added = cal.date(from: DateComponents(year: 2026, month: 10, day: 23, hour: 10))!
+        #expect(DogDocumentCopy.detail(DogDocument(title: "x", kind: .pdf, files: ["a.pdf"], addedAt: added), calendar: cal) == "PDF · Added Oct 23, 2026")
+        #expect(DogDocumentCopy.detail(DogDocument(title: "x", kind: .photos, files: ["a", "b", "c"], addedAt: added), calendar: cal) == "3 pages · Added Oct 23, 2026")
+        #expect(DogDocumentCopy.detail(DogDocument(title: "x", kind: .photos, files: ["a"], addedAt: Date(timeIntervalSince1970: 0)), calendar: cal) == "Photo")
     }
 
     @Test func shareLinks() {

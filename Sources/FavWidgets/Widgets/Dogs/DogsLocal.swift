@@ -4,31 +4,43 @@ import FavWidgetsCore
 import UserNotifications
 #endif
 
-/// Vaccine certificates and insurance cards: files on this phone only
-/// (Application Support), never uploaded. The private document keeps their
-/// file names so the screens know what to show.
+/// Vet documents (photos of the pages or the PDF) and insurance cards: files
+/// on this phone only (Application Support), never uploaded. The private
+/// document keeps their file names so the screens know what to show.
 enum DogLocalPhotos {
     static var folder: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("FavWidgets", isDirectory: true).appendingPathComponent("Dogs", isDirectory: true)
     }
 
-    /// Saves the JPEG and returns its file name, or nil when it couldn't be written.
-    static func save(_ jpeg: Data, prefix: String) -> String? {
+    /// Saves the file (a JPEG unless `ext` says otherwise) and returns its
+    /// name, or nil when it couldn't be written.
+    static func save(_ data: Data, prefix: String, ext: String = "jpg") -> String? {
         guard let folder else { return nil }
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let name = "\(prefix)-\(UUID().uuidString.prefix(8)).jpg"
+        let name = "\(prefix)-\(UUID().uuidString.prefix(8)).\(ext)"
         do {
             #if os(iOS)
-            try jpeg.write(to: folder.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
+            try data.write(to: folder.appendingPathComponent(name), options: [.atomic, .completeFileProtection])
             #else
-            try jpeg.write(to: folder.appendingPathComponent(name), options: .atomic)
+            try data.write(to: folder.appendingPathComponent(name), options: .atomic)
             #endif
             return name
         } catch {
             return nil
         }
     }
+
+    /// Saves a document's pages (JPEGs) or its PDF; nil when nothing could be written.
+    static func saveDocument(title: String, pages: [Data] = [], pdf: Data? = nil) -> DogDocument? {
+        if let pdf {
+            return save(pdf, prefix: "dogs-doc", ext: "pdf").map { DogDocument(title: title, kind: .pdf, files: [$0]) }
+        }
+        let files = pages.compactMap { save($0, prefix: "dogs-doc") }
+        return files.isEmpty ? nil : DogDocument(title: title, kind: .photos, files: files)
+    }
+
+    static func url(_ name: String) -> URL? { folder?.appendingPathComponent(name) }
 
     static func load(_ name: String) -> Data? {
         guard let url = folder?.appendingPathComponent(name) else { return nil }
