@@ -1,6 +1,5 @@
 import SwiftUI
 import PhotosUI
-import UniformTypeIdentifiers
 import FavWidgetsCore
 
 /// One dog's page: the profile, then the private records (vaccines, vet
@@ -17,11 +16,6 @@ struct DogPageView: View {
     @State private var editing: DogRecordEdit?
     @State private var removing = false
     @State private var viewingPhoto: LocalPhoto?
-    @State private var addingDocument = false
-    @State private var pickingDocPhotos = false
-    @State private var pickingDocPDF = false
-    @State private var docItems: [PhotosPickerItem] = []
-    @State private var viewingDocument: DogDocument?
 
     struct LocalPhoto: Identifiable { let id: String }
 
@@ -35,14 +29,14 @@ struct DogPageView: View {
                 if let dog {
                     VStack(alignment: .leading, spacing: 16) {
                         header(dog, theme: theme)
-                        paperworkButton(dog)
+                        // The paperwork first (Wes, 2026-10-23)
+                        DogDocumentsPanel(context: context, state: state, dogId: dogId, dogName: dog.name)
                         vaccines(theme)
                         visits(theme)
                         medications(theme)
                         weights(theme)
                         vet(theme)
                         insurance(theme)
-                        documents(theme)
                         Button(role: .destructive) { removing = true } label: {
                             Text("Remove \(dog.name)").font(.system(size: 14)).foregroundStyle(theme.danger).frame(maxWidth: .infinity)
                         }
@@ -79,49 +73,11 @@ struct DogPageView: View {
                 DogLocalPhotos.delete(photo.id)
             }
         }
-        .sheet(item: $viewingDocument) { doc in
-            DogDocumentViewer(context: context, document: doc, onRename: { title in
-                updateDocuments { docs in
-                    if let i = docs.firstIndex(where: { $0.id == doc.id }) { docs[i].title = title }
-                }
-            }, onDelete: {
-                updateDocuments { $0.removeAll { $0.id == doc.id } }
-                doc.files.forEach(DogLocalPhotos.delete)
-            })
-        }
-        .confirmationDialog("Add a document", isPresented: $addingDocument, titleVisibility: .visible) {
-            Button("Photos of the pages") { pickingDocPhotos = true }
-            Button("A PDF from Files") { pickingDocPDF = true }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Vet invoices, visit summaries, vaccine certificates. Kept on this phone for \(dog?.name ?? "your dog").")
-        }
-        .photosPicker(isPresented: $pickingDocPhotos, selection: $docItems, maxSelectionCount: DogDocumentLimits.maxPhotos, matching: .images)
-        .fileImporter(isPresented: $pickingDocPDF, allowedContentTypes: [.pdf]) { result in
-            guard case .success(let url) = result else { return }
-            addPDFDocument(url)
-        }
         .confirmationDialog("Remove \(dog?.name ?? "this dog")?", isPresented: $removing, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { remove() }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Their profile leaves the Dog Park. Their records stay saved here in case you add them back.")
-        }
-        .onChange(of: docItems) { picked in
-            guard !picked.isEmpty else { return }
-            Task { @MainActor in
-                defer { docItems = [] }
-                var pages: [Data] = []
-                for item in picked {
-                    if let data = try? await item.loadTransferable(type: Data.self), let image = PostcardPlatformImage(data: data),
-                       let jpeg = EventImagePrep.jpeg(image) { pages.append(jpeg) }
-                }
-                guard let doc = DogLocalPhotos.saveDocument(title: DogDocument.defaultTitle, pages: pages) else {
-                    context.host.presentAlert(WidgetAlert(title: "Couldn't add those photos", message: "Try picking them again."))
-                    return
-                }
-                addDocument(doc)
-            }
         }
     }
 
@@ -139,24 +95,6 @@ struct DogPageView: View {
             Button("Edit profile") { editingProfile = true }.font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private func paperworkButton(_ dog: DogProfile) -> some View {
-        Button { addingDocument = true } label: {
-            HStack(spacing: 12) {
-                Text("🩺").font(.system(size: 28))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Add vet paperwork").font(.system(size: 16, weight: .bold)).foregroundStyle(.white)
-                    Text("Snap the pages or pick the PDF they emailed. It's kept with \(dog.name)'s records.")
-                        .font(.system(size: 12)).foregroundStyle(.white.opacity(0.92)).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Image(systemName: "chevron.right").foregroundStyle(.white)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(context.accent))
-        }
-        .buttonStyle(.plain)
     }
 
     private func vaccines(_ theme: WidgetTheme) -> some View {
@@ -235,54 +173,6 @@ struct DogPageView: View {
                     }
                 }
             }
-        }
-    }
-
-    private func documents(_ theme: WidgetTheme) -> some View {
-        section("Documents", theme: theme, add: { addingDocument = true }) {
-            if records.documents.isEmpty {
-                emptyLine("Vet invoices, visit summaries, vaccine certificates: photos or the PDF, kept on this phone. Daycare and boarders ask for these.")
-            }
-            ForEach(records.documents.reversed()) { doc in
-                Button { viewingDocument = doc } label: {
-                    HStack(spacing: 12) {
-                        DogDocumentThumb(document: doc, theme: theme)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(doc.title).font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label).lineLimit(2)
-                            Text(DogDocumentCopy.detail(doc, calendar: context.calendar)).font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
-    private func addDocument(_ doc: DogDocument) {
-        updateDocuments { $0.append(doc) }
-        context.host.haptic(.success)
-        context.track("dog_document_added", ["kind": doc.kind.rawValue])
-    }
-
-    private func addPDFDocument(_ url: URL) {
-        let access = url.startAccessingSecurityScopedResource()
-        defer { if access { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url), data.count <= DogDocumentLimits.maxPDFBytes,
-              let doc = DogLocalPhotos.saveDocument(title: DogDocument.title(fromFileName: url.lastPathComponent), pdf: data) else {
-            context.host.presentAlert(WidgetAlert(title: "Couldn't add that PDF", message: "Up to 10 MB. Try saving it to Files first."))
-            return
-        }
-        addDocument(doc)
-    }
-
-    private func updateDocuments(_ change: @escaping (inout [DogDocument]) -> Void) {
-        state.update { s in
-            var r = s.records(for: dogId)
-            change(&r.documents)
-            s.records[dogId] = r
         }
     }
 

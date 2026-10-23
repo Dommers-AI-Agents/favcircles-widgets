@@ -10,6 +10,7 @@ struct MyDogsView: View {
     let onAddDog: () -> Void
     let onOpenPost: (DogPost) -> Void
     @State private var openDog: DogProfile?
+    @State private var documentsFor: DogProfile?
     @State private var addingPlace = false
     @State private var leaving = false
 
@@ -18,7 +19,7 @@ struct MyDogsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 ForEach(store.me.dogs) { dog in
-                    Button { openDog = dog } label: { dogRow(dog, theme: theme) }.buttonStyle(.plain)
+                    dogRow(dog, theme: theme)
                 }
                 Button(action: onAddDog) {
                     Label(store.me.dogs.isEmpty ? "Add your dog" : "Add another dog", systemImage: "plus.circle.fill")
@@ -52,6 +53,9 @@ struct MyDogsView: View {
         .fullScreenCoverOrSheet(item: $openDog) { dog in
             DogPageView(context: context, store: store, state: state, dogId: dog.id, onClose: { openDog = nil })
         }
+        .sheet(item: $documentsFor) { dog in
+            DogDocumentsSheet(context: context, state: state, dog: dog)
+        }
         .sheet(isPresented: $addingPlace) {
             DogPlacePicker(context: context) { place in state.update { $0.places.insert(place, at: 0) } }
         }
@@ -66,8 +70,46 @@ struct MyDogsView: View {
     private func dogRow(_ dog: DogProfile, theme: WidgetTheme) -> some View {
         let records = state.model.records(for: dog.id)
         let attention = records.vaccines.filter { DogVaccineStatus.of($0, calendar: context.calendar).needsAttention }
-        return HStack(spacing: 14) {
-            DogAvatar(url: dog.photoURL, size: 64, accent: context.accent, theme: theme)
+        return HStack(spacing: 10) {
+            Button { openDog = dog } label: {
+                HStack(spacing: 14) {
+                    DogAvatar(url: dog.photoURL, size: 64, accent: context.accent, theme: theme)
+                    dogSummary(dog, records: records, attention: attention, theme: theme)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            documentsButton(dog, count: records.documents.count, theme: theme)
+            Button { openDog = dog } label: {
+                Image(systemName: "chevron.right").foregroundStyle(theme.secondaryLabel).frame(width: 20, height: 44)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// The dog's paperwork in one tap, without opening its page
+    private func documentsButton(_ dog: DogProfile, count: Int, theme: WidgetTheme) -> some View {
+        Button { documentsFor = dog } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "doc.text.fill").font(.system(size: 19, weight: .semibold)).foregroundStyle(context.accent)
+                    .frame(width: 44, height: 44)
+                    .background(Circle().fill(context.accent.opacity(0.16)))
+                if count > 0 {
+                    Text("\(count)").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                        .padding(.horizontal, 5).frame(minWidth: 18, minHeight: 18)
+                        .background(Capsule().fill(context.accent))
+                        .offset(x: 4, y: -4)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(dog.name)'s documents")
+    }
+
+    private func dogSummary(_ dog: DogProfile, records: DogRecords, attention: [DogVaccine], theme: WidgetTheme) -> some View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(dog.name).font(.system(size: 19, weight: .heavy, design: .rounded)).foregroundStyle(theme.label)
                 let sub = DogCopy.subtitle(dog, calendar: context.calendar)
@@ -80,11 +122,6 @@ struct MyDogsView: View {
                         .font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.warning)
                 }
             }
-            Spacer()
-            Image(systemName: "chevron.right").foregroundStyle(theme.secondaryLabel)
-        }
-        .padding(12)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(theme.secondaryBackground))
     }
 
     private func places(_ theme: WidgetTheme) -> some View {

@@ -2,7 +2,8 @@ import SwiftUI
 import FavWidgetsCore
 
 enum DogsTab: String, CaseIterable, Identifiable {
-    case park, daily, mine
+    /// My Dogs first (Wes, 2026-10-23)
+    case mine, park, daily
     var id: String { rawValue }
     var label: String {
         switch self {
@@ -20,7 +21,7 @@ struct DogsFullView: View {
     @ObservedObject var store: DogsStore
     @ObservedObject var state: WidgetStateController<DogsState>
 
-    @State private var tab: DogsTab = .park
+    @State private var tab: DogsTab = .mine
     @State private var openPost: DogPost?
     @State private var openDaily: DailyDog?
     @State private var addingDog = false
@@ -135,6 +136,7 @@ struct DogsFullView: View {
         let client = DogsClient(context: context)
         if let id = context.launchDogPostId {
             context.launchDogPostId = nil
+            tab = .park
             await context.waitForPageToSettle()
             do { openPost = try await client.post(id) } catch {
                 context.host.presentAlert(WidgetAlert(title: "That post is gone", message: "It may have been deleted. There are plenty more good dogs in the Dog Park."))
