@@ -104,6 +104,11 @@ extension FridgeMailFullView {
                 .fixedSize(horizontal: false, vertical: true)
 
             if let sub = plan.subscription, sub.isActive {
+                // The price and what it covers stay on screen after
+                // subscribing or canceling, beside the packs
+                Text((sub.cancelAtPeriodEnd ? "Keeping it: " : "Your subscription: ") + FridgeMailCopy.subscriptionOffer(plan))
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
                 if sub.cancelAtPeriodEnd {
                     Button("Keep my subscription") { run("resume") { try await FridgeMailAPI.resumeSubscription(context: context) } }
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(context.accent).disabled(busy != nil)
@@ -142,9 +147,7 @@ extension FridgeMailFullView {
                 Text("Opening Apple Pay…")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             }
-            Text(n == 1
-                 ? "One card every week to your grandparent, \(FridgeMailCopy.subscriptionPriceText) a month. Cancel anytime."
-                 : "One card every week to each of \(n) grandparents, \(FridgeMailCopy.subscriptionPriceText) a month each. Cancel anytime.")
+            Text(FridgeMailCopy.subscriptionOffer(plan) + " Cancel anytime.")
                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -274,6 +274,22 @@ public enum FridgeMailCopy {
         return lines.joined(separator: "\n")
     }
 
+    /// What the subscription buys, in one line, for the Cards section in
+    /// every state. Once someone had subscribed (or canceled) the price and
+    /// what it covers were nowhere on the screen, only the packs were
+    /// (Wes, 2026-10-28).
+    public static func subscriptionOffer(_ plan: FridgeMailPlan) -> String {
+        let active = plan.subscription?.isActive == true ? plan.subscription?.quantity : nil
+        let n = max(1, active ?? plan.recipients.count)
+        let each = PostcardMailOrder.price(cents: plan.subscriptionPriceCents)
+        if n == 1 {
+            let who = plan.recipients.count == 1 ? plan.recipients[0].displayName : "your grandparent"
+            return "One card every week to \(who), \(each) a month."
+        }
+        let total = PostcardMailOrder.price(cents: plan.subscriptionPriceCents * n)
+        return "One card every week to each of \(n) grandparents, \(each) a month each (\(total) a month)."
+    }
+
     /// What this week's run will do, for the Next card section.
     public static func nextSendLine(_ plan: FridgeMailPlan, calendar: Calendar = .current) -> String {
         if plan.isPaused { return "Paused — nothing goes out until you resume" }

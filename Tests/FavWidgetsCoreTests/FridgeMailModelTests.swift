@@ -95,6 +95,24 @@ struct FridgeMailModelTests {
         #expect(FridgeMailCopy.planStatus(plan, calendar: cal) == "No cards yet")
     }
 
+    @Test func subscriptionOfferSaysThePriceAndWhatItCovers() {
+        var plan = Self.plan
+        let who = plan.recipients[0].displayName
+        #expect(FridgeMailCopy.subscriptionOffer(plan) == "One card every week to \(who), $7.99 a month.")
+
+        // Canceled still says what keeping it buys
+        plan.subscription?.cancelAtPeriodEnd = true
+        #expect(FridgeMailCopy.subscriptionOffer(plan) == "One card every week to \(who), $7.99 a month.")
+
+        // Two grandparents: each and the total
+        plan.subscription?.quantity = 2
+        #expect(FridgeMailCopy.subscriptionOffer(plan) == "One card every week to each of 2 grandparents, $7.99 a month each ($15.98 a month).")
+
+        // Not subscribed yet: priced by the grandparents on the plan
+        plan.subscription = nil
+        #expect(FridgeMailCopy.subscriptionOffer(plan) == "One card every week to \(who), $7.99 a month.")
+    }
+
     @Test func nextSendLineWarnsWhenNotEveryoneIsCovered() {
         var cal = Calendar(identifier: .gregorian)
         cal.locale = Locale(identifier: "en_US")
