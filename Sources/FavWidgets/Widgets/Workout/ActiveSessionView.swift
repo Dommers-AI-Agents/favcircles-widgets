@@ -13,7 +13,10 @@ struct ActiveSessionView: View {
 
     @State private var restEndsAt: Date?
     @State private var showPicker = false
-    @State private var showReorder = false
+    /// Reorder mode: the list shows one drag-handle row per exercise in
+    /// place of the sets, so exercises are dragged right on this page
+    /// (Wes, 2026-10-29 — no separate sheet). The top-right button toggles it.
+    @State private var isReordering = false
     @State private var confirmDiscard = false
     @State private var photoTarget: PhotoTarget?
 
@@ -36,6 +39,9 @@ struct ActiveSessionView: View {
         List {
             Group {
                 header
+                if isReordering {
+                    reorderRows
+                } else {
                 ForEach(exerciseIds, id: \.self) { exerciseId in
                     exerciseBlock(exerciseId)
                 }
@@ -54,11 +60,18 @@ struct ActiveSessionView: View {
                 }
                 addExerciseRow
                 footer
+                }
             }
             .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        #if os(iOS)
+        // Edit mode puts the drag handles on the reorder rows; off again so
+        // the set rows keep their swipe-to-delete.
+        .environment(\.editMode, .constant(isReordering ? .active : .inactive))
+        #endif
+        .animation(.easeInOut(duration: 0.2), value: isReordering)
         .scrollDismissesKeyboard(.interactively)
         .coordinateSpace(name: "session")
         .onPreferenceChange(SessionScrollOffsetKey.self) { y in
@@ -86,9 +99,6 @@ struct ActiveSessionView: View {
         }
         // Hands are full of weights between sets: the log stays on screen
         .keepsScreenAwake(true)
-        .sheet(isPresented: $showReorder) {
-            ExerciseReorderView(context: context, settings: settings)
-        }
         .sheet(item: $photoTarget) { target in
             ExercisePhotoSheet(context: context, settings: settings, exerciseId: target.id)
         }
@@ -147,6 +157,17 @@ struct ActiveSessionView: View {
             .disabled(isEmptyWorkout)
             .opacity(isEmptyWorkout ? 0.5 : 1)
             .accessibilityLabel("Finish workout")
+            if exerciseIds.count > 1 || isReordering {
+                Button(action: toggleReorder) {
+                    Image(systemName: isReordering ? "checkmark" : "arrow.up.arrow.down")
+                        .font(.system(size: isCompact ? 15 : 17, weight: .semibold))
+                        .foregroundStyle(isReordering ? Color.white : theme.secondaryLabel)
+                        .frame(width: isCompact ? 34 : 40, height: isCompact ? 34 : 40)
+                        .background(Circle().fill(isReordering ? context.accent : theme.tertiaryBackground))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isReordering ? "Done reordering" : "Reorder exercises")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, isCompact ? 6 : 10)
@@ -173,6 +194,7 @@ struct ActiveSessionView: View {
     }
 
     private var headerLine: String {
+        if isReordering { return "Drag the handles to reorder, then tap the checkmark" }
         var parts = ["\(completedCount) \(completedCount == 1 ? "set" : "sets") done"]
         if !exerciseIds.isEmpty { parts.append("\(exerciseIds.count) \(exerciseIds.count == 1 ? "exercise" : "exercises")") }
         let cardio = session.cardioMinutes
@@ -201,18 +223,41 @@ struct ActiveSessionView: View {
                     .padding(.leading, 14)
             }
             Spacer()
-            if exerciseIds.count > 1 {
-                Button { showReorder = true } label: {
-                    Label("Reorder", systemImage: "arrow.up.arrow.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(theme.secondaryLabel)
-                        .frame(minHeight: 48)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Reorder exercises")
-            }
         }
         .listRowSeparator(.hidden)
+    }
+
+    // MARK: Reorder mode
+
+    /// One row per exercise with its set count; whole blocks move, the sets
+    /// inside keep their order (WorkoutSessionLogic.movingExercises).
+    private var reorderRows: some View {
+        ForEach(exerciseIds, id: \.self) { id in
+            let count = setsByExercise[id]?.count ?? 0
+            HStack(spacing: 12) {
+                ExerciseThumb(url: settings.model.imageURL(for: id),
+                              symbolName: settings.model.exercise(id: id)?.symbolName ?? "dumbbell.fill",
+                              accent: context.accent, theme: theme, size: 36)
+                Text(settings.model.exercise(id: id)?.name ?? "Exercise")
+                    .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
+                Spacer()
+                Text("\(count) \(count == 1 ? "set" : "sets")")
+                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+            }
+            .frame(minHeight: 52)
+            .listRowSeparator(.hidden)
+        }
+        .onMove { source, destination in
+            let moved = WorkoutSessionLogic.movingExercises(in: session, fromOffsets: source, toOffset: destination)
+            settings.update { $0.activeSession?.sets = moved }
+            context.host.haptic(.light)
+            context.track("exercises_reordered")
+        }
+    }
+
+    private func toggleReorder() {
+        isReordering.toggle()
+        context.host.haptic(.light)
     }
 
     private var footer: some View {
@@ -401,7 +446,4 @@ private struct SessionScrollOffsetKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }
 
-// MARK: - Reorder sheet
-
-// MARK: - Set row
 
