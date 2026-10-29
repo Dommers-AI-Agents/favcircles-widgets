@@ -71,6 +71,8 @@ public enum WidgetShareKit {
     }
 
     static func jpeg(descriptor: FavWidgetDescriptor, content: WidgetShareCardContent) -> Data? {
+        // A widget that drew its own card (Coach Mane) ships that picture
+        if let own = content.cardJPEG { return own }
         #if os(iOS)
         let renderer = ImageRenderer(content: WidgetShareCardView(descriptor: descriptor, content: content))
         renderer.scale = 3

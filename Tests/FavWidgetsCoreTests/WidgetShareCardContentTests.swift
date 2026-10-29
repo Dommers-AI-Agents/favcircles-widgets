@@ -30,6 +30,19 @@ struct WidgetShareCardContentTests {
         #expect(c.linkTitle == "2.28 mi run · FavRun")
     }
 
+    /// A widget that draws its own card (Coach Mane) carries it on the content
+    /// and the link still leads to the widget.
+    @Test func ownCardRidesOnTheContent() {
+        var c = WidgetShareCardContent.motivation(line: "Get up.", streak: 1)
+        #expect(c.cardJPEG == nil)
+        c.cardJPEG = Data([9, 9])
+        let items = WidgetShareCard.items(widgetId: "motivation", content: c, cardJPEG: c.cardJPEG)
+        guard case .link(let url, let title, let image) = items.first else { Issue.record("expected a link"); return }
+        #expect(url.absoluteString.hasSuffix("/app/widget/motivation"))
+        #expect(title == "Coach Mane · FavCircles")
+        #expect(image == Data([9, 9]))
+    }
+
     @Test func noCardFallsBackToText() {
         let c = WidgetShareCardContent(headline: "Water", detail: "Track it", linkTitle: "Water · FavCircles")
         let items = WidgetShareCard.items(widgetId: "water", content: c, cardJPEG: nil)

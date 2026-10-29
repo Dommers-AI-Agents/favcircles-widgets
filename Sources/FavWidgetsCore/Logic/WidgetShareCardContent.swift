@@ -28,15 +28,21 @@ public struct WidgetShareCardContent: Equatable, Sendable {
     public var linkTitle: String
     /// Where the card leads; nil = the widget's page (/app/widget/<id>).
     public var url: URL?
+    /// The whole card, already drawn by the widget (Coach Mane yelling the
+    /// line). When set, the share sheet sends this picture instead of the
+    /// shared card design, so every door to a widget's share looks the same
+    /// (Wes, 2026-10-29: Share and Send-to-someone showed different cards).
+    public var cardJPEG: Data?
 
     public init(headline: String, detail: String? = nil, stats: [Stat] = [], imageJPEG: Data? = nil,
-                linkTitle: String, url: URL? = nil) {
+                linkTitle: String, url: URL? = nil, cardJPEG: Data? = nil) {
         self.headline = headline
         self.detail = detail
         self.stats = Array(stats.prefix(4))
         self.imageJPEG = imageJPEG
         self.linkTitle = linkTitle
         self.url = url
+        self.cardJPEG = cardJPEG
     }
 
     /// The card for a widget with nothing specific to show.
