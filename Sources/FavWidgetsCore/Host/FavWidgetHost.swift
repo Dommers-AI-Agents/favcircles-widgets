@@ -228,6 +228,11 @@ public protocol FavWidgetHost: AnyObject {
     /// pause/resume; nil ends it. Default: nothing.
     func runLiveActivity(_ update: WidgetRunLiveUpdate?)
 
+    /// The workout in progress on the lock screen / Dynamic Island, with a
+    /// Done button for the next set (contract 0.54.0). Called whenever the
+    /// session changes; nil ends it. Default: nothing.
+    func workoutLiveActivity(_ update: WidgetWorkoutLiveUpdate?)
+
     /// An event on the lock screen / Dynamic Island, kept current by the
     /// server's pushes. Returns false when the phone has Live Activities off.
     func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool
@@ -273,6 +278,7 @@ public extension FavWidgetHost {
     }
     func searchPlaces(_ text: String, near: WidgetCoordinate?) async throws -> [WidgetPlaceCandidate] { [] }
     func runLiveActivity(_ update: WidgetRunLiveUpdate?) {}
+    func workoutLiveActivity(_ update: WidgetWorkoutLiveUpdate?) {}
     func startEventLiveActivity(_ event: WidgetEventLiveStart) async -> Bool { false }
     func stopEventLiveActivity(eventId: String) async {}
     func isEventLiveActivityOn(eventId: String) -> Bool { false }
@@ -291,6 +297,40 @@ public struct WidgetEventLiveStart: Equatable, Sendable {
     public let photos: Int
     public init(eventId: String, name: String, emoji: String, members: Int, photos: Int) {
         self.eventId = eventId; self.name = name; self.emoji = emoji; self.members = members; self.photos = photos
+    }
+}
+
+/// What the lock screen shows for a workout in progress.
+public struct WidgetWorkoutLiveUpdate: Equatable, Sendable {
+    public let sessionId: String
+    public let name: String
+    /// The workout clock counts up from here by itself
+    public let startedAt: Date
+    public let doneSets: Int
+    public let totalSets: Int
+    /// The next set; all nil once every set is done
+    public let exerciseName: String?
+    /// "Set 2 of 4"
+    public let setLabel: String?
+    /// "135 lb × 8"
+    public let numbers: String?
+    /// What the lock screen's Done button ticks
+    public let nextSetId: String?
+    /// A rest countdown running, if any
+    public let restEndsAt: Date?
+
+    public init(sessionId: String, name: String, startedAt: Date, doneSets: Int, totalSets: Int, exerciseName: String?,
+                setLabel: String?, numbers: String?, nextSetId: String?, restEndsAt: Date?) {
+        self.sessionId = sessionId; self.name = name; self.startedAt = startedAt
+        self.doneSets = doneSets; self.totalSets = totalSets; self.exerciseName = exerciseName
+        self.setLabel = setLabel; self.numbers = numbers; self.nextSetId = nextSetId; self.restEndsAt = restEndsAt
+    }
+
+    public init(state: WorkoutLiveState, restEndsAt: Date?) {
+        self.init(sessionId: state.sessionId.uuidString, name: state.name, startedAt: state.startedAt,
+                  doneSets: state.doneSets, totalSets: state.totalSets, exerciseName: state.next?.exerciseName,
+                  setLabel: state.nextSetLabel, numbers: state.nextNumbers, nextSetId: state.next?.setId.uuidString,
+                  restEndsAt: restEndsAt.flatMap { $0 > Date() ? $0 : nil })
     }
 }
 

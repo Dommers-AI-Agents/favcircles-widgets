@@ -100,6 +100,21 @@ public enum WorkoutSessionLogic {
         return out
     }
 
+    /// Ticks one set done, the same way the row's checkmark does: an
+    /// untouched row commits what it was offering (reps AND weight), the
+    /// set becomes the person's own, and a changed set carries its numbers
+    /// down the prefilled rows below. Shared by the row and the lock screen.
+    public static func complete(_ setId: UUID, in sets: [SetEntry], target: SetTarget, now: Date = Date()) -> [SetEntry] {
+        guard let index = sets.firstIndex(where: { $0.id == setId }), sets[index].completedAt == nil else { return sets }
+        var out = sets
+        let changed = out[index].isPrefilled != true
+        if out[index].reps == 0, let reps = target.reps { out[index].reps = reps }
+        if out[index].weight == 0, let weight = target.weight { out[index].weight = weight }
+        out[index].completedAt = now
+        out[index].isPrefilled = nil
+        return changed ? rollingForward(from: setId, in: out) : out
+    }
+
     /// What a row should offer before anyone types in it.
     public struct SetTarget: Equatable, Sendable {
         public let reps: Int?

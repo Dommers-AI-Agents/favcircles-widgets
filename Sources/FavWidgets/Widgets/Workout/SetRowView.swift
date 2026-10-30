@@ -129,16 +129,14 @@ struct SetRowView: View {
         settings.update { model in
             guard var sets = model.activeSession?.sets,
                   let index = sets.firstIndex(where: { $0.id == setId }) else { return }
-            // Ticked exactly as last time: the rows below keep their own
-            // last-time numbers (a pyramid stays a pyramid). Changed first:
-            // the change carries down.
-            let changed = sets[index].isPrefilled != true
-            sets[index].completedAt = completing ? Date() : nil
-            if let fillReps { sets[index].reps = fillReps }
-            if let fillWeight { sets[index].weight = fillWeight }
-            // Ticked means done as shown: it's the person's set now
-            if completing { sets[index].isPrefilled = nil }
-            model.activeSession?.sets = completing && changed ? WorkoutSessionLogic.rollingForward(from: setId, in: sets) : sets
+            if completing {
+                // The same rule the lock screen's Done uses (fills, owns,
+                // carries a change down the prefilled rows)
+                model.activeSession?.sets = WorkoutSessionLogic.complete(setId, in: sets, target: target)
+            } else {
+                sets[index].completedAt = nil
+                model.activeSession?.sets = sets
+            }
         }
         if let fillReps { repsText = String(fillReps) }
         if let fillWeight { weightText = WorkoutFormat.decimalText(fillWeight) }

@@ -93,6 +93,25 @@ public struct WorkoutSettings: WidgetModel {
     public func exercise(id: String) -> Exercise? {
         allExercises.first { $0.id == id }
     }
+
+    /// A conflict while a workout is in progress: a set ticked elsewhere
+    /// (the lock screen) must survive the open screen's next save. Same
+    /// session: the screen's copy, plus any set the other copy has done that
+    /// this one hasn't, plus sets only the other copy has. Everything else
+    /// stays the screen's (the protocol default).
+    public static func merge(local: WorkoutSettings, remote: WorkoutSettings) -> WorkoutSettings {
+        var merged = local
+        guard let mine = local.activeSession, let theirs = remote.activeSession, mine.id == theirs.id else { return merged }
+        let theirSets = Dictionary(theirs.sets.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var sets = mine.sets.map { set -> SetEntry in
+            if set.completedAt == nil, let other = theirSets[set.id], other.completedAt != nil { return other }
+            return set
+        }
+        let known = Set(mine.sets.map(\.id))
+        sets.append(contentsOf: theirs.sets.filter { !known.contains($0.id) })
+        merged.activeSession?.sets = sets
+        return merged
+    }
 }
 
 /// One month of finished sessions (`workouts_yyyy-MM`).

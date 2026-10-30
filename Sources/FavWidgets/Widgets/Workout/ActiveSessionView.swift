@@ -106,6 +106,14 @@ struct ActiveSessionView: View {
             // Back goes to the widget's home page, not out of the widget.
             let back = onBack
             context.handleBack = { back(); return true }
+            pushLiveActivity()
+        }
+        // The lock screen follows every change here, and this screen catches
+        // up when a set is ticked on the lock screen
+        .onChange(of: settings.model.activeSession) { _ in pushLiveActivity() }
+        .onChange(of: restEndsAt) { _ in pushLiveActivity() }
+        .onReceive(NotificationCenter.default.publisher(for: WorkoutQuickLog.didChange)) { _ in
+            Task { await settings.reload() }
         }
         .onDisappear { context.handleBack = nil }
         .confirmationDialog("Discard this workout?", isPresented: $confirmDiscard, titleVisibility: .visible) {
@@ -359,6 +367,13 @@ struct ActiveSessionView: View {
         context.track("cardio_added", ["kind": kind.rawValue])
     }
 
+    /// The lock screen / Dynamic Island in step with this screen (2026-10-30)
+    private func pushLiveActivity() {
+        context.host.workoutLiveActivity(WorkoutLivePlan.state(settings.model).map {
+            WidgetWorkoutLiveUpdate(state: $0, restEndsAt: restEndsAt)
+        })
+    }
+
     private func startRest() {
         context.host.haptic(.light)
         context.track("set_completed")
@@ -404,6 +419,8 @@ struct ActiveSessionView: View {
             if autoApply, let update { model.routines = WorkoutSessionLogic.applying(update, to: model.routines) }
             model.activeSession = nil
         }
+        // Finished: off the lock screen
+        context.host.workoutLiveActivity(nil)
         if autoApply { context.track("workout_routine_updated", ["new": "0", "auto": "1"]) }
         restEndsAt = nil
         context.host.haptic(.success)
@@ -436,6 +453,7 @@ struct ActiveSessionView: View {
         guard completedCount == 0 else { return }
         settings.update { $0.activeSession = nil }
         restEndsAt = nil
+        context.host.workoutLiveActivity(nil)
         context.track("workout_discarded")
     }
 }
