@@ -4,7 +4,7 @@ import Foundation
 /// rules that decide distance, time and records are tested on a Mac.
 
 /// One GPS reading.
-public struct RunFix: Equatable, Sendable {
+public struct RunFix: Equatable, Sendable, Codable {
     public let latitude: Double
     public let longitude: Double
     public let time: Date
@@ -18,7 +18,7 @@ public struct RunFix: Equatable, Sendable {
 
 /// A run in progress: distance from accepted fixes, moving time that stops
 /// while paused, and the (distance, time) trail for splits and best efforts.
-public struct RunTrack: Equatable, Sendable {
+public struct RunTrack: Equatable, Sendable, Codable {
     /// Readings worse than this are ignored (indoors, start-up fixes).
     public static let maxAccuracy: Double = 25
     /// Faster than this between two fixes is a GPS jump, not running.

@@ -101,6 +101,9 @@ struct RunFullView: View {
         .widgetInlineNavigationTitle(context.descriptor.title)
         .task { await settings.loadIfNeeded() }
         .task { await openLaunchedRun() }
+        // A run saved before the app closed comes back here, and a restored
+        // run gets this page's context for watching and the coach
+        .onAppear { RunSession.shared.attach(context) }
         .onChange(of: session.finishRequested) { requested in if requested { finish() } }
         .sheet(item: $finished) { run in
             RunSummaryView(context: context, run: run, unit: settings.model.unit, isNew: true,

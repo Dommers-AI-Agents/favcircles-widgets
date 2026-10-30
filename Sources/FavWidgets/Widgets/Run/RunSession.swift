@@ -63,6 +63,12 @@ public final class RunSession: NSObject, ObservableObject {
     private var syncing = false
     private var ticker: Timer?
     private var lastLivePush = Date.distantPast
+    /// Saved to this phone every few seconds so the run survives the app
+    /// closing (RunCheckpoint). Kept by the session: a host passed to
+    /// `restoreIfNeeded` before any widget page exists must stay alive.
+    private var lastCheckpoint = Date.distantPast
+    private static let checkpointInterval: TimeInterval = 5
+    private var restoreHost: FavWidgetHost?
     #if os(iOS)
     private let manager = CLLocationManager()
     #endif
@@ -75,6 +81,10 @@ public final class RunSession: NSObject, ObservableObject {
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = 5
         manager.pausesLocationUpdatesAutomatically = false
+        // Leaving the app is when a save matters most
+        NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.checkpoint(force: true) }
+        }
         #endif
     }
 
@@ -123,7 +133,84 @@ public final class RunSession: NSObject, ObservableObject {
         phase = .running
         startTicker()
         pushLive(force: true)
+        checkpoint(force: true)
         inviteChosenFollowers()
+    }
+
+    // MARK: - Surviving the app closing
+
+    /// The app reopened with a run saved on this phone: pick it back up.
+    /// Safe to call any time (launch, the run page); does nothing while a run
+    /// is going or when there's none to resume.
+    public func restoreIfNeeded(host: FavWidgetHost) {
+        guard !isActive, let userId = host.currentUserId,
+              let saved = RunCheckpointFile(userId: userId).loadResumable(for: userId) else { return }
+        restoreHost = host
+        self.host = host
+        unit = saved.unit
+        coachOn = saved.coachOn
+        coachIntensity = saved.coachIntensity
+        coachedSplits = saved.coachedSplits
+        clientKey = saved.clientKey
+        track = saved.track
+        phase = saved.track.isPaused ? .paused : .running
+        problem = nil
+        finishRequested = false
+        waitingForGPS = !saved.track.isPaused
+        #if os(iOS)
+        if CLLocationManager.locationServicesEnabled(), manager.authorizationStatus != .denied, manager.authorizationStatus != .restricted {
+            manager.allowsBackgroundLocationUpdates = true
+            manager.showsBackgroundLocationIndicator = true
+            manager.startUpdatingLocation()
+            UIApplication.shared.isIdleTimerDisabled = true
+        } else {
+            problem = .locationDenied
+        }
+        #endif
+        startTicker()
+        pushLive(force: true)
+        pendingLiveRunId = saved.liveRunId
+    }
+
+    /// The run page opened: the session gets the page's context back (for
+    /// live watching and the coach) and a run saved before the app closed is
+    /// picked up if launch didn't already.
+    public func attach(_ context: WidgetContext) {
+        restoreIfNeeded(host: context.host)
+        guard isActive else { return }
+        self.context = context
+        self.host = context.host
+        restoreHost = nil
+        if let id = pendingLiveRunId {
+            pendingLiveRunId = nil
+            Task { @MainActor in
+                if let run = try? await RunShareClient(context: context).get(id), self.isActive, self.liveRun == nil {
+                    self.liveRun = run
+                    self.lastLiveSync = .distantPast
+                    self.syncLiveIfDue(force: true)
+                }
+            }
+        }
+    }
+
+    /// The shared run to reconnect to once a page gives us a context
+    private var pendingLiveRunId: String?
+
+    private func checkpoint(force: Bool = false) {
+        guard isActive, let track, let userId = host?.currentUserId else { return }
+        guard force || Date().timeIntervalSince(lastCheckpoint) >= Self.checkpointInterval else { return }
+        lastCheckpoint = Date()
+        let saved = RunCheckpoint(userId: userId, track: track, unit: unit, coachOn: coachOn, coachIntensity: coachIntensity,
+                                  coachedSplits: coachedSplits, clientKey: clientKey, liveRunId: liveRun?.id ?? pendingLiveRunId)
+        let file = RunCheckpointFile(userId: userId)
+        Task.detached(priority: .utility) { try? file.save(saved) }
+    }
+
+    private func clearCheckpoint() {
+        guard let userId = host?.currentUserId else { return }
+        RunCheckpointFile(userId: userId).clear()
+        pendingLiveRunId = nil
+        restoreHost = nil
     }
 
     /// The run is live for the followers picked before it: their "watch
@@ -182,6 +269,7 @@ public final class RunSession: NSObject, ObservableObject {
         track = t
         now = Date()
         pushLive(force: true)
+        checkpoint(force: true)
     }
 
     /// From the lock screen: pause and let the run page show the summary.
@@ -198,6 +286,7 @@ public final class RunSession: NSObject, ObservableObject {
         phase = .finished
         finishRequested = false
         host?.runLiveActivity(nil)
+        clearCheckpoint()
         let done = t
         track = nil
         phase = .idle
@@ -206,6 +295,7 @@ public final class RunSession: NSObject, ObservableObject {
 
     public func discard() {
         stopHardware()
+        clearCheckpoint()
         track = nil
         phase = .idle
         finishRequested = false
@@ -315,6 +405,7 @@ public final class RunSession: NSObject, ObservableObject {
         guard var t = track else { return }
         if t.add(fix) { waitingForGPS = false }
         track = t
+        checkpoint()
         coachIfMileDone()
     }
 
