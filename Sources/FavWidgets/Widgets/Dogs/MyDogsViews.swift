@@ -386,7 +386,10 @@ struct DogPlacePicker: View {
                 context.track("dog_spot_saved")
                 dismiss()
                 onSaved(DogFavoritePlace(name: place.name, address: place.address, placeId: saved.placeId ?? (place.isGlobal ? place.id : nil)))
-                if saved.alreadySaved == true, let circle = saved.circleName, circle != "Dog spots" {
+                // The server says whether it's the dog spots circle; never its name,
+                // which the person may have changed (the name check is for older servers)
+                if saved.alreadySaved == true, let circle = saved.circleName,
+                   !(saved.inDogSpots ?? (circle == "Dog spots")) {
                     context.host.presentAlert(WidgetAlert(
                         title: "Already on your map",
                         message: "\(place.name) is saved in your \(circle) circle, so it's linked here instead of saved twice."))
