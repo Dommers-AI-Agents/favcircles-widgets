@@ -17,7 +17,21 @@ import UIKit
 public final class SleepSoundEngine: ObservableObject {
     public static let shared = SleepSoundEngine()
 
-    @Published public private(set) var isPlaying = false
+    @Published public private(set) var isPlaying = false {
+        didSet { Self.setPlayingNow(isPlaying) }
+    }
+
+    /// Readable from any thread: the host's audio manager asks it before
+    /// touching the shared audio session (Sleep Sounds share it).
+    public nonisolated static var isPlayingNow: Bool {
+        playingLock.lock(); defer { playingLock.unlock() }
+        return playingNow
+    }
+    private nonisolated static let playingLock = NSLock()
+    nonisolated(unsafe) private static var playingNow = false
+    private nonisolated static func setPlayingNow(_ value: Bool) {
+        playingLock.lock(); playingNow = value; playingLock.unlock()
+    }
     @Published public private(set) var levels: [String: Double] = [:]
     @Published public private(set) var mixName: String = SleepMix.builtIns[0].name
     @Published public private(set) var masterVolume: Double = 0.8
