@@ -150,8 +150,12 @@ public final class SleepSoundEngine: ObservableObject {
             try startEngine()
         } catch {
             lastError = error.localizedDescription
+            SleepDiagnostics.note("play FAILED: \(error.localizedDescription)")
             return
         }
+        #if os(iOS)
+        SleepDiagnostics.note("play mix=\(mixName) timer=\(timerMinutes)m \(SleepDiagnostics.sessionState())")
+        #endif
         #endif
         isPlaying = true
         lastError = nil
@@ -167,6 +171,7 @@ public final class SleepSoundEngine: ObservableObject {
 
     public func pause() {
         guard isPlaying else { return }
+        SleepDiagnostics.note("pause")
         isPlaying = false
         timerEndsAt = nil
         stopTicker()
@@ -184,6 +189,7 @@ public final class SleepSoundEngine: ObservableObject {
     /// podcasts can resume, and logs the session.
     public func stop() {
         let wasPlaying = isPlaying
+        if wasPlaying { SleepDiagnostics.note("stop remaining=\(remaining.map { Int($0) } ?? -1)s") }
         isPlaying = false
         timerEndsAt = nil
         stopTicker()
@@ -308,19 +314,65 @@ public final class SleepSoundEngine: ObservableObject {
         observers.append(center.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] note in
             Task { @MainActor in self?.handleRouteChange(note) }
         })
+        // What the audio looks like at the moment the phone locks / the app leaves
+        observers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isPlaying else { return }
+                SleepDiagnostics.note("background engineRunning=\(self.engine?.isRunning ?? false) \(SleepDiagnostics.sessionState())")
+            }
+        })
+        observers.append(center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                SleepDiagnostics.note("mediaServicesWereReset")
+                self?.rebuildIfPlaying()
+            }
+        })
         #endif
     }
 
     private func handleConfigurationChange() {
         guard isPlaying, let engine, !engine.isRunning else { return }
-        try? engine.start()
-        recordings?.start()
+        do {
+            try engine.start()
+            recordings?.start()
+            SleepDiagnostics.note("configChange restarted")
+        } catch {
+            // The graph was built for the old output format; build a new one
+            SleepDiagnostics.note("configChange restart FAILED (\(error.localizedDescription)), rebuilding")
+            rebuildIfPlaying()
+        }
+    }
+
+    /// Tear the audio graph down and build it fresh, keeping the session
+    /// (timer, mix, levels) — after a format change or a media services reset.
+    private func rebuildIfPlaying() {
+        guard isPlaying else { return }
+        recordings?.stop()
+        recordings = nil
+        engine?.stop()
+        engine = nil
+        source = nil
+        do {
+            try activateSession()
+            try startEngine()
+            mixer.setMaster(masterVolume)
+            applyRecordingVolumes()
+            mixer.snap()
+            SleepDiagnostics.note("rebuilt")
+        } catch {
+            lastError = error.localizedDescription
+            SleepDiagnostics.note("rebuild FAILED: \(error.localizedDescription)")
+        }
     }
 
     #if os(iOS)
     private func handleInterruption(_ note: Notification) {
         guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+        #if os(iOS)
+        let reason = (note.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt).map(String.init) ?? "none"
+        SleepDiagnostics.note("interruption \(type == .began ? "began" : "ended") reason=\(reason) \(SleepDiagnostics.sessionState())")
+        #endif
         switch type {
         case .began:
             if isPlaying { pausedByInterruption = true; pause() }
@@ -336,6 +388,7 @@ public final class SleepSoundEngine: ObservableObject {
     private func handleRouteChange(_ note: Notification) {
         guard let raw = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
               let reason = AVAudioSession.RouteChangeReason(rawValue: raw) else { return }
+        if isPlaying { SleepDiagnostics.note("route change reason=\(reason.rawValue) \(SleepDiagnostics.sessionState())") }
         // Headphones pulled out: don't blast the room.
         if reason == .oldDeviceUnavailable, isPlaying { pause() }
     }

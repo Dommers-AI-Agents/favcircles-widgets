@@ -94,6 +94,9 @@ final class CoachVoice: NSObject {
     }
 
     private func releaseAudio() {
+        // Sleep Sounds shares this app's audio session: releasing it would
+        // silence them (and leave them dead once the phone locks)
+        if SleepSoundEngine.shared.isPlaying { return }
         // Music comes back up
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
