@@ -5,7 +5,8 @@ import FavWidgetsCore
 // the parent's own "Your week". The numbers come from CareReflection /
 // CareCopy in FavWidgetsCore; these only draw them.
 
-/// A 0–10 answer as ten small blocks.
+/// A 0–10 answer as ten small blocks, colored like a traffic light
+/// (CareScoreBand: 0–2 red, 3–6 yellow, 7–10 green; Wes, 2026-11-02)
 struct CareScaleBar: View {
     let context: WidgetContext
     let value: Int
@@ -13,15 +14,32 @@ struct CareScaleBar: View {
 
     var body: some View {
         let theme = context.theme
+        let fill = CareScoreBand.band(for: value).color(theme)
         HStack(spacing: 2) {
             ForEach(0..<10, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(i < value ? (warn ? theme.warning : context.accent) : theme.tertiaryBackground)
+                    .fill(i < value ? fill : theme.tertiaryBackground)
                     .frame(width: 6, height: 14)
             }
         }
         .accessibilityLabel("\(value) out of 10")
     }
+}
+
+extension CareScoreBand {
+    func color(_ theme: WidgetTheme) -> Color {
+        switch self {
+        case .low: return theme.danger
+        case .middle: return theme.warning
+        case .good: return theme.success
+        }
+    }
+}
+
+/// A scale answer's words in its band's color; other answers as before
+func careAnswerColor(_ ask: CareAsk, theme: WidgetTheme) -> Color {
+    if ask.kind == .scale, ask.isAnswered, let score = ask.answerScore { return CareScoreBand.band(for: score).color(theme) }
+    return ask.alert ? theme.warning : theme.label
 }
 
 /// One asked question and what came of it: glyph, question, answer, note, when.

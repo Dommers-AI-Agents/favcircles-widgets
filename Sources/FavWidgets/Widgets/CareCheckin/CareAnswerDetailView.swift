@@ -71,7 +71,7 @@ struct CareAnswerDetailView: View {
             HStack(alignment: .center, spacing: 12) {
                 Text(CareAnswerRow.answerLine(ask))
                     .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(ask.alert ? theme.warning : theme.label)
+                    .foregroundStyle(careAnswerColor(ask, theme: theme))
                 if ask.kind == .scale, let score = ask.answerScore { CareScaleBar(context: context, value: score, warn: ask.alert) }
             }
             if !ask.note.isEmpty { Text("“\(ask.note)”").font(.system(size: 16)).foregroundStyle(theme.label) }
@@ -167,7 +167,7 @@ struct CareAnswerDetailView: View {
                         .frame(width: 92, alignment: .leading)
                     Text(CareAnswerRow.answerLine(past))
                         .font(.system(size: 15, weight: past.isAnswered ? .medium : .regular))
-                        .foregroundStyle(past.isAnswered ? (past.alert ? theme.warning : theme.label) : theme.secondaryLabel)
+                        .foregroundStyle(past.isAnswered ? careAnswerColor(past, theme: theme) : theme.secondaryLabel)
                         .lineLimit(1)
                     Spacer()
                     if past.kind == .scale, let score = past.answerScore { CareScaleBar(context: context, value: score, warn: past.alert) }
