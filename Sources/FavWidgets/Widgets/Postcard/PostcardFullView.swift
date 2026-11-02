@@ -15,8 +15,14 @@ struct PostcardFullView: View {
     // Compose state (photo never leaves memory).
     @State var photo: PostcardPlatformImage?
     /// Add the sent card to the sender's Activity. Off by default: a
-    /// postcard is often a surprise (remembered per phone)
-    @AppStorage("postcard.showInActivity") var showInActivity = false
+    /// postcard is often a surprise. Remembered on the account (2026-11-01);
+    /// a choice made before that, on this phone, still counts until changed.
+    var showInActivity: Bool {
+        settings.model.showInActivity ?? UserDefaults.standard.bool(forKey: "postcard.showInActivity")
+    }
+    var showInActivityBinding: Binding<Bool> {
+        Binding(get: { showInActivity }, set: { on in settings.update { $0.showInActivity = on } })
+    }
     /// Where the photo sits on the card; the drag/pinch in progress is
     /// `photoCropLive` (preview only) until the gesture ends
     @State var photoCrop: PostcardCrop = .centered

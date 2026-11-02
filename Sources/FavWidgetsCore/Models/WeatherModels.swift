@@ -3,9 +3,14 @@ import Foundation
 /// Weather (Wes, 2026-10-07): the temperature on the home header and a full
 /// forecast widget. Saved cities like Apple's Weather app (2026-10-16): My
 /// Location plus a list you search, add, reorder and delete. The home header
-/// shows current location or one place (`mode`/`place`). Preferences live on
-/// the phone (`WeatherPrefs.load/save`).
-public struct WeatherPrefs: Codable, Equatable, Sendable {
+/// shows current location or one place (`mode`/`place`). Preferences are the
+/// account's `weather` document (2026-11-01: they survive a reinstall), with
+/// a copy on the phone (`WeatherPrefs.load/save`) so the header paints before
+/// the document loads.
+public struct WeatherPrefs: WidgetModel, Sendable {
+    public static let documentId = "weather"
+    public static let empty = WeatherPrefs()
+
     public enum Mode: String, Codable, Sendable { case current, fixed }
     /// What the home header shows
     public var mode: Mode
@@ -208,5 +213,18 @@ public enum WeatherCachePolicy {
     }
     public static func isFresh(_ fetchedAt: Date, now: Date = Date()) -> Bool {
         now.timeIntervalSince(fetchedAt) < freshFor && now >= fetchedAt
+    }
+}
+
+/// Which side wins when the account's weather document loads (2026-11-01).
+public enum WeatherPrefsSync {
+    public enum Decision: Equatable { case adoptAccount, uploadPhone, nothing }
+
+    /// `accountSaved`: the document exists on the server. A phone set up
+    /// before the document existed sends its choices up once; after that the
+    /// account's copy wins on every phone.
+    public static func decide(phone: WeatherPrefs, account: WeatherPrefs, accountSaved: Bool) -> Decision {
+        if accountSaved { return account == phone ? .nothing : .adoptAccount }
+        return phone == .empty ? .nothing : .uploadPhone
     }
 }

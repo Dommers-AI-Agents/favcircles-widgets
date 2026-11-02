@@ -44,6 +44,9 @@ public final class WidgetsTabModel: ObservableObject {
         self.calendar = calendar
         self.cache = WidgetStateCache(store: host.dataStore)
         self.prefs = cache.controller(WidgetPreferences.self, documentId: WidgetPreferences.documentId, schemaVersion: WidgetPreferences.schemaVersion)
+        // Weather's places and units are the account's (2026-11-01); the
+        // home header reads them too, so they load even with the card off
+        FavWeather.shared.bind(cache.controller(WeatherPrefs.self, documentId: WeatherPrefs.documentId, schemaVersion: 1))
         recomputeVisible()
     }
 
@@ -130,7 +133,10 @@ public final class WidgetsTabModel: ObservableObject {
     /// store data (not Weather or Recent Contacts).
     func shownHotIds() -> [String] {
         let shown = WidgetOrdering.visible(prefs: prefs.model, descriptors: descriptors)
-        return WidgetShardPlanner.hotIds(for: shown, now: Date(), calendar: calendar)
+        var ids = WidgetShardPlanner.hotIds(for: shown, now: Date(), calendar: calendar)
+        // The home header's weather choices load even with the card off
+        if !ids.contains(WeatherPrefs.documentId) { ids.append(WeatherPrefs.documentId) }
+        return ids
     }
 
     /// One request per ≤30 ids, in parallel, merged.

@@ -2,6 +2,7 @@ import Foundation
 import FavWidgetsCore
 import CoreLocation
 import WeatherKit
+import Combine
 
 /// Weather for the home header and the Weather widget (2026-10-07), from
 /// Apple's WeatherKit (the app holds the WeatherKit entitlement). One
@@ -33,8 +34,35 @@ public final class FavWeather: ObservableObject {
 
     private var cache: [String: WeatherForecast] = [:]
     private var inFlight: [String: Task<WeatherForecast, Error>] = [:]
+    /// The account's `weather` document (2026-11-01): choices made on this
+    /// phone go up to it, and a reinstall or another phone comes back to them
+    private var account: WidgetStateController<WeatherPrefs>?
+    private var accountWatch: AnyCancellable?
 
     private init() {}
+
+    /// The Widgets tab hands over the account's document (its batch load
+    /// always includes it); the phone's copy then follows it.
+    public func bind(_ controller: WidgetStateController<WeatherPrefs>) {
+        guard account !== controller else { return }
+        account = controller
+        accountWatch = controller.$hasLoaded.combineLatest(controller.$model)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak controller] loaded, model in
+                guard let self, let controller, loaded else { return }
+                switch WeatherPrefsSync.decide(phone: self.prefs, account: model, accountSaved: controller.isSaved) {
+                case .adoptAccount:
+                    self.prefs = model
+                    model.save()
+                    if let latest = self.latest { self.publishHeader(latest) }
+                case .uploadPhone:
+                    let phone = self.prefs
+                    controller.update { $0 = phone }
+                case .nothing:
+                    break
+                }
+            }
+    }
 
     public func update(_ change: (inout WeatherPrefs) -> Void) {
         var p = prefs
@@ -42,6 +70,7 @@ public final class FavWeather: ObservableObject {
         guard p != prefs else { return }
         prefs = p
         p.save()
+        account?.update { $0 = p }
         if let latest { publishHeader(latest) }
     }
 

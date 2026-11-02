@@ -15,7 +15,8 @@ public struct WeatherWidget: FavWidget {
         symbolName: "cloud.sun.fill",
         accentHex: "#2B8CD9",
         category: .health,
-        storage: .none,
+        // The account's `weather` document: places and units (2026-11-01)
+        storage: .single,
         shareBlurb: "The weather where you are, hour by hour and 10 days out."
     )
 

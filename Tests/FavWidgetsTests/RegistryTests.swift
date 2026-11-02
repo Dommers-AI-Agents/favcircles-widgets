@@ -45,12 +45,13 @@ struct RegistryTests {
         let model = WidgetsTabModel(host: host)
         await model.loadIfNeeded()
         // Every request fits the server's limit, together they cover the
-        // hot set once, and widgets that store nothing aren't asked for
+        // hot set once, and widgets that store nothing aren't asked for.
+        // Weather's places and units are always asked for (2026-11-01).
         let asked = store.batchRequests.flatMap { $0 }
         #expect(store.batchRequests.allSatisfy { $0.count <= WidgetsTabModel.batchChunkSize })
         #expect(store.loadCount == store.batchRequests.count)
         #expect(Set(asked) == Set(model.shownHotIds()) && asked.count == Set(asked).count)
-        #expect(!asked.contains("weather") && !asked.contains("newcontacts"))
+        #expect(asked.contains("weather") && !asked.contains("newcontacts"))
         #expect(model.hasLoaded && model.loadError == nil)
         model.setEnabled(false, id: "water")
         #expect(!model.visible.contains { $0.id == "water" })

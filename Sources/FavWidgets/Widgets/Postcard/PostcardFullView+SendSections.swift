@@ -43,7 +43,7 @@ extension PostcardFullView {
     func sendSection(_ theme: WidgetTheme) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             // Off by default: a postcard is often a surprise
-            Toggle(isOn: $showInActivity) {
+            Toggle(isOn: showInActivityBinding) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Show in my Activity")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(theme.label)

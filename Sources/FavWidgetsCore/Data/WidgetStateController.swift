@@ -32,6 +32,8 @@ public final class WidgetStateController<Model: WidgetModel>: ObservableObject {
     private let store: WidgetDataStore
     private let debounce: Duration
     private(set) var version = 0
+    /// The document exists on the server (it has been saved at least once)
+    public var isSaved: Bool { version > 0 }
     private var isDirty = false
     private var saveTask: Task<Void, Never>?
     private var inFlightSave: Task<Void, Never>?

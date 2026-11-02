@@ -59,10 +59,14 @@ public struct PostcardRecord: Codable, Equatable, Identifiable, Sendable {
 public struct PostcardSettings: WidgetModel {
     public var draft: PostcardDraft?
     public var lastTemplateId: String
+    /// "Show in my Activity" (2026-11-01: on the account, so a reinstall
+    /// keeps it); nil = never set, which reads as off
+    public var showInActivity: Bool?
 
-    public init(draft: PostcardDraft? = nil, lastTemplateId: String = "classic") {
+    public init(draft: PostcardDraft? = nil, lastTemplateId: String = "classic", showInActivity: Bool? = nil) {
         self.draft = draft
         self.lastTemplateId = lastTemplateId
+        self.showInActivity = showInActivity
     }
 
     public static let empty = PostcardSettings()

@@ -11,6 +11,20 @@ enum WaterReminderScheduler {
     static let identifierPrefix = "water-reminder-"
     static let notificationType = "water_reminder"
 
+    /// App foreground (2026-11-01): plans the reminders only when this phone
+    /// has none, so a reinstall gets them back without re-planning on every
+    /// return to the app. Never asks for permission it doesn't already have.
+    static func syncIfMissing(_ log: WaterLog, quietHours: WidgetQuietHours? = nil) async {
+        #if canImport(UserNotifications) && !os(macOS)
+        let center = UNUserNotificationCenter.current()
+        let hasAny = await center.pendingNotificationRequests().contains { $0.identifier.hasPrefix(identifierPrefix) }
+        guard !hasAny else { return }
+        let status = await center.notificationSettings().authorizationStatus
+        guard status == .authorized || status == .provisional else { return }
+        await sync(log, quietHours: quietHours)
+        #endif
+    }
+
     /// Requests permission if it hasn't been asked, then replaces every
     /// pending water reminder with the current plan. Returns false when
     /// notifications are denied so the UI can say so.
