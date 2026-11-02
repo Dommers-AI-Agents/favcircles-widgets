@@ -35,8 +35,26 @@ public struct EventSummary: Decodable, Identifiable, Equatable, Sendable {
     public let endedAt: String?
     public let challenges: [EventChallenge]?
     public let rollCall: EventRollCall?
+    /// 2026-11-02 (Evite-style; older servers omit them): when, where, what,
+    /// the viewer's own reply and everyone's totals.
+    public let startsAt: String?
+    public let endsAt: String?
+    public let timezone: String?
+    public let location: EventLocation?
+    public let details: String?
+    /// Said by the server in the event's own zone ("Saturday, November 8 · 7:00 PM EST")
+    public let whenText: String?
+    public let whereText: String?
+    public let calendarUrl: String?
+    public let myRsvp: EventMyRsvp?
+    public let rsvpCounts: EventRsvpCounts?
+    public let guestCount: Int?
 
     public var inviteURL: URL? { URL(string: inviteUrl) }
+    public var startDate: Date? { startsAt.flatMap(EventTimes.parse) }
+    public var endDate: Date? { endsAt.flatMap(EventTimes.parse) }
+    public var detailsText: String { details ?? "" }
+    public var emailGuestCount: Int { guestCount ?? 0 }
     public var invitedPeople: [Invitee] { invited ?? [] }
     public var isArchived: Bool { archived ?? false }
     public var isArchivedForEveryone: Bool { archivedForEveryone ?? false }
@@ -204,6 +222,12 @@ public struct EventInvitePreview: Decodable, Equatable, Sendable {
     public let memberCount: Int
     public let joinOpen: Bool
     public let alreadyMember: Bool
+    /// 2026-11-02 (older servers omit them)
+    public let whenText: String?
+    public let whereText: String?
+    public let details: String?
+    /// They already said they can't go
+    public let declined: Bool?
 }
 
 /// The words on the Events screens. Pure, so they're tested on a Mac.

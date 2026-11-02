@@ -7,6 +7,8 @@ struct EventInviteSheet: View {
     let event: EventSummary
     /// The event with its new "Invited" list
     var onInvited: (EventSummary) -> Void = { _ in }
+    /// The coordinator's "Invite by email" (nil for members)
+    var onEmailInvite: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var contacts: [WidgetContact] = []
     @State private var picked: Set<String> = []
@@ -30,6 +32,16 @@ struct EventInviteSheet: View {
                     }
                 } footer: {
                     Text("Anyone with the link can join. They get the app, tap the link, and they're in (+1 FavCoin).")
+                }
+                if let onEmailInvite {
+                    Section {
+                        Button { onEmailInvite() } label: {
+                            Label("Invite by email", systemImage: "envelope.badge")
+                                .font(.system(size: 16, weight: .semibold)).foregroundStyle(context.accent)
+                        }
+                    } footer: {
+                        Text("For people without the app: they reply Going, Maybe or Can't go from the email, and you see every answer here.")
+                    }
                 }
                 Section("Or invite your connections") {
                     ForEach(contacts.filter { !memberIds.contains($0.id) }) { contact in

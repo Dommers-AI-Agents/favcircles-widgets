@@ -166,12 +166,14 @@ struct EventCreateSheet: View {
     @State private var name = ""
     @State private var emoji = "🎉"
     @State private var busy = false
+    @State private var draft = EventDetailsDraft()
 
     var body: some View {
         let theme = context.theme
         WidgetSheet(title: "New event", theme: theme,
                     confirm: (label: busy ? "Creating…" : "Create", enabled: !busy && !name.trimmingCharacters(in: .whitespaces).isEmpty, action: create),
                     cancelDisabled: busy) {
+            ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text(emoji).font(.system(size: 64)).frame(maxWidth: .infinity)
                 WidgetUI.textField("Event name (Party Bus, Beach weekend…)", text: $name, theme: theme)
@@ -185,11 +187,12 @@ struct EventCreateSheet: View {
                         .buttonStyle(.plain)
                     }
                 }
-                Text("Next you'll get a link to drop in your group text. Anyone with it can join; you can remove people or close joining any time.")
+                EventDetailsFields(context: context, draft: $draft)
+                Text("Next you'll get a link to drop in your group text, or invite people by email. Anyone with the link can join; you can remove people or close joining any time.")
                     .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
-                Spacer()
             }
             .padding(16)
+            }
         }
     }
 
@@ -198,7 +201,7 @@ struct EventCreateSheet: View {
         Task { @MainActor in
             defer { busy = false }
             do {
-                let event = try await EventsClient(context: context).create(name: name, emoji: emoji)
+                let event = try await EventsClient(context: context).create(name: name, emoji: emoji, details: draft.requestBody)
                 context.host.haptic(.success)
                 context.track("event_created")
                 dismiss()
@@ -234,13 +237,31 @@ struct EventJoinSheet: View {
                     Text(preview.name).font(.system(size: 30, weight: .heavy, design: .rounded)).foregroundStyle(theme.label)
                     Text("\(preview.hostName) invited you · \(EventCopy.memberCount(preview.memberCount))")
                         .font(.system(size: 15)).foregroundStyle(theme.secondaryLabel)
+                    if let when = preview.whenText {
+                        Label(when, systemImage: "calendar").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+                    }
+                    if let whereText = preview.whereText {
+                        Label(whereText, systemImage: "mappin.and.ellipse").font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label)
+                            .multilineTextAlignment(.center)
+                    }
                     if preview.alreadyMember {
                         WidgetUI.primaryButton("You're in, open it", color: context.accent) { openExisting(preview) }
                     } else if !preview.joinOpen {
                         Text("Joining is closed for this event.").font(.system(size: 15)).foregroundStyle(theme.warning)
                     } else {
-                        WidgetUI.primaryButton(busy ? "Joining…" : EventCopy.joinButton(preview), color: context.accent) { join() }
-                            .disabled(busy)
+                        if preview.whenText != nil {
+                            // A planned event: answer like an invitation (2026-11-02)
+                            Text(preview.declined == true ? "You said you can't go. Changed your mind?" : "Can you make it?")
+                                .font(.system(size: 16, weight: .bold)).foregroundStyle(theme.label)
+                            HStack(spacing: 8) {
+                                replyButton("🎉 Going") { join(.yes) }
+                                replyButton("🤔 Maybe") { join(.maybe) }
+                                if preview.declined != true { replyButton("😢 Can't go", filled: false) { decline() } }
+                            }
+                        } else {
+                            WidgetUI.primaryButton(busy ? "Joining…" : EventCopy.joinButton(preview), color: context.accent) { join(.yes) }
+                                .disabled(busy)
+                        }
                         Text("Share photos with everyone there and save the places you go. +1 FavCoin 🌵 for joining.")
                             .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).multilineTextAlignment(.center)
                     }
@@ -261,12 +282,38 @@ struct EventJoinSheet: View {
         }
     }
 
-    private func join() {
+    private func replyButton(_ title: String, filled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 15, weight: .bold))
+                .frame(maxWidth: .infinity, minHeight: 46)
+                .foregroundStyle(filled ? .white : context.accent)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(filled ? context.accent : context.accent.opacity(0.12)))
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+    }
+
+    private func decline() {
         busy = true
         Task { @MainActor in
             defer { busy = false }
             do {
-                let result = try await EventsClient(context: context).join(token: token)
+                try await EventsClient(context: context).decline(token: token)
+                context.track("event_declined")
+                dismiss()
+                context.host.presentAlert(WidgetAlert(title: "Got it", message: "\(preview?.hostName ?? "The host") will see you can't make it. The invite link still works if that changes."))
+            } catch {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't send your reply", message: EventRsvpErrors.message(error)))
+            }
+        }
+    }
+
+    private func join(_ rsvp: EventRsvp) {
+        busy = true
+        Task { @MainActor in
+            defer { busy = false }
+            do {
+                let result = try await EventsClient(context: context).join(token: token, rsvp: rsvp)
                 celebrate = true
                 context.host.haptic(.success)
                 context.track("event_joined", ["coin": result.coinCredited ? "1" : "0"])

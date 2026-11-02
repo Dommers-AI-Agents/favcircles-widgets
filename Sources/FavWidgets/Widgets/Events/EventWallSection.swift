@@ -218,13 +218,3 @@ struct EventSongsSection: View {
     }
 }
 
-/// Server timestamps (ISO 8601, with or without fractional seconds).
-enum EventTimes {
-    static func date(_ iso: String) -> Date? {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: iso) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: iso)
-    }
-}

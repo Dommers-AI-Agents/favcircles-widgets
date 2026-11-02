@@ -20,8 +20,10 @@ struct EventsClient {
         // without it the server leaves them out (older apps showed them as live)
         let r: ListResponse = try await context.api(.get, "widgets/events?archived=1"); return r.events
     }
-    func create(name: String, emoji: String) async throws -> EventSummary {
-        let r: EventResponse = try await context.api(.post, "widgets/events", body: ["name": name, "emoji": emoji]); return r.event
+    func create(name: String, emoji: String, details: [String: Any] = [:]) async throws -> EventSummary {
+        var body: [String: Any] = ["name": name, "emoji": emoji]
+        body.merge(details) { _, new in new }
+        let r: EventResponse = try await context.api(.post, "widgets/events", body: body); return r.event
     }
     func detail(_ id: String) async throws -> EventDetail {
         try await context.api(.get, "widgets/events/\(id)")
@@ -29,8 +31,47 @@ struct EventsClient {
     func preview(token: String) async throws -> EventInvitePreview {
         let r: PreviewResponse = try await context.api(.get, "widgets/events/invite/\(token)"); return r.preview
     }
-    func join(token: String) async throws -> JoinResponse {
-        try await context.api(.post, "widgets/events/join", body: ["token": token])
+    /// `rsvp`: "yes" or "maybe" (both join; 2026-11-02)
+    func join(token: String, rsvp: EventRsvp = .yes) async throws -> JoinResponse {
+        try await context.api(.post, "widgets/events/join", body: ["token": token, "rsvp": rsvp.rawValue])
+    }
+    /// "Can't go" from an invite, without joining
+    func decline(token: String) async throws { let _: OK = try await context.api(.post, "widgets/events/decline", body: ["token": token]) }
+
+    // MARK: Email invites + RSVPs (2026-11-02)
+
+    func guests(_ id: String) async throws -> EventGuestList {
+        try await context.api(.get, "widgets/events/\(id)/guests")
+    }
+    struct EmailInviteResult: Decodable {
+        let invited: Int
+        let sent: Int
+        let alreadyInvited: Int
+        let invalid: [String]
+        let guests: [EventGuest]
+        let counts: EventRsvpCounts
+        let emailsLeftToday: Int?
+        let maxGuests: Int?
+        var list: EventGuestList { EventGuestList(guests: guests, counts: counts, emailsLeftToday: emailsLeftToday, maxGuests: maxGuests) }
+    }
+    func inviteByEmail(_ id: String, guests: [(email: String, name: String)], message: String) async throws -> EmailInviteResult {
+        try await context.api(.post, "widgets/events/\(id)/guests", body: [
+            "guests": guests.map { ["email": $0.email, "name": $0.name] },
+            "message": message
+        ])
+    }
+    private struct SentResponse: Decodable { let sent: Bool }
+    func resend(_ id: String, guest: String) async throws -> Bool {
+        let r: SentResponse = try await context.api(.post, "widgets/events/\(id)/guests/\(guest)/resend"); return r.sent
+    }
+    func removeGuest(_ id: String, guest: String) async throws { let _: OK = try await context.api(.delete, "widgets/events/\(id)/guests/\(guest)") }
+    struct MessageResult: Decodable { let emailed: Int; let pushed: Int }
+    func messageGuests(_ id: String, text: String, audience: EventRsvpCopy.Audience) async throws -> MessageResult {
+        try await context.api(.post, "widgets/events/\(id)/guests/message", body: ["text": text, "audience": audience.rawValue])
+    }
+    struct ReplyResult: Decodable { let rsvp: EventRsvp; let adults: Int; let kids: Int; let counts: EventRsvpCounts? }
+    func rsvp(_ id: String, _ rsvp: EventRsvp, adults: Int, kids: Int, note: String) async throws -> ReplyResult {
+        try await context.api(.post, "widgets/events/\(id)/rsvp", body: ["rsvp": rsvp.rawValue, "adults": adults, "kids": kids, "note": note])
     }
     func update(_ id: String, _ body: [String: Any]) async throws -> EventSummary {
         let r: EventResponse = try await context.api(.put, "widgets/events/\(id)", body: body); return r.event

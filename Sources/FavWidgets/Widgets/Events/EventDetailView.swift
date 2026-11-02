@@ -35,6 +35,10 @@ struct EventDetailView: View {
     @State private var toast: String?
     @State private var onLockScreen = false
     @State private var showMap = false
+    // Evite-style details and replies (2026-11-02)
+    @State private var showEditDetails = false
+    @State private var showGuests = false
+    @State private var showEmailInvite = false
     /// Why a video can't be added and Premium would allow it
     @State private var premiumPitch: String?
     @Environment(\.dismiss) private var dismiss
@@ -63,6 +67,10 @@ struct EventDetailView: View {
                         }
                         EventNotificationNudge(context: context, event: event)
                         header(event, theme: theme)
+                        EventWhenWhereCard(context: context, event: event, onEdit: { showEditDetails = true })
+                        EventReplyCard(context: context, event: event,
+                                       onUpdated: { _ in Task { await model.load() } },
+                                       onOpenGuests: { showGuests = true; context.track("event_guests_opened") })
                         if event.hasEnded { recapCard(event, theme: theme) }
                         if let rollCall = event.rollCall {
                             EventRollCallBanner(context: context, event: event, rollCall: rollCall) { updated in
@@ -202,7 +210,26 @@ struct EventDetailView: View {
         }
         .sheet(isPresented: $showInvite) {
             if let event = model.detail?.event {
-                EventInviteSheet(context: context, event: event) { model.replaceEvent($0) }
+                EventInviteSheet(context: context, event: event, onInvited: { model.replaceEvent($0) },
+                                 onEmailInvite: event.isHost && !event.hasEnded ? {
+                                     showInvite = false
+                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { showEmailInvite = true }
+                                 } : nil)
+            }
+        }
+        .sheet(isPresented: $showEditDetails) {
+            if let event = model.detail?.event {
+                EventEditDetailsSheet(context: context, event: event) { model.replaceEvent($0) }
+            }
+        }
+        .sheet(isPresented: $showGuests) {
+            if let event = model.detail?.event {
+                EventGuestsSheet(context: context, event: event) { Task { await model.load() } }
+            }
+        }
+        .sheet(isPresented: $showEmailInvite) {
+            if let event = model.detail?.event {
+                EventEmailInviteSheet(context: context, event: event, emailsLeft: nil) { _ in Task { await model.load() } }
             }
         }
         .alert("Rename event", isPresented: $renaming) {
@@ -286,6 +313,11 @@ struct EventDetailView: View {
         Menu {
             if event.isHost {
                 Button { newName = event.name; renaming = true } label: { Label("Rename", systemImage: "pencil") }
+                if !event.hasEnded {
+                    Button { showEditDetails = true } label: { Label("Date, place and details", systemImage: "calendar") }
+                    Button { showEmailInvite = true } label: { Label("Invite by email", systemImage: "envelope.badge") }
+                }
+                Button { showGuests = true } label: { Label("Guest list", systemImage: "person.3") }
                 Button { toggleJoin(event) } label: {
                     Label(event.joinOpen ? "Close joining" : "Open joining", systemImage: event.joinOpen ? "lock" : "lock.open")
                 }
