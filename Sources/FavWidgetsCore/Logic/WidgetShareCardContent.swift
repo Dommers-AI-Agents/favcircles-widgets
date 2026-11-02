@@ -16,7 +16,11 @@ public struct WidgetShareCardContent: Equatable, Sendable {
         public init(_ value: String, _ label: String) { self.value = value; self.label = label }
     }
 
-    /// The big line: "2.28 mi run", "Recent Contacts".
+    /// A small label over the headline ("😂 Dog joke"), for cards whose
+    /// headline is the thing itself (Wes, 2026-11-02: the joke should be
+    /// the big text, not "Dog joke")
+    public var kicker: String?
+    /// The big line: "2.28 mi run", "Recent Contacts", or a whole joke.
     public var headline: String
     /// One short line under it: a date, or what the widget does.
     public var detail: String?
@@ -34,8 +38,9 @@ public struct WidgetShareCardContent: Equatable, Sendable {
     /// (Wes, 2026-10-29: Share and Send-to-someone showed different cards).
     public var cardJPEG: Data?
 
-    public init(headline: String, detail: String? = nil, stats: [Stat] = [], imageJPEG: Data? = nil,
+    public init(kicker: String? = nil, headline: String, detail: String? = nil, stats: [Stat] = [], imageJPEG: Data? = nil,
                 linkTitle: String, url: URL? = nil, cardJPEG: Data? = nil) {
+        self.kicker = kicker
         self.headline = headline
         self.detail = detail
         self.stats = Array(stats.prefix(4))

@@ -203,6 +203,17 @@ public enum DailyDogKind: String, Codable, Sendable {
         }
     }
 
+    /// A joke on the share card: the setup, then the punchline on its own
+    /// line ("What do you call a dog that does science?\nA lab."). Other
+    /// text is unchanged. Pure.
+    public static func cardText(_ text: String, kind: DailyDogKind) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard kind == .joke, let mark = t.range(of: "? ") else { return t }
+        let punchline = t[mark.upperBound...].trimmingCharacters(in: .whitespaces)
+        guard !punchline.isEmpty else { return t }
+        return "\(t[..<mark.upperBound].trimmingCharacters(in: .whitespaces))\n\(punchline)"
+    }
+
     public var emoji: String {
         switch self {
         case .dogOfTheDay: return "🏆"

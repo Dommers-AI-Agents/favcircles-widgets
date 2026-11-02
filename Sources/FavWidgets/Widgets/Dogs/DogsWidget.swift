@@ -72,7 +72,18 @@ public struct DogsWidget: FavWidget {
     }
 
     static func shareCardContent(_ daily: DailyDog, image: Data?) -> WidgetShareCardContent {
-        WidgetShareCardContent(
+        // A joke, fact or line IS the card: it's the big text, the kind a small
+        // label over it. The Dog of the Day keeps its title and the dog's name.
+        if !daily.text.isEmpty && daily.kind != .dogOfTheDay {
+            return WidgetShareCardContent(
+                kicker: "\(daily.kind.emoji) \(daily.kind.label)",
+                headline: DailyDogKind.cardText(daily.text, kind: daily.kind),
+                imageJPEG: image,
+                linkTitle: "🐾 Today's Daily Dog",
+                url: daily.linkURL
+            )
+        }
+        return WidgetShareCardContent(
             headline: "\(daily.kind.emoji) \(daily.kind.label)",
             detail: daily.text.isEmpty ? daily.post?.dogNames : daily.text,
             imageJPEG: image,

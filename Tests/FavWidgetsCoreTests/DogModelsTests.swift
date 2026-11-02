@@ -227,4 +227,13 @@ struct DogSpotSearchTests {
     @Test func emptyQueryShowsNoSaves() {
         #expect(DogSpotSearch.matchingSaves([place("g1", "Skiptown", 0, 0)], query: "  ").isEmpty)
     }
+
+    /// The share card's joke: setup, then the punchline on its own line (2026-11-02)
+    @Test func jokeCardTextPutsThePunchlineOnItsOwnLine() {
+        #expect(DailyDogKind.cardText("What do you call a dog that does science? A lab.", kind: .joke)
+                == "What do you call a dog that does science?\nA lab.")
+        #expect(DailyDogKind.cardText("Dogs can smell your feelings? Maybe.", kind: .fact)
+                == "Dogs can smell your feelings? Maybe.")
+        #expect(DailyDogKind.cardText("  No question here.  ", kind: .joke) == "No question here.")
+    }
 }

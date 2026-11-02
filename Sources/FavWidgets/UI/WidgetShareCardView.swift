@@ -22,8 +22,16 @@ struct WidgetShareCardView: View {
             }
             .foregroundStyle(.white.opacity(0.9))
             VStack(alignment: .leading, spacing: 3) {
-                Text(content.headline).font(.system(size: 28, weight: .bold, design: .rounded)).foregroundStyle(.white)
-                    .lineLimit(2).minimumScaleFactor(0.7)
+                if let kicker = content.kicker {
+                    Text(kicker.uppercased()).font(.system(size: 13, weight: .heavy)).tracking(0.6)
+                        .foregroundStyle(.white.opacity(0.85)).padding(.bottom, 4)
+                }
+                // With a kicker the headline is the content itself (a joke):
+                // room for a few lines, still large
+                Text(content.headline).font(.system(size: content.kicker == nil ? 28 : 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(content.kicker == nil ? 2 : 6).minimumScaleFactor(0.7)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let detail = content.detail {
                     Text(detail).font(.system(size: 15)).foregroundStyle(.white.opacity(0.9)).lineLimit(5)
                 }
