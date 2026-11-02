@@ -146,11 +146,18 @@ struct WeatherFullView: View {
             await refreshAll(force: false)
             attribution = await weather.attribution()
         }
+        // While searching, Back clears the search and shows your places
+        // instead of leaving the widget
+        .onChange(of: query.isEmpty) { empty in
+            context.handleBack = empty ? nil : { query = ""; return true }
+        }
+        .onDisappear { context.handleBack = nil }
         .sheet(item: $opened) { target in
             // Search results open on their own; My Location and saved
             // cities open in the pager, swiped between like the Weather app
             if case .preview = target {
-                WeatherPlaceSheet(context: context, target: target)
+                // Adding a city ends the search: back to the list with it in
+                WeatherPlaceSheet(context: context, target: target) { query = "" }
             } else {
                 WeatherPagerSheet(context: context, start: target)
             }
@@ -412,6 +419,7 @@ struct WeatherPagerSheet: View {
 struct WeatherPlaceSheet: View {
     let context: WidgetContext
     let target: WeatherTarget
+    var onAdded: () -> Void = {}
     @ObservedObject private var weather = FavWeather.shared
     @Environment(\.dismiss) private var dismiss
 
@@ -430,6 +438,7 @@ struct WeatherPlaceSheet: View {
                                 weather.addPlace(place)
                                 context.host.haptic(.success)
                                 context.track("weather_city_added")
+                                onAdded()
                                 dismiss()
                             }
                             .disabled(weather.prefs.savedPlaces.count >= WeatherPrefs.maxSaved)
