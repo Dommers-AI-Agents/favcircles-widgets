@@ -278,7 +278,9 @@ struct EventReplyCard: View {
     var body: some View {
         let theme = context.theme
         VStack(alignment: .leading, spacing: 12) {
-            if !event.isHost && !event.hasEnded {
+            // Asked only once there's a date to answer for (an undated Party Bus
+            // stays as it was)
+            if !event.isHost && !event.hasEnded && event.whenText != nil {
                 Text(EventRsvpCopy.myReply(currentReply) ?? "Are you going?")
                     .font(.system(size: 16, weight: .bold)).foregroundStyle(theme.label)
                 HStack(spacing: 8) {
