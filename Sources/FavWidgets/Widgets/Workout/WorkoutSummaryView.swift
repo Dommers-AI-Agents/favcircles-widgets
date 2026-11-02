@@ -203,16 +203,25 @@ struct WorkoutSummaryView: View {
     }
 
     private var toConnections: Bool { settings.model.shareAudience == "connections" }
+    private var toFollowers: Bool { settings.model.shareAudience == "followers" }
+    private var toInnerCircle: Bool { !toConnections && !toFollowers }
 
     private var audienceTitle: String {
+        if toFollowers { return "My followers" }
         if toConnections { return "All my connections" }
         return chosenList?.name ?? (audience.lists.isEmpty ? "My Inner Circle" : "Anyone on my lists")
     }
 
-    /// Who sees it: all connections, or the Inner Circle — anyone on any
-    /// list (what a post with no list has always meant) or one named list.
+    /// Who sees it: everyone who follows you (connections included), all
+    /// connections, or the Inner Circle — anyone on any list (what a post with
+    /// no list has always meant) or one named list.
     private var audiencePicker: some View {
         Menu {
+            Button {
+                settings.update { $0.shareAudience = "followers"; $0.shareListId = nil }
+            } label: {
+                Label("My followers", systemImage: toFollowers ? "checkmark" : "")
+            }
             Button {
                 settings.update { $0.shareAudience = "connections"; $0.shareListId = nil }
             } label: {
@@ -222,14 +231,14 @@ struct WorkoutSummaryView: View {
                 settings.update { $0.shareAudience = nil; $0.shareListId = nil }
             } label: {
                 Label(audience.lists.isEmpty ? "My Inner Circle" : "Anyone on my Inner Circle lists",
-                      systemImage: !toConnections && settings.model.shareListId == nil ? "checkmark" : "")
+                      systemImage: toInnerCircle && settings.model.shareListId == nil ? "checkmark" : "")
             }
             ForEach(audience.lists) { list in
                 Button {
                     settings.update { $0.shareAudience = nil; $0.shareListId = list.id }
                 } label: {
                     Label("\(list.name) · \(list.count == 1 ? "1 person" : "\(list.count) people")",
-                          systemImage: !toConnections && settings.model.shareListId == list.id ? "checkmark" : "")
+                          systemImage: toInnerCircle && settings.model.shareListId == list.id ? "checkmark" : "")
                 }
             }
         } label: {
@@ -265,10 +274,10 @@ struct WorkoutSummaryView: View {
             defer { posting = false }
             do {
                 try await WorkoutFeedAPI.share(context: context, summary: share,
-                                               audience: toConnections ? "connections" : "innerCircle",
-                                               audienceListId: toConnections ? nil : chosenList?.id)
+                                               audience: toFollowers ? "followers" : (toConnections ? "connections" : "innerCircle"),
+                                               audienceListId: toInnerCircle ? chosenList?.id : nil)
                 posted = true
-                context.track(toConnections ? "workout_posted_connections" : "workout_posted_inner_circle")
+                context.track(toFollowers ? "workout_posted_followers" : (toConnections ? "workout_posted_connections" : "workout_posted_inner_circle"))
                 dismiss()
             } catch {
                 context.host.presentAlert(WidgetAlert(title: "Couldn't share your workout", message: error.localizedDescription))

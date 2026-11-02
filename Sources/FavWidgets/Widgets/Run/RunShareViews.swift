@@ -329,9 +329,9 @@ struct RunLiveBadge: View {
 
 // MARK: - Post to activity (runner)
 
-/// Share a finished run to the activity feed: connections or one Inner
-/// Circle list (never "anyone on my lists" — Wes, 2026-10-02), with a map of
-/// the route as the picture.
+/// Share a finished run to the activity feed: followers (and connections),
+/// connections, or one Inner Circle list (never "anyone on my lists" — Wes,
+/// 2026-10-02), with a map of the route as the picture.
 struct RunPostSheet: View {
     let context: WidgetContext
     let record: RunRecord
@@ -342,6 +342,7 @@ struct RunPostSheet: View {
     /// Remembers the audience of the last posted run.
     @ObservedObject private var settings: WidgetStateController<RunSettings>
     @State private var listId: String?          // nil = all connections
+    @State private var toFollowers: Bool        // everyone who follows you
     @State private var posting = false
     @Environment(\.dismiss) private var dismiss
 
@@ -351,6 +352,7 @@ struct RunPostSheet: View {
         self.audience = WorkoutAudienceStore.shared(context)
         self.settings = settings
         _listId = State(initialValue: settings.model.initialPostListId(listIds: nil))
+        _toFollowers = State(initialValue: settings.model.postToFollowers == true)
     }
 
     var body: some View {
@@ -364,9 +366,10 @@ struct RunPostSheet: View {
                     Text("\(RunMath.distanceText(record.distanceMeters, unit: unit)) \(unit.label) · \(RunMath.clock(record.movingSeconds)) · \(RunMath.paceText(record.pace(unit)))/\(unit.label)")
                         .font(.system(size: 17, weight: .bold)).foregroundStyle(theme.label)
                     Text("Who sees it").font(.system(size: 13, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
-                    choice("My connections", selected: listId == nil) { listId = nil }
+                    choice("My followers", selected: toFollowers) { toFollowers = true; listId = nil }
+                    choice("My connections", selected: !toFollowers && listId == nil) { toFollowers = false; listId = nil }
                     ForEach(audience.lists) { list in
-                        choice("\(list.name) (\(list.count))", selected: listId == list.id) { listId = list.id }
+                        choice("\(list.name) (\(list.count))", selected: !toFollowers && listId == list.id) { toFollowers = false; listId = list.id }
                     }
                 }
                 .padding(16)
@@ -394,6 +397,10 @@ struct RunPostSheet: View {
         .buttonStyle(.plain)
     }
 
+    private var audienceKey: String {
+        toFollowers ? "followers" : (listId == nil ? "connections" : "innerCircle")
+    }
+
     private func post() {
         posting = true
         Task { @MainActor in
@@ -402,12 +409,13 @@ struct RunPostSheet: View {
             if let jpeg = await RunMapSnapshot.jpeg(record.coordinates) { mapURL = try? await context.host.uploadImage(jpeg) }
             do {
                 _ = try await RunShareClient(context: context).post(runId: sharedRunId, record: record, unit: unit,
-                                                                    audience: listId == nil ? "connections" : "innerCircle",
-                                                                    listId: listId, mapImageUrl: mapURL)
+                                                                    audience: audienceKey,
+                                                                    listId: toFollowers ? nil : listId, mapImageUrl: mapURL)
                 context.host.haptic(.success)
-                let posted = listId
-                settings.update { $0.postListId = posted }
-                context.track("run_posted", ["audience": listId == nil ? "connections" : "list"])
+                let posted = toFollowers ? nil : listId
+                let followers = toFollowers
+                settings.update { $0.postListId = posted; $0.postToFollowers = followers }
+                context.track("run_posted", ["audience": toFollowers ? "followers" : (listId == nil ? "connections" : "list")])
                 onPosted()
                 dismiss()
             } catch {

@@ -19,6 +19,8 @@ public struct RunSettings: WidgetModel {
     /// The Inner Circle list the last run was posted to; nil = My connections.
     /// "Post your run" opens on it (Wes, 2026-10-09: remember the last choice).
     public var postListId: String?
+    /// The last run went to all followers (2026-11-02); wins over `postListId`.
+    public var postToFollowers: Bool?
 
     public init(unit: RunUnit = .localeDefault, weightKg: Double? = nil, followers: [RunFollower]? = nil,
                 coach: Bool? = nil, coachIntensity: MotivationIntensity? = nil, postListId: String? = nil) {

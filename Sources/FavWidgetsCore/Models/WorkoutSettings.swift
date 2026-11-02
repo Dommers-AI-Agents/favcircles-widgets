@@ -24,8 +24,9 @@ public struct WorkoutSettings: WidgetModel {
     /// Which named Inner Circle list the finished workout is posted to; nil
     /// means anyone on any of the person's lists.
     public var shareListId: String?
-    /// Who a shared workout goes to: "connections" (everyone connected, via
-    /// the activity feed) or nil = the Inner Circle, as before (schema 6).
+    /// Who a shared workout goes to: "followers" (everyone who follows you,
+    /// connections included; 2026-11-02), "connections" (everyone connected,
+    /// via the activity feed) or nil = the Inner Circle, as before (schema 6).
     public var shareAudience: String?
     /// The person's Inner Circle may browse their whole workout history from
     /// a shared workout (schema 7). Off by default; the phone sends the
