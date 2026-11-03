@@ -20,28 +20,37 @@ public enum ExerciseCatalog {
         Exercise(id: "bicep_curl", name: "Bicep Curl", muscleGroup: "Arms"),
         Exercise(id: "tricep_pushdown", name: "Tricep Pushdown", muscleGroup: "Arms"),
         Exercise(id: "plank", name: "Plank", muscleGroup: "Core"),
-        Exercise(id: "hanging_leg_raise", name: "Hanging Leg Raise", muscleGroup: "Core")
+        Exercise(id: "hanging_leg_raise", name: "Hanging Leg Raise", muscleGroup: "Core"),
+        // Added for the example routines (2026-11-03). Add, never rename:
+        // logs and PRs are keyed by these ids.
+        Exercise(id: "db_bench_press", name: "Dumbbell Bench Press", muscleGroup: "Chest"),
+        Exercise(id: "chest_fly", name: "Chest Fly", muscleGroup: "Chest"),
+        Exercise(id: "dips", name: "Dips", muscleGroup: "Chest"),
+        Exercise(id: "goblet_squat", name: "Goblet Squat", muscleGroup: "Legs"),
+        Exercise(id: "bodyweight_squat", name: "Bodyweight Squat", muscleGroup: "Legs"),
+        Exercise(id: "split_squat", name: "Bulgarian Split Squat", muscleGroup: "Legs"),
+        Exercise(id: "hip_thrust", name: "Hip Thrust", muscleGroup: "Legs"),
+        Exercise(id: "glute_bridge", name: "Glute Bridge", muscleGroup: "Legs"),
+        Exercise(id: "leg_extension", name: "Leg Extension", muscleGroup: "Legs"),
+        Exercise(id: "leg_curl", name: "Leg Curl", muscleGroup: "Legs"),
+        Exercise(id: "calf_raise", name: "Calf Raise", muscleGroup: "Legs"),
+        Exercise(id: "step_up", name: "Step-Up", muscleGroup: "Legs"),
+        Exercise(id: "db_row", name: "Dumbbell Row", muscleGroup: "Back"),
+        Exercise(id: "seated_cable_row", name: "Seated Cable Row", muscleGroup: "Back"),
+        Exercise(id: "face_pull", name: "Face Pull", muscleGroup: "Shoulders"),
+        Exercise(id: "db_shoulder_press", name: "Dumbbell Shoulder Press", muscleGroup: "Shoulders"),
+        Exercise(id: "pike_push_up", name: "Pike Push-Up", muscleGroup: "Shoulders"),
+        Exercise(id: "hammer_curl", name: "Hammer Curl", muscleGroup: "Arms"),
+        Exercise(id: "skull_crusher", name: "Skull Crusher", muscleGroup: "Arms"),
+        Exercise(id: "crunch", name: "Crunch", muscleGroup: "Core"),
+        Exercise(id: "russian_twist", name: "Russian Twist", muscleGroup: "Core"),
+        Exercise(id: "dead_bug", name: "Dead Bug", muscleGroup: "Core"),
+        Exercise(id: "mountain_climber", name: "Mountain Climber", muscleGroup: "Cardio"),
+        Exercise(id: "burpee", name: "Burpee", muscleGroup: "Cardio"),
+        Exercise(id: "jumping_jack", name: "Jumping Jack", muscleGroup: "Cardio")
     ]
 
-    /// Starter routines offered until the user makes their own.
-    public static let starterRoutines: [Routine] = [
-        Routine(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, name: "Push", items: [
-            RoutineItem(exerciseId: "bench_press", targetSets: 4, targetReps: 8),
-            RoutineItem(exerciseId: "overhead_press", targetSets: 3, targetReps: 10),
-            RoutineItem(exerciseId: "incline_db_press", targetSets: 3, targetReps: 10),
-            RoutineItem(exerciseId: "tricep_pushdown", targetSets: 3, targetReps: 12)
-        ]),
-        Routine(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, name: "Pull", items: [
-            RoutineItem(exerciseId: "deadlift", targetSets: 3, targetReps: 5),
-            RoutineItem(exerciseId: "barbell_row", targetSets: 4, targetReps: 8),
-            RoutineItem(exerciseId: "lat_pulldown", targetSets: 3, targetReps: 10),
-            RoutineItem(exerciseId: "bicep_curl", targetSets: 3, targetReps: 12)
-        ]),
-        Routine(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!, name: "Legs", items: [
-            RoutineItem(exerciseId: "squat", targetSets: 4, targetReps: 8),
-            RoutineItem(exerciseId: "romanian_deadlift", targetSets: 3, targetReps: 10),
-            RoutineItem(exerciseId: "leg_press", targetSets: 3, targetReps: 12),
-            RoutineItem(exerciseId: "lunge", targetSets: 3, targetReps: 12)
-        ])
-    ]
+    /// Every example routine (see `WorkoutTemplates`). Routines are looked
+    /// up by id for a workout in progress, so these stay findable.
+    public static var starterRoutines: [Routine] { WorkoutTemplates.all.map(\.routine) }
 }

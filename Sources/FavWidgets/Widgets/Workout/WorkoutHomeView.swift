@@ -12,6 +12,9 @@ struct WorkoutHomeView: View {
     @State private var selectedSession: WorkoutSession?
     @State private var confirmDeleteRoutine: Routine?
     @State private var oldestMonth: MonthKey
+    /// An example routine's preview, and "Pick one for me" (2026-11-03)
+    @State private var previewTemplate: WorkoutTemplate?
+    @State private var showPicker = false
 
     private struct RoutineEditorTarget: Identifiable {
         let id: UUID
@@ -26,8 +29,10 @@ struct WorkoutHomeView: View {
     }
 
     private var theme: WidgetTheme { context.theme }
-    private var usesStarters: Bool { settings.model.routines.isEmpty }
-    private var routines: [Routine] { usesStarters ? ExerciseCatalog.starterRoutines : settings.model.routines }
+    private var routines: [Routine] { settings.model.routines }
+    /// Nothing of their own yet: no routines, no workouts. The start page
+    /// leads with "Pick one for me" until then.
+    private var isNewHere: Bool { settings.model.routines.isEmpty && context.recentWorkouts().isEmpty }
     private var hasActive: Bool { settings.model.activeSession != nil }
 
     private var months: [MonthKey] {
@@ -61,6 +66,15 @@ struct WorkoutHomeView: View {
         .sheet(isPresented: $showSettings) { WorkoutSettingsView(context: context, settings: settings) }
         .sheet(item: $editor) { target in RoutineEditorView(context: context, settings: settings, routine: target.routine) }
         .sheet(item: $selectedSession) { session in WorkoutSessionDetailView(context: context, settings: settings, session: session) }
+        .sheet(item: $previewTemplate) { template in
+            WorkoutTemplatePreview(context: context, settings: settings, template: template) { routine in start(routine) }
+        }
+        .sheet(isPresented: $showPicker) {
+            WorkoutTemplatePicker(context: context) { template in
+                showPicker = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { previewTemplate = template }
+            }
+        }
         .confirmationDialog("Delete routine?", isPresented: Binding(get: { confirmDeleteRoutine != nil }, set: { if !$0 { confirmDeleteRoutine = nil } }), titleVisibility: .visible) {
             Button("Delete \(confirmDeleteRoutine?.name ?? "routine")", role: .destructive) {
                 if let routine = confirmDeleteRoutine {
@@ -132,21 +146,17 @@ struct WorkoutHomeView: View {
     @ViewBuilder
     private var startSection: some View {
         if !hasActive {
+            if isNewHere { newHereCard }
+            if !routines.isEmpty {
+                WidgetUI.header("My routines", theme: theme)
+                    .listRowSeparator(.hidden)
+            }
             ForEach(routines) { routine in
                 Button { start(routine) } label: {
                     HStack(spacing: 12) {
                         Image(systemName: "play.circle.fill").font(.system(size: 28)).foregroundStyle(context.accent)
                         VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text(routine.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
-                                if usesStarters {
-                                    Text("Starter")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(theme.secondaryLabel)
-                                        .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Capsule().fill(theme.tertiaryBackground))
-                                }
-                            }
+                            Text(routine.name).font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
                             Text(routine.items.compactMap { settings.model.exercise(id: $0.exerciseId)?.name }.joined(separator: ", "))
                                 .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(1)
                         }
@@ -158,12 +168,10 @@ struct WorkoutHomeView: View {
                 .buttonStyle(.plain)
                 .listRowSeparator(.hidden)
                 .contextMenu {
-                    Button { editor = RoutineEditorTarget(id: routine.id, routine: usesStarters ? Routine(name: routine.name, items: routine.items) : routine) } label: {
-                        Label(usesStarters ? "Copy to my routines" : "Edit", systemImage: "pencil")
+                    Button { editor = RoutineEditorTarget(id: routine.id, routine: routine) } label: {
+                        Label("Edit", systemImage: "pencil")
                     }
-                    if !usesStarters {
-                        Button(role: .destructive) { confirmDeleteRoutine = routine } label: { Label("Delete", systemImage: "trash") }
-                    }
+                    Button(role: .destructive) { confirmDeleteRoutine = routine } label: { Label("Delete", systemImage: "trash") }
                 }
             }
             HStack(spacing: 10) {
@@ -180,7 +188,58 @@ struct WorkoutHomeView: View {
             }
             .padding(.vertical, 6)
             .listRowSeparator(.hidden)
+
+            // Example routines, always (Wes, 2026-11-03: nobody starts from scratch)
+            HStack {
+                WidgetUI.header("Example routines", theme: theme)
+                Spacer()
+                if !isNewHere {
+                    Button("Pick one for me") { showPicker = true }
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(context.accent)
+                        .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 8)
+            .listRowSeparator(.hidden)
+            WorkoutTemplateGallery(context: context) { template in
+                context.track("workout_template_opened", ["template": template.name])
+                previewTemplate = template
+            }
+            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 0))
+            .listRowSeparator(.hidden)
         }
+    }
+
+    /// First visit: a welcome that gets them to a routine in two taps
+    private var newHereCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "figure.strengthtraining.traditional")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("New here? Don't start from scratch.")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            Text("Answer two quick questions and we'll pick a routine for you, or browse the examples below. Every set you log remembers your weights for next time.")
+                .font(.system(size: 14))
+                .foregroundStyle(.white.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+            Button { showPicker = true } label: {
+                Text("Pick one for me")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(context.accent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.white))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(
+            LinearGradient(colors: [context.accent, context.accent.opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing)))
+        .listRowSeparator(.hidden)
     }
 
     private func start(_ routine: Routine?) {
@@ -188,7 +247,8 @@ struct WorkoutHomeView: View {
         let session = routine.map { WorkoutSessionLogic.session(from: $0, history: context.recentWorkouts()) } ?? WorkoutSession(name: "Workout")
         settings.update { $0.activeSession = session }
         context.host.haptic(.light)
-        context.track("workout_started", ["routine": routine == nil ? "empty" : (usesStarters ? "starter" : "own")])
+        let isExample = routine.map { r in WorkoutTemplates.template(id: r.id) != nil } ?? false
+        context.track("workout_started", ["routine": routine == nil ? "empty" : (isExample ? "example" : "own")])
     }
 
     // MARK: History
