@@ -137,17 +137,17 @@ struct DogsFullView: View {
         if let id = context.launchDogPostId {
             context.launchDogPostId = nil
             tab = .park
-            await context.waitForPageToSettle()
-            do { openPost = try await client.post(id) } catch {
+            do {
+                let post = try await client.post(id)
+                await context.presentLaunched { openPost = post }
+            } catch {
                 context.host.presentAlert(WidgetAlert(title: "That post is gone", message: "It may have been deleted. There are plenty more good dogs in the Dog Park."))
             }
         } else if let id = context.launchDailyDogId {
             context.launchDailyDogId = nil
             tab = .daily
-            await context.waitForPageToSettle()
-            do { openDaily = try await client.dailyItem(id) } catch {
-                if let today = store.me.today { openDaily = today }
-            }
+            // The cover opens at once with its cartoon and fetches the line itself
+            await context.presentLaunched { openDaily = DailyDog(id: id, date: "", kind: .line, text: "") }
         }
     }
 }

@@ -237,3 +237,21 @@ struct DogSpotSearchTests {
         #expect(DailyDogKind.cardText("  No question here.  ", kind: .joke) == "No question here.")
     }
 }
+
+/// Daily Dog scenes (2026-11-05): each open plays a different one.
+struct DailyDogSceneTests {
+    @Test func neverRepeatsTheLastScene() {
+        for last in DailyDogScene.allCases {
+            for roll in [0, 1, 5, 99, -3, Int.min, Int.max] {
+                #expect(DailyDogScene.next(after: last.rawValue, roll: roll) != last)
+            }
+        }
+    }
+
+    @Test func everyOtherSceneCanComeUpAndNoHistoryMeansAnyScene() {
+        let picked = Set((0..<50).map { DailyDogScene.next(after: "wag", roll: $0) })
+        #expect(picked == Set(DailyDogScene.allCases.filter { $0 != .wag }))
+        #expect(Set((0..<50).map { DailyDogScene.next(after: nil, roll: $0) }) == Set(DailyDogScene.allCases))
+        #expect(Set((0..<50).map { DailyDogScene.next(after: "gone", roll: $0) }).count == DailyDogScene.allCases.count)
+    }
+}

@@ -169,14 +169,19 @@ struct DailyDogCard: View {
 }
 
 /// One Daily Dog full screen (the push lands here): Pet when it's a pup,
-/// Share always.
+/// Share always. A line plays a different cartoon each open. Opened by id
+/// alone (a push), it shows the cartoon at once and fetches the rest.
 struct DailyDogCover: View {
     let context: WidgetContext
     @ObservedObject var store: DogsStore
     @State var item: DailyDog
     let onClose: () -> Void
     @State private var burst = 0
-    @State private var bounce = false
+    /// Chosen once per open, so petting (which re-renders) never swaps it
+    @State private var scene: DailyDogScene?
+
+    /// Only the id is known yet
+    private var isPlaceholder: Bool { item.text.isEmpty && item.post == nil }
 
     var body: some View {
         ZStack {
@@ -199,10 +204,7 @@ struct DailyDogCover: View {
                         DogPawBurst(trigger: burst, accent: .white)
                     }
                 } else {
-                    Text("🐶").font(.system(size: 110))
-                        .scaleEffect(bounce ? 1.08 : 0.94)
-                        .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: bounce)
-                        .onAppear { bounce = true }
+                    DailyDogSceneView(scene: scene ?? .wag)
                 }
                 if !item.text.isEmpty {
                     Text(item.text).font(.system(size: 26, weight: .heavy, design: .rounded)).foregroundStyle(.white)
@@ -212,30 +214,52 @@ struct DailyDogCover: View {
                     Text("🐶 \(names)").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white.opacity(0.9))
                 }
                 Spacer(minLength: 0)
-                HStack(spacing: 12) {
-                    if let post = item.post {
-                        Button { pet(post, fromDoubleTap: false) } label: {
-                            Label(post.iPetted ? DogCopy.petted(post.petCount) : "Pet", systemImage: post.iPetted ? "pawprint.fill" : "pawprint")
+                if !isPlaceholder {
+                    HStack(spacing: 12) {
+                        if let post = item.post {
+                            Button { pet(post, fromDoubleTap: false) } label: {
+                                Label(post.iPetted ? DogCopy.petted(post.petCount) : "Pet", systemImage: post.iPetted ? "pawprint.fill" : "pawprint")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                                    .frame(maxWidth: .infinity, minHeight: 50)
+                                    .background(Capsule().fill(.white))
+                                    .foregroundStyle(context.accent)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Button { share() } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
                                 .font(.system(size: 17, weight: .bold, design: .rounded))
                                 .frame(maxWidth: .infinity, minHeight: 50)
-                                .background(Capsule().fill(.white))
-                                .foregroundStyle(context.accent)
+                                .background(Capsule().stroke(.white, lineWidth: 2))
+                                .foregroundStyle(.white)
                         }
                         .buttonStyle(.plain)
                     }
-                    Button { share() } label: {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .font(.system(size: 17, weight: .bold, design: .rounded))
-                            .frame(maxWidth: .infinity, minHeight: 50)
-                            .background(Capsule().stroke(.white, lineWidth: 2))
-                            .foregroundStyle(.white)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(20)
         }
-        .onAppear { context.track("daily_dog_opened", ["kind": item.kind.rawValue]) }
+        .onAppear {
+            if scene == nil { scene = DailyDogSceneView.pickScene() }
+        }
+        .task { await load() }
+    }
+
+    private func load() async {
+        if isPlaceholder {
+            if let known = ([store.me.today].compactMap { $0 } + store.daily).first(where: { $0.id == item.id }) {
+                item = known
+            } else if let fetched = try? await DogsClient(context: context).dailyItem(item.id) {
+                item = fetched
+            } else if let today = store.me.today {
+                item = today
+            } else {
+                context.host.presentAlert(WidgetAlert(title: "Couldn't load that Daily Dog", message: "Check your connection and try again."))
+                onClose()
+                return
+            }
+        }
+        context.track("daily_dog_opened", ["kind": item.kind.rawValue, "scene": (scene ?? .wag).rawValue])
     }
 
     private func pet(_ post: DogPost, fromDoubleTap: Bool) {

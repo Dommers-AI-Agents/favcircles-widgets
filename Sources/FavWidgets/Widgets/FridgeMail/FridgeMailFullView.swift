@@ -96,8 +96,7 @@ struct FridgeMailFullView: View {
             card = all.first { $0.cardId == cardId }
         }
         guard let card else { return }
-        await context.waitForPageToSettle()
-        openedCard = card
+        await context.presentLaunched { openedCard = card }
     }
 
     /// Which grandparent sheet is up: a blank one, or one filled in for editing.

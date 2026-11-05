@@ -165,6 +165,39 @@ public final class WidgetContext: ObservableObject {
         try? await Task.sleep(nanoseconds: 600_000_000)
     }
 
+    /// Set by the host each time it opens the page: true when the page was
+    /// opened to reach a launch target (a push or link) and so appeared
+    /// without its push animation (Wes, 2026-11-05: a tap should land on the
+    /// thing, not on the widget and then slide to it).
+    public var openedForLaunch = false
+
+    /// Whether any launch target is waiting for the page to open it.
+    public var hasLaunchTarget: Bool {
+        launchPostcardOrderId != nil || launchQuoteId != nil || launchWorkoutPostId != nil
+            || launchDrinkId != nil || launchMotivationSend || launchPostcardShareToken != nil
+            || launchEventToken != nil || launchEventId != nil || launchRunId != nil || launchRunToken != nil
+            || launchCareAskId != nil || launchFridgeMailCardId != nil || launchClubToken != nil
+            || launchClubId != nil || launchDogPostId != nil || launchDailyDogId != nil
+    }
+
+    /// Presents a launch target: `show` sets the sheet or cover's state. When
+    /// the host opened the page for it, the target appears at once with no
+    /// animation, as if the app had gone straight there; otherwise it waits
+    /// for the page's push like before.
+    public func presentLaunched(_ show: () -> Void) async {
+        guard openedForLaunch else {
+            await waitForPageToSettle()
+            show()
+            return
+        }
+        openedForLaunch = false
+        // One beat so the page is in the window before it presents
+        try? await Task.sleep(nanoseconds: 80_000_000)
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, show)
+    }
+
     public init(host: FavWidgetHost, theme: WidgetTheme, descriptor: FavWidgetDescriptor, cache: WidgetStateCache, calendar: Calendar = .current) {
         self.host = host
         self.theme = theme

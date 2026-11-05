@@ -58,8 +58,7 @@ struct MotivationFullView: View {
         pinnedLine = line
         context.track("motivation_line_opened", ["action": send ? "send" : "show"])
         guard send else { return }
-        await context.waitForPageToSettle()
-        sending = SendTarget(line: line, source: "push")
+        await context.presentLaunched { sending = SendTarget(line: line, source: "push") }
     }
 
     // MARK: - Coach

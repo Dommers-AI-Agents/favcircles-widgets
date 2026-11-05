@@ -35,7 +35,7 @@ extension PostcardFullView {
         let messageId = "mail:\(orderId)"
         let months = [currentMonth, previousMonth] + extraMonths.map { context.month(PostcardMonth.self, $0) }
         if let record = months.lazy.compactMap({ $0.model.sent.first { $0.messageId == messageId } }).first {
-            selectedRecord = record
+            await context.presentLaunched { selectedRecord = record }
             return
         }
         // Not in the months on screen (an older card): build it from the
@@ -46,6 +46,7 @@ extension PostcardFullView {
                 calendar: context.calendar).first else { return }
         let stored = context.month(PostcardMonth.self, found.month)
         await stored.loadIfNeeded()
-        selectedRecord = stored.model.sent.first { $0.messageId == messageId } ?? found.record
+        let record = stored.model.sent.first { $0.messageId == messageId } ?? found.record
+        await context.presentLaunched { selectedRecord = record }
     }
 }

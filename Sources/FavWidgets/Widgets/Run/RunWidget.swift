@@ -152,13 +152,11 @@ struct RunFullView: View {
     private func openLaunchedRun() async {
         if let id = context.launchRunId {
             context.launchRunId = nil
-            await context.waitForPageToSettle()
-            watching = WatchTarget(id: id)
+            await context.presentLaunched { watching = WatchTarget(id: id) }
         } else if let token = context.launchRunToken {
             context.launchRunToken = nil
             if let run = try? await RunShareClient(context: context).join(token: token) {
-                await context.waitForPageToSettle()
-                watching = WatchTarget(id: run.id)
+                await context.presentLaunched { watching = WatchTarget(id: run.id) }
             } else {
                 context.host.presentAlert(WidgetAlert(title: "Can't open that run", message: "The link may be old, or the run was deleted."))
             }

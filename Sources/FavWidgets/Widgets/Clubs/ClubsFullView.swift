@@ -146,14 +146,12 @@ struct ClubsFullView: View {
     private func openLaunched() async {
         if let token = context.launchClubToken {
             context.launchClubToken = nil
-            await context.waitForPageToSettle()
-            joinToken = TokenRef(id: token)
+            await context.presentLaunched { joinToken = TokenRef(id: token) }
         } else if let id = context.launchClubId {
             let postId = context.launchClubPostId
             context.launchClubId = nil
             context.launchClubPostId = nil
-            await context.waitForPageToSettle()
-            openClub = ClubRef(id: id, postId: postId)
+            await context.presentLaunched { openClub = ClubRef(id: id, postId: postId) }
         }
     }
 }

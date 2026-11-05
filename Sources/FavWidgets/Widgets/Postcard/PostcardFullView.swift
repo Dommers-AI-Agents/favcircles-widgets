@@ -102,7 +102,6 @@ struct PostcardFullView: View {
         .task { await seed() }
         .task {
             await reconcileMailHistory()
-            if context.launchPostcardOrderId != nil { await context.waitForPageToSettle() }
             await openLaunchedOrder()
         }
         .task { await loadMailConfig() }
@@ -110,8 +109,7 @@ struct PostcardFullView: View {
             // The printed card's QR or the page's "Open it in the app"
             guard let token = context.launchPostcardShareToken else { return }
             context.launchPostcardShareToken = nil
-            await context.waitForPageToSettle()
-            receivedToken = ReceivedToken(id: token)
+            await context.presentLaunched { receivedToken = ReceivedToken(id: token) }
         }
         .onChange(of: mailOn) { on in
             // Start the print upload as soon as they opt in: it has to be

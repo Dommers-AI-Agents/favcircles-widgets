@@ -54,8 +54,7 @@ struct WorkoutFullView: View {
             context.launchWorkoutPostId = nil
             // Over a running workout, still show it: copying is fine, and
             // Start explains it has to wait. Not until the push has landed.
-            await context.waitForPageToSettle()
-            openPost = PostTarget(id: postId)
+            await context.presentLaunched { openPost = PostTarget(id: postId) }
         }
         .background(context.theme.background.ignoresSafeArea())
         // A live workout is titled by what it is — the routine's name —

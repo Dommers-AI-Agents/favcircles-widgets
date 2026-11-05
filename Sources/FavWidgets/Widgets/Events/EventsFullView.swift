@@ -126,8 +126,7 @@ struct EventsFullView: View {
     /// flash and close (the 0.23.3 bug class) — wait for the page to settle.
     private func openAfterSheetCloses(_ id: String) {
         Task { @MainActor in
-            await context.waitForPageToSettle()
-            openEvent = EventRef(id: id)
+            await context.presentLaunched { openEvent = EventRef(id: id) }
         }
     }
 
@@ -135,13 +134,11 @@ struct EventsFullView: View {
     private func openLaunched() async {
         if let token = context.launchEventToken {
             context.launchEventToken = nil
-            await context.waitForPageToSettle()
-            joinToken = TokenRef(id: token)
+            await context.presentLaunched { joinToken = TokenRef(id: token) }
         } else if let id = context.launchEventId {
             context.launchEventId = nil
             banner = nil
-            await context.waitForPageToSettle()
-            openEvent = EventRef(id: id)
+            await context.presentLaunched { openEvent = EventRef(id: id) }
         }
     }
 }

@@ -81,8 +81,7 @@ struct CareCheckinFullView: View {
     private func openLaunchedAnswer() async {
         guard let askId = context.launchCareAskId else { return }
         context.launchCareAskId = nil
-        await context.waitForPageToSettle()
-        openAnswer = CareAnswerRef(id: askId)
+        await context.presentLaunched { openAnswer = CareAnswerRef(id: askId) }
     }
 
     private var me: String { context.host.currentUserId ?? "" }

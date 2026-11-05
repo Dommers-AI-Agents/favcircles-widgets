@@ -267,3 +267,16 @@ public enum DogSpotSearch {
         return mine + others
     }
 }
+
+/// What plays above a Daily Dog's line (Wes, 2026-11-05: more than the one
+/// wagging head, "so when someone taps the notification they see something
+/// new"). Never the same scene twice in a row.
+public enum DailyDogScene: String, CaseIterable, Sendable {
+    case wag, zoomies, fetch, tailChase, pawPrints, treatRain, bouncing
+
+    /// A scene other than `last`; `roll` is any random number.
+    public static func next(after last: String?, roll: Int) -> DailyDogScene {
+        let choices = allCases.filter { $0.rawValue != last }
+        return choices[Int(roll.magnitude % UInt(choices.count))]
+    }
+}
