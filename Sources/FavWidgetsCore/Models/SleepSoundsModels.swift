@@ -96,14 +96,18 @@ public struct SleepSoundsSettings: WidgetModel {
     public var lastMixName: String?
     public var timerMinutes: Int
     public var masterVolume: Double
+    /// Bedtime reminder + automatic start (2026-11-05). Optional so documents
+    /// saved before it decode unchanged.
+    public var bedtime: SleepBedtime?
 
     public init(mixes: [SleepMix] = [], lastLevels: [String: Double] = [:], lastMixName: String? = nil,
-                timerMinutes: Int = 45, masterVolume: Double = 0.8) {
+                timerMinutes: Int = 45, masterVolume: Double = 0.8, bedtime: SleepBedtime? = nil) {
         self.mixes = mixes
         self.lastLevels = lastLevels
         self.lastMixName = lastMixName
         self.timerMinutes = timerMinutes
         self.masterVolume = masterVolume
+        self.bedtime = bedtime
     }
 
     public static let empty = SleepSoundsSettings()

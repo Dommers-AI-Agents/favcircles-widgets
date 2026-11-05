@@ -24,6 +24,7 @@ struct SleepSoundsFullView: View {
                 soundsSection
                 if !engine.levels.isEmpty { levelsSection }
                 mixesSection
+                SleepBedtimeSection(context: context, settings: settings)
                 monthSection
                 Text("Keeps playing with the screen off. Play, pause and stop from the Lock Screen or Control Center. The timer fades the sound out over its last minute.")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
@@ -38,6 +39,13 @@ struct SleepSoundsFullView: View {
             await settings.loadIfNeeded()
             await month.loadIfNeeded()
             SleepSoundsLogging.restore(engine: engine, from: settings.model)
+            // Opened from the bedtime reminder: play the bedtime mix
+            if SleepSoundsBedtime.takePlayRequest(), !engine.isPlaying {
+                let mix = SleepBedtimePlan.mix(for: settings.model.bedtime, in: settings.model)
+                engine.load(levels: mix.levels, name: mix.name)
+                engine.play()
+                context.track("sleepsounds_bedtime_play")
+            }
         }
         .onChange(of: engine.levels) { _ in remember() }
         .onChange(of: engine.timerMinutes) { _ in remember() }
