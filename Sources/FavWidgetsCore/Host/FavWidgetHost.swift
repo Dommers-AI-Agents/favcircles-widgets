@@ -259,6 +259,44 @@ public protocol FavWidgetHost: AnyObject {
     /// Opens a person's profile over the widget; closing it comes back
     /// here (contract 0.44.0).
     func openProfile(userId: String)
+
+    // MARK: Alarms (contract 0.60.0)
+
+    /// Whether this phone can ring real alarms for FavCircles (iOS 26+).
+    func alarmPermission() async -> WidgetAlarmPermission
+    /// Shows the iPhone's alarm prompt; returns whether alarms are allowed now.
+    func requestAlarmPermission() async -> Bool
+    /// Makes the phone's alarms exactly `alarms`: sets or replaces each one
+    /// (same id = same alarm) and cancels any it set before that's missing.
+    func syncAlarms(_ alarms: [WidgetAlarmSpec]) async throws
+}
+
+/// Alarm permission as a widget needs to know it.
+public enum WidgetAlarmPermission: String, Sendable {
+    /// Older iOS, or a host without alarms
+    case unavailable
+    case notDetermined, denied, allowed
+}
+
+/// One alarm for the phone to ring (Wake Up). Stop opens `stationURL`;
+/// Snooze rings again after `snoozeMinutes` (0 = no Snooze button).
+public struct WidgetAlarmSpec: Equatable, Sendable {
+    /// A UUID string
+    public var id: String
+    public var hour: Int
+    public var minute: Int
+    /// 1 = Sunday … 7 = Saturday; empty = rings once
+    public var weekdays: [Int]
+    public var title: String
+    public var stationName: String?
+    public var stationURL: URL?
+    public var snoozeMinutes: Int
+
+    public init(id: String, hour: Int, minute: Int, weekdays: [Int], title: String,
+                stationName: String?, stationURL: URL?, snoozeMinutes: Int) {
+        self.id = id; self.hour = hour; self.minute = minute; self.weekdays = weekdays; self.title = title
+        self.stationName = stationName; self.stationURL = stationURL; self.snoozeMinutes = snoozeMinutes
+    }
 }
 
 /// Push permission as a widget needs to know it.
@@ -286,6 +324,9 @@ public extension FavWidgetHost {
     func notificationPermission() async -> WidgetNotificationPermission { .allowed }
     func requestNotificationPermission() async -> Bool { false }
     func openNotificationSettings() {}
+    func alarmPermission() async -> WidgetAlarmPermission { .unavailable }
+    func requestAlarmPermission() async -> Bool { false }
+    func syncAlarms(_ alarms: [WidgetAlarmSpec]) async throws {}
 }
 
 /// What an event's lock-screen display starts with (the server updates it).

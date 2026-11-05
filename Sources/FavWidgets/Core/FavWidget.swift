@@ -56,6 +56,7 @@ public enum FavWidgetRegistry {
         HeartbeatWidget(),
         MedsWidget(),
         SleepWidget(),
+        WakeUpWidget(),
         ParkingWidget(),
         PackagesWidget(),
         NewContactsWidget()
