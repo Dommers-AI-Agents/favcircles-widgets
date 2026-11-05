@@ -69,7 +69,10 @@ struct WakeUpFullView: View {
             banner("Wake Up needs iOS 26 or later", "Update your iPhone in Settings → General → Software Update to use alarms.", button: nil)
         case .denied:
             banner("Alarms are off for FavCircles", "Turn on Alarms for FavCircles in iPhone Settings so they can ring.",
-                   button: ("Open Settings", { context.host.openNotificationSettings() }))
+                   button: ("Open Settings", {
+                // FavCircles' page in Settings, where the Alarms switch is
+                if let url = URL(string: "app-settings:") { context.host.openURL(url) }
+            }))
         case .notDetermined, .allowed:
             EmptyView()
         }
