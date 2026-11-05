@@ -21,7 +21,9 @@ struct DogsWidgetTests {
     @Test func dailyAndDogCards() {
         let daily = DailyDog(id: "2026-10-22", date: "2026-10-22", kind: .joke, text: "Why did the dog sit in the shade? He didn't want to be a hot dog.")
         let d = DogsWidget.shareCardContent(daily, image: nil)
-        #expect(d.headline == "😂 Dog joke" && d.url?.absoluteString == "https://api.favcircles.com/app/widget/dogs?daily=2026-10-22")
+        // 0.57.0: the joke is the headline, its kind the kicker over it
+        #expect(d.kicker == "😂 Dog joke" && d.headline == DailyDogKind.cardText(daily.text, kind: .joke))
+        #expect(d.url?.absoluteString == "https://api.favcircles.com/app/widget/dogs?daily=2026-10-22")
         let dog = DogProfile(id: "d", name: "Pepper", breed: "Lab mix", personality: "Professional sock thief")
         let p = DogsWidget.shareCardContent(dog, image: nil)
         #expect(p.headline == "🐶 Meet Pepper" && p.detail == "Lab mix\nProfessional sock thief" && p.url == nil)
