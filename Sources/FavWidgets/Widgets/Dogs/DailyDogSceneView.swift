@@ -154,8 +154,10 @@ struct DailyDogSceneView: View {
     /// A dog trots across leaving paw prints that fade behind it
     private func pawPrints(_ t: Double, _ size: CGSize) -> some View {
         let length = 5.0
-        let u = cycle(t / length)
-        let goingRight = Int(t / length).isMultiple(of: 2)
+        // Start with the dog already on screen
+        let progress = t / length + 0.15
+        let u = cycle(progress)
+        let goingRight = Int(progress).isMultiple(of: 2)
         let steps = 11
         let travel = size.width + 120
         let dogDistance = u * travel - 60
@@ -185,7 +187,7 @@ struct DailyDogSceneView: View {
             ForEach(treats.indices, id: \.self) { i in
                 let lane = (Double((i * 37) % 100) / 100) * 0.84 + 0.08
                 let speed = 0.32 + Double((i * 13) % 7) * 0.04
-                let fall = cycle(t * speed + Double(i) * 0.37)
+                let fall = cycle(t * speed + Double(i) * 0.61 + 0.13)
                 emoji(treats[i], 28)
                     .rotationEffect(.degrees(t * (i.isMultiple(of: 2) ? 120 : -90)))
                     .opacity(fall > 0.85 ? (1 - fall) / 0.15 : 1)
