@@ -91,7 +91,7 @@ public final class YahooFinanceClient: @unchecked Sendable {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         let data = try await fetch(Self.searchURL(query: trimmed))
-        return try YahooFinanceParser.searchHits(from: data)
+        return try YahooFinanceParser.searchHits(from: data, query: trimmed)
     }
 
     // MARK: - Transport

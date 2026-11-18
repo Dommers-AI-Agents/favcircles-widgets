@@ -24,7 +24,9 @@ struct StockSearchView: View {
         StockSearchHit(symbol: "TSLA", name: "Tesla, Inc.", exchange: "NASDAQ", typeDisplay: "Equity"),
         StockSearchHit(symbol: "SPY", name: "SPDR S&P 500 ETF Trust", exchange: "NYSEArca", typeDisplay: "ETF"),
         StockSearchHit(symbol: "^GSPC", name: "S&P 500", exchange: "SNP", typeDisplay: "Index"),
-        StockSearchHit(symbol: "BTC-USD", name: "Bitcoin USD", exchange: "CCC", typeDisplay: "Cryptocurrency")
+        StockSearchHit(symbol: "BTC-USD", name: "Bitcoin USD", exchange: "CCC", typeDisplay: "Cryptocurrency"),
+        StockSearchHit(symbol: "ES=F", name: "S&P 500 futures", exchange: "CME", typeDisplay: "Futures"),
+        StockSearchHit(symbol: "MNQ=F", name: "Micro Nasdaq-100 futures", exchange: "CME", typeDisplay: "Futures")
     ]
 
     var body: some View {
@@ -63,7 +65,7 @@ struct StockSearchView: View {
     private func searchField(theme: WidgetTheme) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(theme.secondaryLabel)
-            TextField("Company, ticker or coin", text: $query)
+            TextField("Company, ticker, coin or future", text: $query)
                 .stockSymbolKeyboard()
                 .autocorrectionDisabled()
                 .focused($focused)

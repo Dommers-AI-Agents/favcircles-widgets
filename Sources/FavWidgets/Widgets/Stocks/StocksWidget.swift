@@ -11,7 +11,7 @@ public struct StocksWidget: FavWidget {
     public let descriptor = FavWidgetDescriptor(
         id: "stocks",
         title: "Stocks",
-        subtitle: "Indexes, rates, crypto and the stocks you follow",
+        subtitle: "Indexes, rates, crypto, futures and the stocks you follow",
         symbolName: "chart.line.uptrend.xyaxis",
         accentHex: "#6001D2",   // Yahoo Finance purple
         category: .money,

@@ -71,9 +71,9 @@ struct YahooFinanceParserTests {
     }
 
     @Test func searchKeepsTradableInstrumentsOnly() throws {
-        let hits = try YahooFinanceParser.searchHits(from: data(StockFixtures.searchApple))
-        // Two stock futures in the fixture are dropped
-        #expect(hits.map(\.symbol) == ["AAPL", "APLE", "AAPL.TO", "AAPX"])
+        let hits = try YahooFinanceParser.searchHits(from: data(StockFixtures.searchApple), query: "apple")
+        // The two Apple single-stock futures go after the stocks and funds
+        #expect(hits.map(\.symbol) == ["AAPL", "APLE", "AAPL.TO", "AAPX", "SAAPL=F", "XAAPL=F"])
         #expect(hits[0] == StockSearchHit(symbol: "AAPL", name: "Apple Inc.", exchange: "NASDAQ", typeDisplay: "Equity"))
         #expect(hits[3].typeDisplay == "ETF")
         #expect(hits[0].entry.symbol == "AAPL" && hits[0].entry.name == "Apple Inc.")
@@ -181,5 +181,52 @@ struct MarketIndexesTests {
             #expect(Watchlist.normalize(symbol) == symbol)
             #expect(YahooFinanceClient.chartURL(symbol: symbol, range: .day).absoluteString.contains("/chart/%5E"))
         }
+    }
+}
+
+struct StockFuturesTests {
+    private static let searchMNQ = #"{"quotes":[{"exchange":"CME","shortname":"Micro E-mini Nasdaq-100 Index F","quoteType":"FUTURE","symbol":"MNQ=F","typeDisp":"Futures","exchDisp":"Chicago Mercantile Exchange","isYahooFinance":true},{"exchange":"CME","shortname":"Micro E-mini Nasdaq-100 Index F","quoteType":"FUTURE","symbol":"MNQZ26.CME","typeDisp":"Futures","exchDisp":"Chicago Mercantile Exchange","isYahooFinance":true},{"exchange":"PNK","shortname":"MANULIFE FINANCIAL CORP 4.65% N","quoteType":"EQUITY","symbol":"MNQFF","typeDisp":"Equity","exchDisp":"OTC Markets","isYahooFinance":true}]}"#
+
+    @Test func aContinuousFutureIsFoundButADatedContractIsNot() throws {
+        let hits = try YahooFinanceParser.searchHits(from: Data(Self.searchMNQ.utf8), query: "MNQ")
+        #expect(hits.map(\.symbol) == ["MNQ=F", "MNQFF"])
+        #expect(hits[0].name == "Micro Nasdaq-100 futures")
+        #expect(hits[0].typeDisplay == "Futures")
+    }
+
+    @Test func continuousSymbols() {
+        #expect(StockFutures.isContinuous("mnq=f"))
+        #expect(StockFutures.isContinuous("ES=F"))
+        #expect(!StockFutures.isContinuous("MNQZ26.CME"))
+        #expect(!StockFutures.isContinuous("AAPL"))
+        #expect(!StockFutures.isContinuous("=F"))
+        #expect(StockFutures.root("mnq=f") == "MNQ")
+    }
+
+    @Test func namesDropTheContractMonthAndTheCutOffWord() {
+        #expect(StockFutures.name(symbol: "NQ=F", yahooName: "Nasdaq 100 Dec 26") == "Nasdaq-100 futures")
+        #expect(StockFutures.name(symbol: "LBS=F", yahooName: "Lumber Futures,Jan-2027") == "Lumber futures")
+        #expect(StockFutures.name(symbol: "KE=F", yahooName: "KC HRW Wheat Futures,Dec-2026") == "KC HRW Wheat futures")
+        #expect(StockFutures.name(symbol: "PA=F", yahooName: "Palladium Dec 26") == "Palladium futures")
+        #expect(StockFutures.name(symbol: "RX=F", yahooName: "Dow Jones US Real Estate Index F") == "Dow Jones US Real Estate Index futures")
+        #expect(StockFutures.name(symbol: "ZZ=F", yahooName: nil) == "ZZ futures")
+    }
+
+    @Test func aFutureLeadsOnlyWhenItIsWhatWasSearched() {
+        let stock = StockSearchHit(symbol: "ES", name: "Eversource", exchange: "NYSE", typeDisplay: "Equity")
+        let future = StockSearchHit(symbol: "ES=F", name: "S&P 500 futures", exchange: "CME", typeDisplay: "Futures")
+        let other = StockSearchHit(symbol: "ESG=F", name: "E-mini S&P 500 ESG futures", exchange: "CME", typeDisplay: "Futures")
+        #expect(StockFutures.rank([stock, future, other], query: "es").map(\.symbol) == ["ES", "ES=F", "ESG=F"])
+        #expect(StockFutures.rank([future, stock], query: "eversource").map(\.symbol) == ["ES", "ES=F"])
+        #expect(StockFutures.rank([stock, future], query: "s&p futures").map(\.symbol) == ["ES", "ES=F"])
+        #expect(StockFutures.rank([future, stock], query: "S&P futures").map(\.symbol) == ["ES=F", "ES"])
+    }
+
+    @Test func aFutureQuoteShowsTheCleanName() throws {
+        let json = #"{"chart":{"result":[{"meta":{"symbol":"MNQ=F","shortName":"Micro E-mini Nasdaq-100 Index F","instrumentType":"FUTURE","regularMarketPrice":27460.0,"chartPreviousClose":27075.5,"currency":"USD","exchangeName":"CME"},"timestamp":[],"indicators":{"quote":[{"close":[]}]}}],"error":null}}"#
+        let q = try YahooFinanceParser.quote(from: Data(json.utf8), symbol: "mnq=f")
+        #expect(q.symbol == "MNQ=F")
+        #expect(q.displayName == "Micro Nasdaq-100 futures")
+        #expect(q.price == 27460.0)
     }
 }

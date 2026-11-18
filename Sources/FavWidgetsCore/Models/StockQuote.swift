@@ -81,7 +81,11 @@ public struct StockQuote: Codable, Equatable, Sendable {
     }
 
     /// The name Yahoo shows under the ticker.
-    public var displayName: String { shortName ?? longName ?? symbol }
+    public var displayName: String {
+        // A continuous future's Yahoo name is cut short and dated ("Nasdaq 100 Dec 26")
+        if StockFutures.isContinuous(symbol) { return StockFutures.name(symbol: symbol, yahooName: longName ?? shortName) }
+        return shortName ?? longName ?? symbol
+    }
 
     public var change: Double? {
         guard let previousClose else { return nil }

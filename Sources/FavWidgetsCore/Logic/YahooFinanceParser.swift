@@ -84,24 +84,30 @@ public enum YahooFinanceParser {
 
     // MARK: - Search → hits
 
-    /// Instruments a watchlist can hold. Futures and options are dropped:
-    /// their tickers expire and the chart endpoint rarely has them.
-    static let searchableTypes: Set<String> = ["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "MUTUALFUND", "CURRENCY"]
+    /// Instruments a watchlist can hold. Futures only as continuous
+    /// front-month symbols ("MNQ=F", StockFutures); dated contracts and
+    /// options are dropped because their tickers expire.
+    static let searchableTypes: Set<String> = ["EQUITY", "ETF", "INDEX", "CRYPTOCURRENCY", "MUTUALFUND", "CURRENCY", "FUTURE"]
 
-    public static func searchHits(from data: Data) throws -> [StockSearchHit] {
+    public static func searchHits(from data: Data, query: String? = nil) throws -> [StockSearchHit] {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let quotes = root["quotes"] as? [[String: Any]] else {
             throw StockQuoteError.malformed("no quotes")
         }
-        return quotes.compactMap { quote in
+        let hits: [StockSearchHit] = quotes.compactMap { quote in
             guard let symbol = quote["symbol"] as? String, !symbol.isEmpty,
                   let type = quote["quoteType"] as? String, searchableTypes.contains(type),
+                  type != "FUTURE" || StockFutures.isContinuous(symbol),
                   (quote["isYahooFinance"] as? Bool) != false else { return nil }
-            let name = (quote["shortname"] as? String) ?? (quote["longname"] as? String) ?? symbol
+            var name = (quote["shortname"] as? String) ?? (quote["longname"] as? String) ?? symbol
+            if type == "FUTURE" {
+                name = StockFutures.name(symbol: symbol, yahooName: (quote["longname"] as? String) ?? (quote["shortname"] as? String))
+            }
             return StockSearchHit(symbol: symbol, name: name,
                                   exchange: quote["exchDisp"] as? String,
                                   typeDisplay: quote["typeDisp"] as? String)
         }
+        return StockFutures.rank(hits, query: query)
     }
 
     private static func number(_ value: Any?) -> Double? {
