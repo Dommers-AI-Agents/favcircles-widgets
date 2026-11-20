@@ -216,6 +216,16 @@ public final class WidgetsTabModel: ObservableObject {
         recomputeVisible()
     }
 
+    /// List or tiles (Wes, 2026-11-20); saved with the ordering, so it follows the account.
+    public var layout: WidgetTabLayout { prefs.model.tabLayout }
+
+    public func toggleLayout() {
+        let next = layout.toggled
+        prefs.update { $0.layout = next }
+        objectWillChange.send()
+        host.track(WidgetAnalyticsEvent("widgets_layout", ["layout": next.rawValue]))
+    }
+
     public func hasSeenHint(_ key: String) -> Bool { prefs.model.seenHints.contains(key) }
 
     public func markHintSeen(_ key: String) {

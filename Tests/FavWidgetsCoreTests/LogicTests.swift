@@ -178,6 +178,14 @@ struct PreferencesTests {
         prefs.setEnabled(true, id: "c"); prefs.setEnabled(true, id: "a")
         #expect(WidgetOrdering.visible(prefs: prefs, descriptors: [a, b, c]).map(\.id) == ["b", "c", "a"])
         let merged = WidgetPreferences.merge(local: prefs, remote: WidgetPreferences(seenHints: ["x"]))
+        #expect(merged.tabLayout == .list)
+        #expect(WidgetPreferences.merge(local: prefs, remote: WidgetPreferences(layout: .tiles)).tabLayout == .tiles)
+        prefs.layout = .tiles
+        #expect(WidgetPreferences.merge(local: prefs, remote: WidgetPreferences(layout: .list)).tabLayout == .tiles)
+        #expect(WidgetTabLayout.list.toggled == .tiles && WidgetTabLayout.tiles.toggleSymbolName == "list.bullet")
+        // A document saved before the toggle existed still decodes
+        let old = try! WidgetDocumentCodec.decode(WidgetPreferences.self, from: Data(#"{"order":[],"disabled":[],"seenHints":[]}"#.utf8))
+        #expect(old.tabLayout == .list)
         #expect(merged.seenHints == ["x"] && merged.order == prefs.order)
     }
 }

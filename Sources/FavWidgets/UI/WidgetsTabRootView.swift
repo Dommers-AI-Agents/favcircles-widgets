@@ -33,15 +33,22 @@ public struct WidgetsTabRootView: View {
                                 .frame(height: 160)
                                 .moveDisabled(true)
                         }
-                        ForEach(model.visible) { descriptor in
-                            if let widget = model.widget(for: descriptor) {
-                                widget.makeCardView(context: model.context(for: descriptor))
-                                    .id(descriptor.id)
+                        if model.layout == .tiles {
+                            // Tiles (Wes, 2026-11-20): a grid so more widgets fit
+                            // on one screen. Reordering stays in the list view.
+                            tileGrid
+                                .moveDisabled(true)
+                        } else {
+                            ForEach(model.visible) { descriptor in
+                                if let widget = model.widget(for: descriptor) {
+                                    widget.makeCardView(context: model.context(for: descriptor))
+                                        .id(descriptor.id)
+                                }
                             }
-                        }
-                        .onMove { source, destination in
-                            model.moveVisible(from: source, to: destination)
-                            model.host.haptic(.light)
+                            .onMove { source, destination in
+                                model.moveVisible(from: source, to: destination)
+                                model.host.haptic(.light)
+                            }
                         }
                     }
                     if let error = model.loadError {
@@ -136,16 +143,63 @@ public struct WidgetsTabRootView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 14) {
             Text("Your widgets")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(model.theme.secondaryLabel)
             Spacer()
+            Button {
+                model.toggleLayout()
+                model.host.haptic(.selection)
+            } label: {
+                Image(systemName: model.layout.toggleSymbolName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(model.theme.primary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show as \(model.layout.toggleTitle.lowercased())")
             Button("Manage") { model.onManage() }
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(model.theme.primary)
         }
         .padding(.top, 4)
+    }
+
+    /// Two tiles across: the widget's symbol, name and what it does. Tap opens it.
+    private var tileGrid: some View {
+        let theme = model.theme
+        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+            ForEach(model.visible) { descriptor in
+                Button {
+                    let context = model.context(for: descriptor)
+                    context.track("widget_opened", ["from": "tile"])
+                    context.openFullView()
+                } label: {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: descriptor.symbolName)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(Color(hex: descriptor.accentHex))
+                            .frame(width: 40, height: 40)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(hex: descriptor.accentHex).opacity(0.18)))
+                        Text(descriptor.title)
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.label).lineLimit(1)
+                        Text(descriptor.subtitle)
+                            .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
+                    .background(
+                        RoundedRectangle(cornerRadius: theme.cardCornerRadius, style: .continuous)
+                            .fill(theme.secondaryBackground)
+                            .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 2)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(descriptor.title)
+                .accessibilityHint("Opens the widget")
+            }
+        }
     }
 }
 

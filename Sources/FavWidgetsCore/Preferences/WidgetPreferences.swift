@@ -12,19 +12,26 @@ public struct WidgetPreferences: WidgetModel {
     public var disabled: Set<String>
     /// Hint keys the user has dismissed (per account, not per device).
     public var seenHints: Set<String>
+    /// List (one card per widget) or tiles (a grid, more on screen); optional
+    /// so documents saved before the toggle existed still decode (Wes,
+    /// 2026-11-20: "a toggle view between list and tile view").
+    public var layout: WidgetTabLayout?
 
-    public init(order: [String] = [], disabled: Set<String> = [], seenHints: Set<String> = []) {
+    public init(order: [String] = [], disabled: Set<String> = [], seenHints: Set<String> = [], layout: WidgetTabLayout? = nil) {
         self.order = order
         self.disabled = disabled
         self.seenHints = seenHints
+        self.layout = layout
     }
+
+    public var tabLayout: WidgetTabLayout { layout ?? .list }
 
     public static let empty = WidgetPreferences()
 
     public static func merge(local: WidgetPreferences, remote: WidgetPreferences) -> WidgetPreferences {
         // Layout: local wins. Hints: union, a dismissed hint stays dismissed.
         WidgetPreferences(order: local.order, disabled: local.disabled,
-                          seenHints: local.seenHints.union(remote.seenHints))
+                          seenHints: local.seenHints.union(remote.seenHints), layout: local.layout ?? remote.layout)
     }
 
     public func isEnabled(_ descriptor: FavWidgetDescriptor) -> Bool {
@@ -79,4 +86,14 @@ public enum WidgetOrdering {
         var next = reordered.makeIterator()
         return all.map { id in visibleSet.contains(id) ? (next.next() ?? id) : id }
     }
+}
+
+/// How the Widgets tab lays its widgets out.
+public enum WidgetTabLayout: String, Codable, Sendable, CaseIterable {
+    case list, tiles
+
+    public var toggled: WidgetTabLayout { self == .list ? .tiles : .list }
+    /// The toggle button shows what tapping switches TO.
+    public var toggleSymbolName: String { self == .list ? "square.grid.2x2" : "list.bullet" }
+    public var toggleTitle: String { self == .list ? "Tiles" : "List" }
 }
