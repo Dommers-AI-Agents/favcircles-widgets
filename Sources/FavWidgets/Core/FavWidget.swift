@@ -59,7 +59,10 @@ public enum FavWidgetRegistry {
         WakeUpWidget(),
         ParkingWidget(),
         PackagesWidget(),
-        NewContactsWidget()
+        NewContactsWidget(),
+        LastTimeWidget(),
+        WiFiHereWidget(),
+        ReturnWindowWidget()
     ]
 
     public static var descriptors: [FavWidgetDescriptor] { all.map(\.descriptor) }

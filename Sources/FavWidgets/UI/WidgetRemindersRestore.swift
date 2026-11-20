@@ -2,7 +2,8 @@ import Foundation
 import FavWidgetsCore
 
 /// A reinstalled app (or a second phone) has no local notifications: the
-/// reminders a person set in Water, Meds, Motivation and Sleep Sounds (bedtime) live in their saved
+/// reminders a person set in Water, Meds, Motivation, Sleep Sounds (bedtime),
+/// Last Time and Return Window live in their saved
 /// documents, and each scheduler only ran when its widget was opened. The
 /// app calls this when it comes to the foreground, signed in, so the
 /// reminders come back without opening each widget (2026-11-01).
@@ -19,6 +20,12 @@ public enum WidgetRemindersRestore {
         if let sleep = await load(SleepSoundsSettings.self, id: SleepSoundsBedtime.documentId, store: store),
            sleep.bedtime?.enabled == true {
             await SleepSoundsBedtime.syncIfMissing(sleep)
+        }
+        if let lastTime = await load(LastTimeList.self, id: "lasttime", store: store), !lastTime.items.isEmpty {
+            await LastTimeActions.syncReminders(lastTime, calendar: .current)
+        }
+        if let receipts = await load(ReceiptList.self, id: "returnwindow", store: store), receipts.receipts.contains(where: \.isOpen) {
+            await ReturnWindowActions.syncReminders(receipts, calendar: .current)
         }
     }
 
