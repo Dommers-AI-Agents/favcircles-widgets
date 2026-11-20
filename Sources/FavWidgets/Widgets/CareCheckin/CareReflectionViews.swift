@@ -82,7 +82,7 @@ struct CareAnswerRow: View {
     }
 
     static func answerLine(_ ask: CareAsk) -> String {
-        if let text = ask.answerText { return text }
+        if let text = ask.answerText { return ask.answeredLate ? "\(text) · answered late" : text }
         if ask.isMissed { return ask.pushDelivered ? "No answer" : "Not delivered" }
         return "Waiting…"
     }

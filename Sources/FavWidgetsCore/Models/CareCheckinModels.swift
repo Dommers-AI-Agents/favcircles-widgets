@@ -134,6 +134,8 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
     public var note: String
     public var answeredAt: Date?
     public var pushDelivered: Bool
+    /// Answered after the family had already been told about the silence (2026-11-20)
+    public var answeredLate: Bool = false
     /// Family support on this answer (2026-10-07)
     public var reactions: [CareReaction] = []
     public var responses: [CareResponse] = []
@@ -149,7 +151,7 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
                 low: String? = nil, high: String? = nil, slot: String = "08:30", dateKey: String = "", askedAt: Date,
                 dueBy: Date? = nil, status: String = "open", answer: CareAnswer? = nil, answerValue: String? = nil,
                 answerScore: Int? = nil, answerText: String? = nil, alert: Bool = false,
-                note: String = "", answeredAt: Date? = nil, pushDelivered: Bool = true) {
+                note: String = "", answeredAt: Date? = nil, pushDelivered: Bool = true, answeredLate: Bool = false) {
         self.askId = askId
         self.planId = planId
         self.questionText = questionText
@@ -170,11 +172,12 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
         self.note = note
         self.answeredAt = answeredAt
         self.pushDelivered = pushDelivered
+        self.answeredLate = answeredLate
     }
 
     private enum CodingKeys: String, CodingKey {
         case askId, planId, questionText, kind, short, low, high, slot, dateKey, askedAt, dueBy, status
-        case answer, answerValue, answerScore, answerText, alert, note, answeredAt, pushDelivered
+        case answer, answerValue, answerScore, answerText, alert, note, answeredAt, pushDelivered, answeredLate
         case reactions, responses, comments
     }
 
@@ -202,6 +205,7 @@ public struct CareAsk: Decodable, Equatable, Identifiable, Sendable {
         note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
         answeredAt = try c.decodeIfPresent(Date.self, forKey: .answeredAt)
         pushDelivered = try c.decodeIfPresent(Bool.self, forKey: .pushDelivered) ?? true
+        answeredLate = try c.decodeIfPresent(Bool.self, forKey: .answeredLate) ?? false
         reactions = (try? c.decodeIfPresent([CareReaction].self, forKey: .reactions)) ?? []
         responses = (try? c.decodeIfPresent([CareResponse].self, forKey: .responses)) ?? []
         comments = (try? c.decodeIfPresent([CareComment].self, forKey: .comments)) ?? []

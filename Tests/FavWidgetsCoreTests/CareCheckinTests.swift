@@ -291,4 +291,14 @@ struct CareSupportTests {
         let new = try WidgetJSON.decode(CareAsk.self, from: Data((base + #","reactions":[{"userId":"wes","name":"Wes","kind":"love","at":null}],"responses":[]}"#).utf8))
         #expect(new.reactions.first?.kind == "love")
     }
+
+    /// A missed question is still the one on the page, and a late answer says so.
+    @Test func missedQuestionStaysOpenAndLateAnswersAreMarked() throws {
+        let missed = try WidgetJSON.decode(CareAsk.self, from: Data(#"{"askId":"a1","planId":"p1","questionText":"How did you sleep last night?","kind":"scale","slot":"08:30","askedAt":"2026-11-20T13:30:00.000Z","status":"missed"}"#.utf8))
+        #expect(missed.isMissed && !missed.answeredLate)
+        let late = try WidgetJSON.decode(CareAsk.self, from: Data(#"{"askId":"a1","planId":"p1","questionText":"How did you sleep last night?","kind":"scale","slot":"08:30","askedAt":"2026-11-20T13:30:00.000Z","status":"answered","answerText":"7/10","answeredLate":true}"#.utf8))
+        #expect(late.isAnswered && late.answeredLate)
+        let plan = CarePlan(planId: "p1", role: "parent", ownerId: "c1", ownerName: "Wes", parentId: "m1", parentName: "Sal", status: "active", openAsk: missed)
+        #expect(CarePlans(asOwner: [], asParent: [plan]).openAsks.map(\.ask.askId) == ["a1"])
+    }
 }

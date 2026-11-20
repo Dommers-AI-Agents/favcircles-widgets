@@ -288,7 +288,11 @@ struct CareCheckinFullView: View {
                 Text(ask.questionText)
                     .font(.system(size: 22, weight: .semibold)).foregroundStyle(theme.label)
                     .fixedSize(horizontal: false, vertical: true)
-                Text("Asked at \(CareCopy.friendlyTime(ask.slot))").font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                // A question the family was already told went unanswered is still
+                // theirs to answer until the next one (Sal tapped a morning question at
+                // noon and found "Nothing waiting", 2026-11-20)
+                Text(ask.isMissed ? "Asked at \(CareCopy.friendlyTime(ask.slot)) · still waiting for you. It counts whenever you answer." : "Asked at \(CareCopy.friendlyTime(ask.slot))")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel).fixedSize(horizontal: false, vertical: true)
                 CareAnswerControls(context: context, ask: ask, disabled: busy != nil) { payload in
                     answerAsk(ask, payload: payload, plan: plan)
                 }
