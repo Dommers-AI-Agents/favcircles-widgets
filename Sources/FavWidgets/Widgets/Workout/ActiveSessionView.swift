@@ -403,10 +403,12 @@ struct ActiveSessionView: View {
         }
         // The starters are included so a starter routine can be saved as the
         // person's own. `active` still has the rows Finish drops, so a
-        // deleted exercise and a dragged order are seen as changes.
+        // deleted exercise and a dragged order are seen as changes; with
+        // `history`, rows ticked exactly as offered are not.
         let update = WorkoutSessionLogic.routineUpdate(
             for: result.session,
             active: active,
+            history: context.recentWorkouts(),
             routines: settings.model.routines + ExerciseCatalog.starterRoutines,
             name: { [model = settings.model] id in model.exercise(id: id)?.name ?? "Exercise" },
             unit: unit

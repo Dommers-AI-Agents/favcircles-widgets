@@ -187,7 +187,13 @@ public enum WorkoutSessionLogic {
     /// was taken off the page (removed from the routine) from one left
     /// unticked (kept), and it carries the order the blocks were dragged
     /// into. Without it, nothing is removed or reordered.
+    ///
+    /// `history` is what the rows were filled from when the workout began.
+    /// An exercise done exactly as the page offered it was not changed
+    /// today, even when last time's numbers differ from the routine's
+    /// (the person said "keep as it was" then), so it asks nothing.
     public static func routineUpdate(for session: WorkoutSession, active: WorkoutSession? = nil,
+                                     history: [WorkoutSession]? = nil,
                                      routines: [Routine],
                                      name: @escaping (String) -> String = { $0 },
                                      unit: WeightUnit = .lb) -> RoutineUpdate? {
@@ -205,6 +211,7 @@ public enum WorkoutSessionLogic {
             let line = describe(sets: sets, reps: reps, weight: weight, unit: unit)
             if let index = items.firstIndex(where: { $0.exerciseId == exerciseId }) {
                 let was = items[index]
+                if let history, doneAsOffered(performed, item: was, history: history.filter({ $0.id != session.id })) { continue }
                 let wasLine = describe(sets: was.targetSets, reps: was.targetReps, weight: was.targetWeight, unit: unit)
                 guard wasLine != line else { continue }
                 items[index].targetSets = sets
@@ -243,6 +250,15 @@ public enum WorkoutSessionLogic {
         guard !changes.isEmpty else { return nil }
         return RoutineUpdate(routine: Routine(id: existing.id, name: existing.name, items: items),
                              isNew: false, changes: changes, previous: existing)
+    }
+
+    /// The completed working sets are, row for row, what a session built
+    /// from this routine item offered: nothing typed, added or left out.
+    static func doneAsOffered(_ performed: [SetEntry], item: RoutineItem, history: [WorkoutSession]) -> Bool {
+        let offered = prefilledSets(for: item.exerciseId, count: max(1, item.targetSets),
+                                    last: lastSets(for: item.exerciseId, in: history), routineItem: item)
+        guard performed.count == offered.count else { return false }
+        return zip(performed, offered).allSatisfy { $0.reps == $1.reps && $0.weight == $1.weight }
     }
 
     /// "3 × 10 at 135 lb", or "3 × 10" when there is no weight.

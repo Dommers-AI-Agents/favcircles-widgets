@@ -261,4 +261,27 @@ struct WorkoutSessionLogicTests {
         let starter = RoutineUpdate(routine: Routine(name: "Pull"), isNew: true, changes: [])
         #expect(WorkoutSessionLogic.undoing(starter, in: WorkoutSessionLogic.applying(starter, to: [routine])) == [routine])
     }
+
+    @Test func afterKeepAsItWasTheSameWorkoutAgainAsksNothing() {
+        let routine = Routine(name: "Push", items: [RoutineItem(exerciseId: "bench", targetSets: 2, targetReps: 10, targetWeight: 135)])
+        // Monday: went heavier, then answered "Keep as it was".
+        let monday = WorkoutSession(routineId: routine.id, name: "Push", startedAt: Date(timeIntervalSince1970: 1_000),
+                                    endedAt: Date(timeIntervalSince1970: 2_000),
+                                    sets: [done("bench", 145, 8), done("bench", 145, 8)])
+        #expect(WorkoutSessionLogic.routineUpdate(for: monday, active: monday, history: [monday], routines: [routine]) != nil)
+        // Wednesday: the page offers Monday's numbers; every row is ticked as offered.
+        var wednesday = WorkoutSessionLogic.session(from: routine, history: [monday], startedAt: Date(timeIntervalSince1970: 9_000))
+        for set in wednesday.sets {
+            wednesday.sets = WorkoutSessionLogic.complete(set.id, in: wednesday.sets, target: .init(reps: nil, weight: nil))
+        }
+        #expect(wednesday.sets.map(\.weight) == [145, 145])
+        var finished = WorkoutSessionLogic.finish(wednesday, existingRecords: [:]).session
+        // The finished workout is already in history when the question is worked out.
+        #expect(WorkoutSessionLogic.routineUpdate(for: finished, active: wednesday, history: [monday, finished], routines: [routine]) == nil)
+        // One more set than offered is a change again.
+        wednesday.sets.append(done("bench", 145, 8))
+        finished = WorkoutSessionLogic.finish(wednesday, existingRecords: [:]).session
+        #expect(WorkoutSessionLogic.routineUpdate(for: finished, active: wednesday, history: [monday, finished], routines: [routine])?.changes
+                == ["bench: 2 × 10 at 135 lb → 3 × 8 at 145 lb"])
+    }
 }
