@@ -8,6 +8,7 @@ struct MedsFullView: View {
     @ObservedObject var previous: WidgetStateController<MedMonth>
     @State private var editing: Med?
     @State private var adding = false
+    @State private var scanning = false
     @State private var notificationsOff = false
 
     private var theme: WidgetTheme { context.theme }
@@ -33,6 +34,8 @@ struct MedsFullView: View {
                 history(meds, now: now)
                 Text("Private to you. Reminders are set on this phone; press and hold one to tap Took it without opening the app.")
                     .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+                Text(MedSafetyCopy.footer)
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
             }
             .padding(16)
         }
@@ -45,6 +48,9 @@ struct MedsFullView: View {
             MedEditSheet(context: context, med: med, onSave: { save($0) }, onDelete: { delete(med) })
         }
         .sheet(isPresented: $adding) { MedEditSheet(context: context, med: nil, onSave: { save($0) }, onDelete: nil) }
+        .sheet(isPresented: $scanning) {
+            MedLabelScanSheet(context: context, existing: settings.model.meds, onAdd: { addAll($0) })
+        }
     }
 
     // MARK: Today
@@ -142,6 +148,12 @@ struct MedsFullView: View {
                 .buttonStyle(.plain)
             }
             WidgetUI.primaryButton("Add a medication", color: context.accent) { adding = true }
+            Button { scanning = true } label: {
+                Label("Scan a prescription label", systemImage: "camera.viewfinder")
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+                    .frame(maxWidth: .infinity).padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -182,6 +194,11 @@ struct MedsFullView: View {
             if let i = s.meds.firstIndex(where: { $0.id == med.id }) { s.meds[i] = med } else { s.meds.append(med) }
         }
         context.track("med_saved", ["times": "\(med.times.count)"])
+        Task { notificationsOff = !(await MedReminderScheduler.sync(settings.model)) }
+    }
+
+    private func addAll(_ meds: [Med]) {
+        settings.update { $0.meds.append(contentsOf: meds) }
         Task { notificationsOff = !(await MedReminderScheduler.sync(settings.model)) }
     }
 
