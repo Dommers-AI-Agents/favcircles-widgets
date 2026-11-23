@@ -219,4 +219,46 @@ struct WorkoutSessionLogicTests {
         let applied = WorkoutSessionLogic.applying(update!, to: [routine])
         #expect(applied.first?.items.count == 3)
     }
+
+    @Test func routineUpdateRemovesDeletedExercisesAndFollowsThePageOrder() {
+        let routine = Routine(name: "Back", items: [RoutineItem(exerciseId: "row", targetSets: 1, targetReps: 10, targetWeight: 100),
+                                                   RoutineItem(exerciseId: "pulldown", targetSets: 1, targetReps: 10, targetWeight: 90),
+                                                   RoutineItem(exerciseId: "curl", targetSets: 1, targetReps: 12, targetWeight: 30),
+                                                   RoutineItem(exerciseId: "shrug", targetSets: 1, targetReps: 20, targetWeight: 75)])
+        // The page at Finish: shrug's rows were deleted, curl was dragged
+        // to the top, pulldown was left unticked, a face pull was added.
+        let active = WorkoutSession(routineId: routine.id, name: "Back",
+                                    sets: [done("curl", 30, 12), done("row", 100, 10),
+                                           SetEntry(exerciseId: "pulldown", reps: 10, weight: 90, isPrefilled: true),
+                                           done("facepull", 40, 15)])
+        let finished = WorkoutSessionLogic.finish(active, existingRecords: [:]).session
+        let update = WorkoutSessionLogic.routineUpdate(for: finished, active: active, routines: [routine])
+        #expect(update?.routine.items.map(\.exerciseId) == ["curl", "row", "pulldown", "facepull"])
+        #expect(update?.changes == ["facepull: added, 1 × 15 at 40 lb", "shrug: removed", "Exercises reordered"])
+        // Without the page, nothing is removed or moved (the older call).
+        #expect(WorkoutSessionLogic.routineUpdate(for: finished, routines: [routine])?.routine.items.map(\.exerciseId)
+                == ["row", "pulldown", "curl", "shrug", "facepull"])
+    }
+
+    @Test func aWorkoutDoneAsWrittenAsksNothingAndAYesCanBeUndone() {
+        let routine = Routine(name: "Legs", items: [RoutineItem(exerciseId: "squat", targetSets: 1, targetReps: 5, targetWeight: 225),
+                                                   RoutineItem(exerciseId: "lunge", targetSets: 1, targetReps: 10, targetWeight: 40)])
+        // Same order, same numbers, one exercise left unticked.
+        let same = WorkoutSession(routineId: routine.id, name: "Legs",
+                                  sets: [done("squat", 225, 5), SetEntry(exerciseId: "lunge", reps: 10, weight: 40, isPrefilled: true)])
+        let finished = WorkoutSessionLogic.finish(same, existingRecords: [:]).session
+        #expect(WorkoutSessionLogic.routineUpdate(for: finished, active: same, routines: [routine]) == nil)
+        // An added exercise in the middle is "added", not "reordered".
+        let added = WorkoutSession(routineId: routine.id, name: "Legs",
+                                   sets: [done("squat", 225, 5), done("calf", 90, 15), done("lunge", 40, 10)])
+        let update = WorkoutSessionLogic.routineUpdate(for: added, active: added, routines: [routine])!
+        #expect(update.changes == ["calf: added, 1 × 15 at 90 lb"])
+        #expect(update.routine.items.map(\.exerciseId) == ["squat", "calf", "lunge"])
+        // Yes, then Undo: the routines are exactly as they were.
+        let saved = WorkoutSessionLogic.applying(update, to: [routine])
+        #expect(WorkoutSessionLogic.undoing(update, in: saved) == [routine])
+        // A starter that was saved (no previous) is taken out again.
+        let starter = RoutineUpdate(routine: Routine(name: "Pull"), isNew: true, changes: [])
+        #expect(WorkoutSessionLogic.undoing(starter, in: WorkoutSessionLogic.applying(starter, to: [routine])) == [routine])
+    }
 }

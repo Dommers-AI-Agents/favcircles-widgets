@@ -181,7 +181,14 @@ public enum WorkoutSessionLogic {
     /// Exercises added during the workout are appended; exercises that were
     /// skipped are left alone, because not doing something once is not a
     /// decision to remove it.
-    public static func routineUpdate(for session: WorkoutSession, routines: [Routine],
+    ///
+    /// `active` is the workout as it stood when Finish was tapped, before
+    /// its untouched rows were dropped. Only it can tell an exercise that
+    /// was taken off the page (removed from the routine) from one left
+    /// unticked (kept), and it carries the order the blocks were dragged
+    /// into. Without it, nothing is removed or reordered.
+    public static func routineUpdate(for session: WorkoutSession, active: WorkoutSession? = nil,
+                                     routines: [Routine],
                                      name: @escaping (String) -> String = { $0 },
                                      unit: WeightUnit = .lb) -> RoutineUpdate? {
         guard let routineId = session.routineId else { return nil }
@@ -209,6 +216,30 @@ public enum WorkoutSessionLogic {
                 changes.append("\(name(exerciseId)): added, \(line)")
             }
         }
+        if let active {
+            // Taken off the page: every row of the exercise was deleted.
+            let onThePage = Set(active.sets.map(\.exerciseId))
+            for item in existing.items where !onThePage.contains(item.exerciseId) {
+                items.removeAll { $0.id == item.id }
+                changes.append("\(name(item.exerciseId)): removed")
+            }
+            // The page's block order becomes the routine's. It only counts
+            // as a change when exercises the routine already had swapped
+            // places; an added exercise taking its spot is part of "added".
+            var rank: [String: Int] = [:]
+            for (index, id) in orderedExerciseIds(in: active).enumerated() { rank[id] = index }
+            let sorted = items.enumerated().sorted { a, b in
+                let ra = rank[a.element.exerciseId] ?? Int.max, rb = rank[b.element.exerciseId] ?? Int.max
+                return ra == rb ? a.offset < b.offset : ra < rb
+            }.map(\.element)
+            let kept = Set(items.map(\.id))
+            let wasOrder = existing.items.filter { kept.contains($0.id) }.map(\.id)
+            let had = Set(wasOrder)
+            if sorted.filter({ had.contains($0.id) }).map(\.id) != wasOrder {
+                changes.append("Exercises reordered")
+            }
+            items = sorted
+        }
         guard !changes.isEmpty else { return nil }
         return RoutineUpdate(routine: Routine(id: existing.id, name: existing.name, items: items),
                              isNew: false, changes: changes, previous: existing)
@@ -219,6 +250,15 @@ public enum WorkoutSessionLogic {
         let base = "\(sets) × \(reps)"
         guard let weight, weight > 0 else { return base }
         return "\(base) at \(WorkoutNumber.trim(weight)) \(unit.label)"
+    }
+
+    /// The routines list as it was before an accepted update: the previous
+    /// routine back in place, or a starter that was saved taken out again.
+    public static func undoing(_ update: RoutineUpdate, in routines: [Routine]) -> [Routine] {
+        var out = routines
+        guard let index = out.firstIndex(where: { $0.id == update.routine.id }) else { return out }
+        if let previous = update.previous { out[index] = previous } else { out.remove(at: index) }
+        return out
     }
 
     /// The routines list with an accepted update written in; a routine that
