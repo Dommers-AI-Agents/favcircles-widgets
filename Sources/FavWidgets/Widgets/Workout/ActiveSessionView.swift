@@ -401,27 +401,25 @@ struct ActiveSessionView: View {
             model.sessions.append(result.session)
             model.sessions.sort { $0.startedAt < $1.startedAt }
         }
-        // Read against the routines as they were BEFORE this write, including
-        // the starters, so a starter routine can be saved as the person's own.
+        // The starters are included so a starter routine can be saved as the
+        // person's own. `active` still has the rows Finish drops, so a
+        // deleted exercise and a dragged order are seen as changes.
         let update = WorkoutSessionLogic.routineUpdate(
             for: result.session,
+            active: active,
             routines: settings.model.routines + ExerciseCatalog.starterRoutines,
             name: { [model = settings.model] id in model.exercise(id: id)?.name ?? "Exercise" },
             unit: unit
         )
         let isStarter = update.map { u in !settings.model.routines.contains { $0.id == u.routine.id } } ?? false
-        // Your own routine keeps what you did — exercises you added, today's
-        // numbers — in the same write that ends the workout. The summary
-        // offers Undo. A starter routine still asks before becoming yours.
-        let autoApply = update != nil && !isStarter
+        // The routine is NOT touched here: the summary shows what changed
+        // and asks, and saves only on a yes (Wes, 2026-11-23).
         settings.update { model in
             model.prsByExercise = WorkoutSessionLogic.applying(result.newRecords, to: model.prsByExercise)
-            if autoApply, let update { model.routines = WorkoutSessionLogic.applying(update, to: model.routines) }
             model.activeSession = nil
         }
         // Finished: off the lock screen
         context.host.workoutLiveActivity(nil)
-        if autoApply { context.track("workout_routine_updated", ["new": "0", "auto": "1"]) }
         restEndsAt = nil
         context.host.haptic(.success)
         context.track("workout_finished", [
@@ -444,7 +442,7 @@ struct ActiveSessionView: View {
             share: share,
             routineUpdate: update.map {
                 RoutineUpdate(routine: $0.routine, isNew: isStarter, changes: $0.changes,
-                              previous: isStarter ? nil : $0.previous, applied: autoApply)
+                              previous: isStarter ? nil : $0.previous)
             }
         ))
     }

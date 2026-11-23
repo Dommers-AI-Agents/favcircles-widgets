@@ -10,8 +10,10 @@ struct WorkoutSummaryView: View {
     @State private var sharing = false
     @State private var posted = false
     @ObservedObject private var audience: WorkoutAudienceStore
-    /// nil = not answered yet, true = the routine was updated, false = left alone.
+    /// nil = not answered yet, true = the routine was saved, false = left alone.
     @State private var routineAnswer: Bool?
+    @State private var askingRoutine = false
+    private var routineUnanswered: Bool { summary.routineUpdate != nil && routineAnswer == nil }
 
     init(context: WidgetContext, settings: WidgetStateController<WorkoutSettings>, summary: WorkoutSummary) {
         self.context = context
@@ -41,6 +43,8 @@ struct WorkoutSummaryView: View {
                     Spacer()
                     Image(systemName: "checkmark.seal.fill").font(.system(size: 34)).foregroundStyle(theme.success)
                 }
+                // First on the sheet, above the numbers, so it can't be missed.
+                if let update = summary.routineUpdate { routineCard(update) }
                 HStack(spacing: 12) {
                     stat("Duration", WorkoutFormat.duration(summary.duration))
                     if !share.exercises.isEmpty {
@@ -74,7 +78,6 @@ struct WorkoutSummaryView: View {
                         }
                     }
                 }
-                if let update = summary.routineUpdate { routineCard(update) }
                 if !summary.newRecords.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         WidgetUI.header("New PRs", theme: theme)
@@ -106,76 +109,82 @@ struct WorkoutSummaryView: View {
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent.opacity(0.14)))
                     }
                     .buttonStyle(.plain)
-                    WidgetUI.primaryButton(posting ? "Posting…" : "Done", color: context.accent) { finish() }
-                        .disabled(posting)
+                    WidgetUI.primaryButton(posting ? "Posting…" : "Done", color: context.accent) {
+                        // Leaving without an answer: ask once more, then go.
+                        if routineUnanswered { askingRoutine = true } else { finish() }
+                    }
+                    .disabled(posting)
                 }
             }
             .padding(20)
         }
         .background(theme.background.ignoresSafeArea())
+        // A swipe down can't skip the question; Done asks it.
+        .interactiveDismissDisabled(routineUnanswered)
+        .confirmationDialog(summary.routineUpdate.map(routineTitle) ?? "", isPresented: $askingRoutine, titleVisibility: .visible) {
+            if let update = summary.routineUpdate {
+                Button(update.isNew ? "Save as my routine" : "Update routine") { acceptRoutine(update); finish() }
+                Button(update.isNew ? "Not now" : "Keep as it was") { declineRoutine(); finish() }
+                Button("Cancel", role: .cancel) {}
+            }
+        } message: {
+            Text(summary.routineUpdate?.changes.joined(separator: "\n") ?? "")
+        }
         .task { await audience.loadIfStale(context: context) }
     }
 
-    /// What this workout changed in its routine. Your own routine has
-    /// already been updated (exercises you added stay in it) and offers
-    /// Undo; a starter routine asks before becoming yours.
+    /// What this workout changed in its routine, and the question: keep
+    /// the changes? Nothing is written until the answer is yes. A yes can
+    /// be undone while the sheet is open.
     @ViewBuilder
     private func routineCard(_ update: RoutineUpdate) -> some View {
-        let saved = update.applied ? routineAnswer != false : routineAnswer == true
+        let name = update.routine.name
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: saved ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
+                Image(systemName: routineAnswer == true ? "checkmark.circle.fill" : "arrow.triangle.2.circlepath")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(saved ? theme.success : context.accent)
-                Text(saved ? "\(update.routine.name) updated"
-                     : update.applied ? "\(update.routine.name) left as it was" : "Save \(update.routine.name)?")
+                    .foregroundStyle(routineAnswer == true ? theme.success : context.accent)
+                Text(routineTitle(update))
                     .font(.system(size: 16, weight: .semibold)).foregroundStyle(theme.label)
-            }
-            if !update.applied && routineAnswer == nil {
-                Text("This workout came from a starter routine. Saving keeps it as your own, with today's exercises and numbers.")
-                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if update.applied && saved {
-                Text("Next time starts with today's exercises and numbers.")
-                    .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Text(routineAnswer == true ? "Next time \(name) starts with today's exercises and numbers."
+                 : routineAnswer == false ? "Nothing was changed. This workout is still in your history."
+                 : update.isNew ? "This workout came from an example routine. Saving keeps it as your own, with today's exercises and numbers."
+                 : "You changed things today. Update the routine so next time starts this way?")
+                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(Array(update.changes.enumerated()), id: \.offset) { _, line in
                     Text(line).font(.system(size: 13, design: .rounded)).foregroundStyle(theme.label)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if update.applied {
-                if routineAnswer != false, let previous = update.previous {
-                    Button { undoRoutine(previous) } label: {
-                        Text("Undo")
-                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
-                            .frame(maxWidth: .infinity).frame(height: 44)
-                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
-                    }
-                    .buttonStyle(.plain)
-                }
-            } else if routineAnswer == nil {
+            if routineAnswer == nil {
                 HStack(spacing: 10) {
                     Button { acceptRoutine(update) } label: {
-                        Text("Save as my routine")
+                        Text(update.isNew ? "Save as my routine" : "Update routine")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                             .frame(maxWidth: .infinity).frame(height: 44)
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(context.accent))
                     }
                     .buttonStyle(.plain)
-                    Button {
-                        routineAnswer = false
-                        context.track("workout_routine_update_declined")
-                    } label: {
-                        Text("Not now")
+                    Button { declineRoutine() } label: {
+                        Text(update.isNew ? "Not now" : "Keep as it was")
                             .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
                             .frame(maxWidth: .infinity).frame(height: 44)
                             .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
                     }
                     .buttonStyle(.plain)
                 }
+            } else if routineAnswer == true {
+                Button { undoRoutine(update) } label: {
+                    Text("Undo")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(theme.secondaryLabel)
+                        .frame(maxWidth: .infinity).frame(height: 44)
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.tertiaryBackground))
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(14)
@@ -183,23 +192,34 @@ struct WorkoutSummaryView: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
     }
 
-    /// Puts the routine back exactly as it was before this workout
-    private func undoRoutine(_ previous: Routine) {
-        settings.update { model in
-            if let index = model.routines.firstIndex(where: { $0.id == previous.id }) {
-                model.routines[index] = previous
-            }
+    private func routineTitle(_ update: RoutineUpdate) -> String {
+        let name = update.routine.name
+        switch routineAnswer {
+        case true?: return update.isNew ? "\(name) saved to your routines" : "\(name) updated"
+        case false?: return "\(name) left as it was"
+        case nil: return update.isNew ? "Save \(name)?" : "Update \(name)?"
         }
-        routineAnswer = false
-        context.host.haptic(.light)
-        context.track("workout_routine_update_undone")
     }
 
+    /// Writes the routine as this workout left it — the one save.
     private func acceptRoutine(_ update: RoutineUpdate) {
         settings.update { $0.routines = WorkoutSessionLogic.applying(update, to: $0.routines) }
         routineAnswer = true
         context.host.haptic(.success)
         context.track("workout_routine_updated", ["new": update.isNew ? "1" : "0"])
+    }
+
+    private func declineRoutine() {
+        routineAnswer = false
+        context.track("workout_routine_update_declined")
+    }
+
+    /// Puts the routines back exactly as they were before the yes.
+    private func undoRoutine(_ update: RoutineUpdate) {
+        settings.update { $0.routines = WorkoutSessionLogic.undoing(update, in: $0.routines) }
+        routineAnswer = nil
+        context.host.haptic(.light)
+        context.track("workout_routine_update_undone")
     }
 
     private var toConnections: Bool { settings.model.shareAudience == "connections" }

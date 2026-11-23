@@ -159,7 +159,7 @@ public struct PersonalRecord: Codable, Equatable, Sendable {
 }
 
 /// A routine and the workout that just diverged from it: what the routine
-/// would become if the person says yes.
+/// would become if the person says yes. Nothing is written until they do.
 public struct RoutineUpdate: Equatable, Sendable {
     public let routine: Routine
     /// True when the routine came from the starter list and saying yes
@@ -170,16 +170,12 @@ public struct RoutineUpdate: Equatable, Sendable {
     /// The routine as it was before this workout, for Undo. Nil for a
     /// starter routine the person hasn't saved yet.
     public let previous: Routine?
-    /// Already written to the routines (an own routine updates itself when
-    /// the workout finishes; a starter still asks).
-    public let applied: Bool
 
-    public init(routine: Routine, isNew: Bool, changes: [String], previous: Routine? = nil, applied: Bool = false) {
+    public init(routine: Routine, isNew: Bool, changes: [String], previous: Routine? = nil) {
         self.routine = routine
         self.isNew = isNew
         self.changes = changes
         self.previous = previous
-        self.applied = applied
     }
 }
 
