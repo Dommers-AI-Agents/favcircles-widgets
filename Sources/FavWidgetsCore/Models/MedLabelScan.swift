@@ -115,6 +115,6 @@ public enum MedSafetyCopy {
     public static let scanWarningTitle = "Check everything before you add it"
     public static let scanWarning = "AI read these labels and can make mistakes. Compare each medicine, dose, time and day with your prescription label. You're responsible for the accuracy of your reminders. If anything is unclear, ask your pharmacist or doctor."
     public static let acknowledgement = "I've checked each medicine, dose and time against the label"
-    public static let photoPrivacy = "Your photos are sent to our AI provider to be read, then discarded. Only what you add is saved, privately to you."
+    public static let photoPrivacy = "Your photos are sent to our AI provider to be read. We don't keep them or what they said; only the medicines you add are saved, privately to you."
     public static let footer = "Reminders are a convenience, not medical advice. You're responsible for making sure every medicine, dose and time is right. Never change how you take a medicine because of this app; ask your doctor or pharmacist."
 }
