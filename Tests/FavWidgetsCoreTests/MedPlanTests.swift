@@ -73,4 +73,34 @@ struct MedPlanTests {
         let again = try WidgetDocumentCodec.decode(MedMonth.self, from: try #require(store.document(id: "meds_2026-10")).payload)
         #expect(again.doses.count == 2)
     }
+
+    // Wes 2026-11-27: "I missed yesterday but I took today. Even though today
+    // wasn't scheduled. To keep track."
+    @Test func justTookItOnADayOffIsLoggedButNeverDue() {
+        // 2026-10-13 is a Tuesday; Vitamin D is Mondays only
+        let now = at("2026-10-13", 9, 42)
+        let dose = MedPlan.doseTakenNow(weekly, doses: [], now: now, calendar: cal)
+        #expect(dose.day == DayKey(rawValue: "2026-10-13"))
+        #expect(dose.slot == 9 * 60 + 42)
+        #expect(dose.status == .taken)
+        let day = DayKey(rawValue: "2026-10-13")
+        #expect(MedPlan.unscheduledTaken([lisinopril, weekly], doses: [dose], on: day, calendar: cal) == [dose])
+        // Not due, so the week's adherence is unchanged by it
+        let monday = MedDose(medId: "w", day: DayKey(rawValue: "2026-10-12"), slot: 540, status: .taken, at: at("2026-10-12", 9))
+        #expect(MedPlan.adherence([weekly], doses: [monday], days: 7, now: now, calendar: cal)
+                == MedPlan.adherence([weekly], doses: [monday, dose], days: 7, now: now, calendar: cal))
+    }
+
+    @Test func justTookItMarksTheDoseThatsDueOrMissed() {
+        let day = DayKey(rawValue: "2026-10-12")
+        // 8 AM dose due at 8:10 → that dose
+        #expect(MedPlan.doseTakenNow(lisinopril, doses: [], now: at("2026-10-12", 8, 10), calendar: cal).slot == 480)
+        // 8 AM missed, taken late at noon → still the 8 AM dose
+        #expect(MedPlan.doseTakenNow(lisinopril, doses: [], now: at("2026-10-12", 12), calendar: cal).slot == 480)
+        // 8 AM already taken, 8 PM still later → an extra at 12:00
+        let morning = MedDose(medId: "l", day: day, slot: 480, status: .taken, at: at("2026-10-12", 8))
+        let extra = MedPlan.doseTakenNow(lisinopril, doses: [morning], now: at("2026-10-12", 12), calendar: cal)
+        #expect(extra.slot == 720)
+        #expect(MedPlan.unscheduledTaken([lisinopril], doses: [morning, extra], on: day, calendar: cal) == [extra])
+    }
 }

@@ -56,10 +56,12 @@ struct MedsFullView: View {
     // MARK: Today
 
     private func today(_ meds: [Med], now: Date) -> some View {
-        let slots = MedPlan.slots(meds, on: DayKey(now, calendar: context.calendar), calendar: context.calendar)
+        let day = DayKey(now, calendar: context.calendar)
+        let slots = MedPlan.slots(meds, on: day, calendar: context.calendar)
+        let extras = MedPlan.unscheduledTaken(meds, doses: doses, on: day, calendar: context.calendar)
         return VStack(alignment: .leading, spacing: 8) {
             WidgetUI.header("Today", theme: theme)
-            if slots.isEmpty {
+            if slots.isEmpty && extras.isEmpty {
                 Text(meds.isEmpty ? "Add a medication below." : "Nothing scheduled today.")
                     .font(.system(size: 14)).foregroundStyle(theme.secondaryLabel)
             }
@@ -90,6 +92,48 @@ struct MedsFullView: View {
                 .padding(12)
                 .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
             }
+            ForEach(extras) { dose in extraRow(dose, meds: meds) }
+            if !meds.isEmpty { tookItNow(meds) }
+        }
+    }
+
+    /// A dose logged with "I just took it" that matches no scheduled time.
+    private func extraRow(_ dose: MedDose, meds: [Med]) -> some View {
+        HStack(spacing: 10) {
+            Circle().fill(context.accent).frame(width: 10, height: 10)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(meds.first { $0.id == dose.medId }?.label ?? "Medication")
+                    .font(.system(size: 16, weight: .medium)).foregroundStyle(theme.label)
+                Text("Taken \(MedPlan.timeText(dose.slot, calendar: context.calendar)) · not scheduled")
+                    .font(.system(size: 12)).foregroundStyle(theme.secondaryLabel)
+            }
+            Spacer()
+            Button("Undo") { MedLogging.remove(dose, context: context) }
+                .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel)
+        }
+        .buttonStyle(.plain)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(theme.secondaryBackground))
+    }
+
+    /// "I just took it", whether or not a dose is scheduled now (Wes,
+    /// 2026-11-27). One medication logs at once; several ask which.
+    @ViewBuilder
+    private func tookItNow(_ meds: [Med]) -> some View {
+        let label = Label("I just took it", systemImage: "checkmark.circle")
+            .font(.system(size: 15, weight: .semibold)).foregroundStyle(context.accent)
+            .frame(maxWidth: .infinity).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(context.accent, lineWidth: 1.5))
+        if meds.count == 1, let med = meds.first {
+            Button { MedLogging.takenNow(med, doses: doses, context: context) } label: { label }
+                .buttonStyle(.plain)
+                .accessibilityLabel("I just took \(med.label)")
+        } else {
+            Menu {
+                ForEach(meds) { med in
+                    Button(med.label) { MedLogging.takenNow(med, doses: doses, context: context) }
+                }
+            } label: { label }
         }
     }
 
@@ -163,12 +207,14 @@ struct MedsFullView: View {
     private func history(_ meds: [Med], now: Date) -> some View {
         let today = DayKey(now, calendar: context.calendar)
         let days = (1...14).map { today.adding(days: -$0, calendar: context.calendar) }
-            .filter { !MedPlan.slots(meds, on: $0, calendar: context.calendar).isEmpty }
+            .filter { !MedPlan.slots(meds, on: $0, calendar: context.calendar).isEmpty
+                || !MedPlan.unscheduledTaken(meds, doses: doses, on: $0, calendar: context.calendar).isEmpty }
         if !days.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 WidgetUI.header("Past two weeks", theme: theme)
                 ForEach(days, id: \.self) { day in
                     let slots = MedPlan.slots(meds, on: day, calendar: context.calendar)
+                    let extras = MedPlan.unscheduledTaken(meds, doses: doses, on: day, calendar: context.calendar)
                     HStack {
                         Text(day.date(calendar: context.calendar).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day()))
                             .font(.system(size: 13)).foregroundStyle(theme.secondaryLabel).frame(width: 96, alignment: .leading)
@@ -177,10 +223,15 @@ struct MedsFullView: View {
                                 Circle().fill(MedColors.color(MedPlan.state(slot, doses: doses, now: now), theme: theme, accent: context.accent))
                                     .frame(width: 10, height: 10)
                             }
+                            // Unscheduled doses: a ring, so they read as extra
+                            ForEach(extras) { _ in
+                                Circle().stroke(context.accent, lineWidth: 2).frame(width: 9, height: 9)
+                            }
                         }
                         Spacer()
                         let taken = slots.filter { MedPlan.state($0, doses: doses, now: now) == .taken }.count
-                        Text("\(taken)/\(slots.count)").font(.system(size: 13, design: .rounded)).foregroundStyle(theme.label)
+                        Text(slots.isEmpty ? "\(extras.count) taken" : "\(taken)/\(slots.count)\(extras.isEmpty ? "" : " +\(extras.count)")")
+                            .font(.system(size: 13, design: .rounded)).foregroundStyle(theme.label)
                     }
                 }
             }

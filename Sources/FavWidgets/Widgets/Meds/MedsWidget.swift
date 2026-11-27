@@ -50,6 +50,30 @@ enum MedLogging {
             context.track("med_marked", ["status": status?.rawValue ?? "undo"])
         }
     }
+
+    /// "I just took it": today's dose that's due or missed, or else an
+    /// unscheduled one at this minute (MedPlan.doseTakenNow).
+    static func takenNow(_ med: Med, doses: [MedDose], context: WidgetContext) {
+        let dose = MedPlan.doseTakenNow(med, doses: doses, now: Date(), calendar: context.calendar)
+        let shard = context.month(MedMonth.self, dose.day.monthKey)
+        Task { @MainActor in
+            await shard.loadIfNeeded()
+            shard.update { $0.record(dose) }
+            context.host.haptic(.success)
+            context.track("med_taken_now")
+        }
+    }
+
+    /// Undo for a logged dose that has no scheduled slot to undo through.
+    static func remove(_ dose: MedDose, context: WidgetContext) {
+        let shard = context.month(MedMonth.self, dose.day.monthKey)
+        Task { @MainActor in
+            await shard.loadIfNeeded()
+            shard.update { $0.remove(id: dose.id) }
+            context.host.haptic(.light)
+            context.track("med_marked", ["status": "undo"])
+        }
+    }
 }
 
 struct MedsCardView: View {

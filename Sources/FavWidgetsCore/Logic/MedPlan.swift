@@ -64,6 +64,32 @@ public enum MedPlan {
         return due == 0 ? nil : Double(taken) / Double(due)
     }
 
+    /// "I just took it" (Wes, 2026-11-27: "I missed yesterday but I took today.
+    /// Even though today wasn't scheduled. To keep track."): the dose to log
+    /// for `med` now. Today's earliest scheduled dose that's due or missed
+    /// and not yet marked, when there is one; otherwise an unscheduled dose
+    /// at this minute, which shows in the log but is never "due", so it
+    /// doesn't change adherence.
+    public static func doseTakenNow(_ med: Med, doses: [MedDose], now: Date, calendar: Calendar = .current) -> MedDose {
+        let today = DayKey(now, calendar: calendar)
+        if let slot = slots([med], on: today, calendar: calendar).first(where: {
+            [.due, .missed].contains(state($0, doses: doses, now: now))
+        }) {
+            return MedDose(medId: med.id, day: today, slot: slot.minutes, status: .taken, at: now)
+        }
+        let minute = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+        return MedDose(medId: med.id, day: today, slot: minute, status: .taken, at: now)
+    }
+
+    /// Doses taken on `day` that match no scheduled dose: logged with "I just
+    /// took it" on a day off, or at a time the schedule doesn't have.
+    public static func unscheduledTaken(_ meds: [Med], doses: [MedDose], on day: DayKey, calendar: Calendar = .current) -> [MedDose] {
+        let scheduled = Set(slots(meds, on: day, calendar: calendar).map(\.id))
+        let known = Set(meds.map(\.id))
+        return doses.filter { $0.day == day && $0.status == .taken && known.contains($0.medId) && !scheduled.contains($0.id) }
+            .sorted { $0.slot < $1.slot }
+    }
+
     /// One repeating reminder: every day at `minutes`, or weekly on `weekday`.
     public struct Reminder: Equatable, Sendable {
         public let id: String
