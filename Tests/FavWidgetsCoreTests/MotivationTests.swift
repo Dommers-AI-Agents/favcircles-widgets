@@ -158,4 +158,11 @@ struct MotivationTests {
         #expect(old.focus == [.gym])
         #expect(old.intensity == .savage)
     }
+
+    @Test func gymVideoShareLinkOpensTheVideoInTheApp() {
+        // Wes 2026-11-27: the player's Share sends our link, which the app
+        // routes straight to the playing video — never TikTok's own URL.
+        #expect(MotivationShareText.gymVideoShareURL?.absoluteString == "https://api.favcircles.com/app/widget/motivation?video=gym")
+        #expect(MotivationShareText.gymVideoShareURL?.host != "www.tiktok.com")
+    }
 }

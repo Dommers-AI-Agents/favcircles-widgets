@@ -119,6 +119,9 @@ public final class WidgetContext: ObservableObject {
     /// With `launchMotivationLineId`: also open the send sheet (the
     /// notification's Send action), rather than only showing the line.
     public var launchMotivationSend = false
+    /// A Coach Mane video to open playing (`/app/widget/motivation?video=gym`,
+    /// the player's Share link): the page opens with the player up.
+    public var launchMotivationVideoId: String?
     /// A received postcard to show (`postcardShares` token), from the printed
     /// card's QR or the web page's "Open it in the app".
     public var launchPostcardShareToken: String?
@@ -178,6 +181,7 @@ public final class WidgetContext: ObservableObject {
             || launchEventToken != nil || launchEventId != nil || launchRunId != nil || launchRunToken != nil
             || launchCareAskId != nil || launchFridgeMailCardId != nil || launchClubToken != nil
             || launchClubId != nil || launchDogPostId != nil || launchDailyDogId != nil
+            || launchMotivationVideoId != nil
     }
 
     /// Presents a launch target: `show` sets the sheet or cover's state. When

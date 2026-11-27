@@ -15,6 +15,16 @@ public enum MotivationShareText {
     public static let gymVideoCaption = "▶ Go to the gym"
     public static let gymVideoLinkLine = "\(gymVideoCaption): \(gymVideoURL)"
 
+    /// The video's id in our own link (`?video=gym`): the app opens Coach Mane
+    /// with this video already playing (Wes, 2026-11-27: "click our share link
+    /// and go directly to this embedded video in our app").
+    public static let gymVideoShareId = "gym"
+    /// What the player's Share sends: our link, not TikTok's, so the friend
+    /// lands on the video inside FavCircles (or the App Store without it).
+    public static let gymVideoShareURL = URL(string: WidgetShareCard.base + "motivation?video=\(gymVideoShareId)")
+    /// The link title Messages shows under the video's card.
+    public static let gymVideoShareTitle = "▶ Go to the gym · Coach Mane"
+
     /// Only when there's no card image to share (the card is the message).
     public static func shareText(line: String) -> String {
         "📣 Coach Mane says: \(line)\n\(gymVideoLinkLine)"
